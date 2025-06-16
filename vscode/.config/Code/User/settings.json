@@ -1,0 +1,25 @@
+{
+  "workbench.colorTheme": "Aura Dark (Soft Text)",
+  "files.autoSave": "afterDelay",
+  "editor.formatOnSave": true,
+  "window.zoomLevel": -0.85,
+  "editor.fontSize": 13,
+  "security.workspace.trust.untrustedFiles": "open",
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "git.enableSmartCommit": true,
+  "extensions.ignoreRecommendations": true,
+  "git.confirmSync": false,
+  "workbench.activityBar.location": "top",
+  "window.menuBarVisibility": "compact",
+  "chat.commandCenter.enabled": false,
+  "github.copilot.advanced": {},
+  "github.copilot.chat.languageContext.fix.typescript.enabled": true,
+  "github.copilot.chat.languageContext.inline.typescript.enabled": true,
+  "github.copilot.chat.languageContext.typescript.enabled": true,
+  "github.copilot.chat.agent.thinkingTool": true
+}
