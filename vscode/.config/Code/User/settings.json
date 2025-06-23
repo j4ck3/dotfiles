@@ -15,7 +15,6 @@
   "extensions.ignoreRecommendations": true,
   "git.confirmSync": false,
   "workbench.activityBar.location": "top",
-  "window.menuBarVisibility": "compact",
   "chat.commandCenter.enabled": false,
   "github.copilot.advanced": {},
   "github.copilot.chat.languageContext.fix.typescript.enabled": true,
