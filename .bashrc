@@ -30,16 +30,16 @@ ask() {
   glow /tmp/ollama.md
 }
 
-
 # misc
 alias ..="cd .."
 alias ...="cd ../.."
 alias ....="cd ../../.."
-alias ll="ls -lah"
-alias la="ls -A"
-alias l="ls -CF"
+alias ls="eza -l --icons"
+alias la="eza -la --icons"
+alias lt="eza --tree --icons"
 alias ds="du -sh ."
 alias mkdir="mkdir -pv"
+alias cd="z"
 
 alias dots="cd ~/dotfiles"
 alias serve="pnpm dev"
@@ -51,8 +51,8 @@ alias gc="git commit -m"
 alias gp="git push"
 
 # system
-alias update="sudo pacman -Syu"
-alias cleanup="sudo pacman -Rns $(pacman -Qtdq)"
+alias update="pacman -Syu"
+alias cleanup="pacman -Rns $(pacman -Qtdq)"
 
 # pnpm
 export PNPM_HOME="/home/jacob/.local/share/pnpm"
