@@ -5,7 +5,6 @@
 # If not running interactively, don't do anything
 [[ $- != *i* ]] && return
 
-alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 PS1='[\u@\h \W]\$ '
 export PATH=$HOME/.dotnet/tools:$PATH
@@ -29,7 +28,7 @@ ask() {
 
   glow /tmp/ollama.md
 }
-
+alias dots="cd ~/dotfiles"
 # misc
 alias ..="cd .."
 alias ...="cd ../.."
@@ -39,10 +38,9 @@ alias la="eza -la --icons"
 alias lt="eza --tree --icons"
 alias ds="du -sh ."
 alias mkdir="mkdir -pv"
-alias cd="z"
+alias vim="nvim"
+alias vi="nvim"
 
-alias dots="cd ~/dotfiles"
-alias serve="pnpm dev"
 
 # git
 alias gs="git status"
@@ -61,3 +59,5 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
+
+export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
