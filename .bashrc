@@ -14,7 +14,7 @@ ask() {
   local MODEL="${OLLAMA_MODEL:-phi3:latest}"
   local PROMPT="$*"
 
-  : > /tmp/ollama.md
+  : >/tmp/ollama.md
 
   curl -s http://localhost:11434/api/generate \
     -d "{
@@ -23,13 +23,15 @@ ask() {
       \"system\": \"$SYSTEM_PROMPT\",
       \"stream\": true
     }" | jq -r 'select(.response) | .response' | while IFS= read -r chunk; do
-      printf "%s" "$chunk" >> /tmp/ollama.md
-    done
+    printf "%s" "$chunk" >>/tmp/ollama.md
+  done
 
   glow /tmp/ollama.md
 }
-alias dots="cd ~/dotfiles"
 # misc
+alias dots="cd ~/dotfiles"
+alias cddocker="cd /mnt/user/syncthing/compose"
+
 alias ..="cd .."
 alias ...="cd ../.."
 alias ....="cd ../../.."
@@ -40,7 +42,6 @@ alias ds="du -sh ."
 alias mkdir="mkdir -pv"
 alias vim="nvim"
 alias vi="nvim"
-
 
 # git
 alias gs="git status"
@@ -55,8 +56,8 @@ alias cleanup="pacman -Rns $(pacman -Qtdq)"
 # pnpm
 export PNPM_HOME="/home/jacob/.local/share/pnpm"
 case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
+*":$PNPM_HOME:"*) ;;
+*) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
 

@@ -21,7 +21,7 @@ bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcu
 
 # Define workspace names
 set $ws1 "1:Web"
-set $ws2 "2:Chat"
+set $ws2 "2:Code"
 set $ws3 "3:Music"
 set $ws4 "4:Code"
 set $ws5 "5:chatgpt"
@@ -43,7 +43,7 @@ bindsym $mod+j workspace number $ws1
 bindsym $mod+k workspace number $ws2
 bindsym $mod+l workspace number $ws3
 bindsym $mod+odiaeresis workspace number $ws4
-bindsym $mod+h workspace number $ws5
+bindsym $mod+h workspace $ws5; exec --startup-id=chatgpt zen-browser
 bindsym $mod+u workspace 10; exec dolphin
 
 # move focused container to workspace
