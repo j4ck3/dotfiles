@@ -80,8 +80,8 @@ curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3
 # ✅ No need to clone repo - runs directly from GitHub
 # Get API key: ssh root@10.0.0.24 "docker exec syncthing cat /config/config.xml | grep -oP '(?<=<apikey>)[^<]+' | head -1"
 # SECURITY: API keys give full control - only use on trusted private networks
-HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
-HOMESERVER_SYNC_APIKEY="your-api-key-here" \
+export HOMESERVER_SYNC_URL="http://10.0.0.24:8384" && \
+export HOMESERVER_SYNC_APIKEY="your-api-key-here" && \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 3: With Tailscale key only (manual Syncthing setup required)
