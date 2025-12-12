@@ -156,6 +156,46 @@ install_zen_browser() {
     fi
 }
 
+# Find the Zen Browser binary path
+find_zen_binary() {
+    # Check common binary locations
+    local candidates=(
+        "/usr/bin/zen"
+        "/usr/bin/zen-browser"
+        "/usr/local/bin/zen"
+        "/usr/local/bin/zen-browser"
+    )
+    
+    for path in "${candidates[@]}"; do
+        if [[ -f "$path" ]] && [[ -x "$path" ]]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    
+    # Check via command
+    if command -v zen &> /dev/null; then
+        command -v zen
+        return 0
+    fi
+    
+    if command -v zen-browser &> /dev/null; then
+        command -v zen-browser
+        return 0
+    fi
+    
+    # Try to find it via pacman
+    local zen_bin
+    zen_bin=$(pacman -Ql zen-browser-bin 2>/dev/null | grep -E "/bin/zen" | head -1 | awk '{print $2}') || true
+    if [[ -n "$zen_bin" ]] && [[ -f "$zen_bin" ]] && [[ -x "$zen_bin" ]]; then
+        echo "$zen_bin"
+        return 0
+    fi
+    
+    log_error "Could not find Zen Browser binary"
+    return 1
+}
+
 # Find the Zen Browser installation directory
 find_zen_install_dir() {
     local candidates=(
@@ -213,10 +253,20 @@ create_profile() {
     fi
     
     log_info "Creating Zen Browser profile..."
+    
+    # Find the zen binary
+    local zen_binary
+    if ! zen_binary=$(find_zen_binary); then
+        log_warn "Could not find Zen Browser binary - profile will be created on first launch"
+        return 0
+    fi
+    
+    log_info "Found Zen Browser at: $zen_binary"
     log_info "Launching Zen Browser briefly to initialize profile..."
     
     # Launch Zen and wait for profile creation
-    timeout 10 zen --headless || true
+    # Use DISPLAY=:0 to ensure it can run even if no display is set
+    timeout 10 env DISPLAY=:0 "$zen_binary" --headless 2>/dev/null || true
     
     # Give it a moment
     sleep 2
@@ -225,6 +275,7 @@ create_profile() {
         log_success "Profile directory created"
     else
         log_warn "Profile directory not found - it will be created on first launch"
+        log_info "This is normal if running in a headless environment"
     fi
 }
 
