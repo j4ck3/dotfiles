@@ -6,6 +6,8 @@
 # Optional: Tailscale (will prompt to install/connect if needed)
 # Docker and yay will be installed automatically if not present
 #
+# Version: 2024-12-19 (auto-installs Docker and yay)
+#
 
 set -e
 
@@ -132,14 +134,30 @@ check_prerequisites() {
     if ! command -v docker &> /dev/null; then
         log_info "Docker not installed"
         echo ""
-        read -p "Install Docker? [Y/n] " -n 1 -r
+        read -t 10 -p "Install Docker? [Y/n] " -n 1 -r || REPLY="y"
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            log_info "Updating package database..."
+            sudo pacman -Sy --noconfirm
+            
             log_info "Installing Docker..."
-            sudo pacman -S --noconfirm docker docker-compose
+            if sudo pacman -S --noconfirm docker docker-compose; then
+                log_success "Docker packages installed"
+            else
+                log_error "Failed to install Docker packages"
+                exit 1
+            fi
             
             log_info "Enabling and starting Docker service..."
             sudo systemctl enable --now docker
+            sleep 2  # Give service time to start
+            
+            # Verify Docker is working
+            if sudo docker info &> /dev/null; then
+                log_success "Docker service is running"
+            else
+                log_warn "Docker service may not be fully started yet"
+            fi
             
             log_info "Adding user to docker group..."
             sudo usermod -aG docker "$USER"
@@ -155,10 +173,11 @@ check_prerequisites() {
         log_success "Docker installed"
         
         # Check if Docker service is running
-        if ! systemctl is-active --quiet docker; then
+        if ! systemctl is-active --quiet docker 2>/dev/null; then
             log_info "Docker service not running, starting it..."
             sudo systemctl start docker
             sudo systemctl enable docker
+            sleep 2
             log_success "Docker service started"
         fi
     fi
