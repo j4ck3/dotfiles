@@ -771,20 +771,35 @@ EOF
     # Share zen-private folder with this device
     log_info "Sharing zen-private folder with this device..."
     
-    # Get folder config
+    # First, get all folders and find zen-private by label (folder ID might be different)
+    log_info "Finding zen-private folder on homeserver..."
+    local all_folders
+    all_folders=$(curl -s -H "$auth_header" "$api_url/rest/config/folders" 2>&1)
+    local folder_id
+    folder_id=$(echo "$all_folders" | python3 -c "import sys, json; folders=json.load(sys.stdin); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1)
+    
+    if [[ -z "$folder_id" ]]; then
+        log_error "zen-private folder not found on homeserver"
+        log_info "Available folders on homeserver:"
+        echo "$all_folders" | python3 -c "import sys, json; folders=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in folders]" 2>/dev/null || echo "  (Could not parse folder list)"
+        return 1
+    fi
+    
+    log_info "Found zen-private folder with ID: $folder_id"
+    
+    # Get folder config using the actual folder ID
     local folder_response
-    folder_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/rest/config/folders/zen-private" 2>&1)
+    folder_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/rest/config/folders/$folder_id" 2>&1)
     local folder_http_code
     folder_http_code=$(echo "$folder_response" | tail -1)
     local folder_config
     folder_config=$(echo "$folder_response" | sed '$d')
     
     if [[ "$folder_http_code" != "200" ]] || [[ -z "$folder_config" ]] || echo "$folder_config" | grep -q '"error"'; then
-        log_error "zen-private folder not found on homeserver (HTTP $folder_http_code)"
+        log_error "Failed to get zen-private folder config (HTTP $folder_http_code)"
         if [[ -n "$folder_config" ]]; then
             log_info "Response: ${folder_config:0:200}"
         fi
-        log_info "Make sure the zen-private folder exists on the homeserver"
         return 1
     fi
     
@@ -833,7 +848,7 @@ PYEOF
     
     local share_response
     share_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
-        -d "$updated_config" "$api_url/rest/config/folders/zen-private" 2>&1)
+        -d "$updated_config" "$api_url/rest/config/folders/$folder_id" 2>&1)
     local share_http_code
     share_http_code=$(echo "$share_response" | tail -1)
     local share_body
