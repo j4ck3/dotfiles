@@ -393,7 +393,15 @@ configure_syncthing_api() {
     # Get current config
     log_info "Fetching current config..."
     local config
-    config=$(curl -s -H "$auth_header" "$api_url/config")
+    config=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
+    
+    if [[ -z "$config" ]] || echo "$config" | grep -qi '"error"'; then
+        log_error "Failed to fetch Syncthing config"
+        if [[ -n "$config" ]]; then
+            log_info "Response: ${config:0:300}"
+        fi
+        return 1
+    fi
     
     local changes_made=false
     
