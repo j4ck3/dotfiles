@@ -69,6 +69,7 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 # Option 1: Fully automated via SSH (RECOMMENDED - Most Secure)
 # ✅ Automatically configures Syncthing on BOTH new PC AND tower
 # ✅ No manual steps needed - everything is automated
+# ✅ No need to clone repo - runs directly from GitHub
 # Requires: Passwordless SSH to tower (setup once: ssh-copy-id root@10.0.0.24)
 HOMESERVER_SSH="root@10.0.0.24" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
@@ -76,6 +77,7 @@ curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3
 # Option 2: Fully automated via API (Less Secure)
 # ✅ Automatically configures Syncthing on BOTH new PC AND tower
 # ✅ No manual steps needed - everything is automated
+# ✅ No need to clone repo - runs directly from GitHub
 # Get API key: ssh root@10.0.0.24 "docker exec syncthing cat /config/config.xml | grep -oP '(?<=<apikey>)[^<]+' | head -1"
 # SECURITY: API keys give full control - only use on trusted private networks
 HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
@@ -94,6 +96,7 @@ curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3
 ```
 
 **What the script does automatically (when using Option 1 or 2):**
+
 - ✅ Installs prerequisites (Docker, yay, Tailscale)
 - ✅ Starts Syncthing on new PC
 - ✅ Adds new PC device to tower's Syncthing
