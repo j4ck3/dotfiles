@@ -1462,13 +1462,20 @@ wait_for_sync() {
     local last_progress=""
     
     while [[ $attempts -lt $max_attempts ]]; do
-                # Check folder status (allow curl to fail without exiting)
-                local status
-                if [[ -n "$folder_id" ]]; then
-                    status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>/dev/null) || true
-                else
-                    status=""
-                fi
+        # Periodically check for pending folders (every 10 attempts = ~10 seconds)
+        # This catches folders that appear after the initial check
+        if [[ $((attempts % 10)) -eq 0 ]] && [[ $attempts -gt 0 ]]; then
+            log_info "Checking for pending folders again (attempt $attempts)..."
+            accept_pending_folders "$api_url" "$auth_header"
+        fi
+        
+        # Check folder status (allow curl to fail without exiting)
+        local status
+        if [[ -n "$folder_id" ]]; then
+            status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>/dev/null) || true
+        else
+            status=""
+        fi
         
         local state="unknown"
         local progress=""
