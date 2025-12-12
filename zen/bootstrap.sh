@@ -743,6 +743,17 @@ EOF
             if configure_homeserver_side "$this_device_id"; then
                 log_success "Homeserver side configured successfully"
                 
+                # Wait a moment for Syncthing to process the folder share
+                log_info "Waiting for folder share to be processed..."
+                sleep 3
+                
+                # Accept pending folders/devices (folder should be pending now)
+                log_info "Checking for and accepting pending folders from homeserver..."
+                accept_pending_folders "$api_url" "$auth_header"
+                
+                # Wait a bit more for acceptance to be processed
+                sleep 2
+                
                 # Verify configuration
                 log_info "Verifying homeserver configuration..."
                 verify_homeserver_config "$this_device_id" "$api_url" "$auth_header"
@@ -816,12 +827,29 @@ verify_homeserver_config() {
         return 1
     fi
     
-    # Verify folder exists
-    if echo "$config" | grep -q "\"id\":\"zen-private\""; then
+    # Verify folder exists (check by label since ID might be different)
+    local folder_exists=false
+    if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\""; then
         log_success "  ✓ zen-private folder is in config"
+        folder_exists=true
     else
-        log_error "  ✗ zen-private folder NOT found in config"
-        return 1
+        # Folder might still be pending - try to accept it
+        log_warn "  ⚠ zen-private folder NOT found in config yet"
+        log_info "  Checking for pending folders to accept..."
+        accept_pending_folders "$api_url" "$auth_header"
+        
+        # Re-check config after accepting
+        sleep 2
+        config=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
+        if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\""; then
+            log_success "  ✓ zen-private folder is now in config (after accepting)"
+            folder_exists=true
+        else
+            log_error "  ✗ zen-private folder still NOT found in config"
+            log_info "  This might be normal if the folder hasn't been shared yet"
+            log_info "  The folder will appear after tower shares it and you accept it"
+            return 1
+        fi
     fi
     
     # Check device connection status
