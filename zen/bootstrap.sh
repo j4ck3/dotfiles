@@ -676,6 +676,47 @@ verify_homeserver_config() {
     fi
 }
 
+# Accept pending folders from homeserver
+accept_pending_folders() {
+    local api_url="$1"
+    local auth_header="$2"
+    
+    # Get pending folders/devices
+    local pending
+    pending=$(curl -s -H "$auth_header" "$api_url/system/pending" 2>/dev/null) || true
+    
+    if [[ -z "$pending" ]] || echo "$pending" | grep -q '"error"'; then
+        return 0  # No pending items or API error (not critical)
+    fi
+    
+    # Check for pending folders
+    local pending_folders
+    pending_folders=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); folders=p.get('folders', []); [print(f\"{f['id']}|{f['label']}\") for f in folders]" 2>/dev/null) || true
+    
+    if [[ -n "$pending_folders" ]]; then
+        echo "$pending_folders" | while IFS='|' read -r folder_id folder_label; do
+            if [[ -n "$folder_id" ]] && [[ "$folder_label" == "zen-private" ]]; then
+                log_info "Accepting pending folder: $folder_label (ID: $folder_id)"
+                
+                # Accept the folder
+                local accept_response
+                accept_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"folder\":\"$folder_id\"}" \
+                    "$api_url/system/pending/folders" 2>&1)
+                local accept_http_code
+                accept_http_code=$(echo "$accept_response" | tail -1)
+                
+                if [[ "$accept_http_code" -ge 200 && "$accept_http_code" -lt 300 ]]; then
+                    log_success "Accepted pending folder: $folder_label"
+                else
+                    log_warn "Failed to accept folder $folder_label (HTTP $accept_http_code)"
+                fi
+            fi
+        done
+    fi
+}
+
 # Configure homeserver side automatically
 configure_homeserver_side() {
     local this_device_id="$1"
