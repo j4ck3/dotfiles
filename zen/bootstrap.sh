@@ -938,12 +938,14 @@ accept_pending_folders() {
     
     # Check for pending folders
     local pending_folders
-    pending_folders=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); folders=p.get('folders', []); [print(f\"{f['id']}|{f['label']}\") for f in folders]" 2>/dev/null) || true
+    pending_folders=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); folders=p.get('folders', []); [print(f\"{f['id']}|{f.get('label', '')}\") for f in folders]" 2>/dev/null) || true
     
     if [[ -n "$pending_folders" ]]; then
         echo "$pending_folders" | while IFS='|' read -r folder_id folder_label; do
-            if [[ -n "$folder_id" ]] && [[ "$folder_label" == "zen-private" ]]; then
-                log_info "Accepting pending folder: $folder_label (ID: $folder_id)"
+            if [[ -n "$folder_id" ]]; then
+                # Accept any pending folder (the label might be empty or different)
+                # We'll accept it and let Syncthing handle it
+                log_info "Found pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
                 
                 # Accept the folder
                 local accept_response
@@ -954,10 +956,16 @@ accept_pending_folders() {
                 local accept_http_code
                 accept_http_code=$(echo "$accept_response" | tail -1)
                 
+                local response_body
+                response_body=$(echo "$accept_response" | head -n -1)
+                
                 if [[ "$accept_http_code" -ge 200 && "$accept_http_code" -lt 300 ]]; then
-                    log_success "Accepted pending folder: $folder_label"
+                    log_success "Accepted pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
                 else
-                    log_warn "Failed to accept folder $folder_label (HTTP $accept_http_code)"
+                    log_warn "Failed to accept folder ${folder_label:-unnamed} (HTTP $accept_http_code)"
+                    if [[ -n "$response_body" ]]; then
+                        log_debug "Response: $response_body"
+                    fi
                 fi
             fi
         done
