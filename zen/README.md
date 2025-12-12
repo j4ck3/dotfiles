@@ -61,23 +61,29 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 
 ## Usage
 
-### On a new machine (Automated - Recommended):
+### On a new machine (Fully Automated - Recommended):
+
+**You only need to run the script ONCE on the new PC. It automatically configures everything on both machines!**
 
 ```bash
 # Option 1: Fully automated via SSH (RECOMMENDED - Most Secure)
-# Automatically configures both sides of Syncthing connection
-# Requires SSH access to tower (passwordless SSH key recommended)
+# ✅ Automatically configures Syncthing on BOTH new PC AND tower
+# ✅ No manual steps needed - everything is automated
+# Requires: Passwordless SSH to tower (setup once: ssh-copy-id root@10.0.0.24)
 HOMESERVER_SSH="root@10.0.0.24" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 2: Fully automated via API (Less Secure)
-# Get homeserver API key: ssh root@10.0.0.24 "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml"
+# ✅ Automatically configures Syncthing on BOTH new PC AND tower
+# ✅ No manual steps needed - everything is automated
+# Get API key: ssh root@10.0.0.24 "docker exec syncthing cat /config/config.xml | grep -oP '(?<=<apikey>)[^<]+' | head -1"
 # SECURITY: API keys give full control - only use on trusted private networks
 HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
 HOMESERVER_SYNC_APIKEY="your-api-key-here" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 3: With Tailscale key only (manual Syncthing setup required)
+# ⚠️ You'll need to manually configure Syncthing on both machines
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 4: Manual Tailscale auth
@@ -86,6 +92,15 @@ curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3
 
 # Launch browser - everything is configured!
 ```
+
+**What the script does automatically (when using Option 1 or 2):**
+- ✅ Installs prerequisites (Docker, yay, Tailscale)
+- ✅ Starts Syncthing on new PC
+- ✅ Adds new PC device to tower's Syncthing
+- ✅ Shares zen-private folder from tower to new PC
+- ✅ Accepts pending devices/folders on new PC
+- ✅ Waits for sync to complete
+- ✅ Installs and configures Zen Browser
 
 **Get a Tailscale pre-auth key:** https://login.tailscale.com/admin/settings/keys
 
