@@ -392,14 +392,19 @@ configure_syncthing_api() {
     
     # Get current config
     log_info "Fetching current config..."
+    local config_response
+    config_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/config" 2>&1)
+    local config_http_code
+    config_http_code=$(echo "$config_response" | tail -1)
     local config
-    config=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
+    config=$(echo "$config_response" | sed '$d')
     
-    if [[ -z "$config" ]] || echo "$config" | grep -qi '"error"'; then
-        log_error "Failed to fetch Syncthing config"
+    if [[ "$config_http_code" != "200" ]] || [[ -z "$config" ]] || echo "$config" | grep -qi '"error"'; then
+        log_error "Failed to fetch Syncthing config (HTTP $config_http_code)"
         if [[ -n "$config" ]]; then
-            log_info "Response: ${config:0:300}"
+            log_info "Response: ${config:0:500}"
         fi
+        log_info "This might indicate an API key issue or Syncthing not ready"
         return 1
     fi
     
