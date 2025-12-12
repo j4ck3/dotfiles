@@ -396,11 +396,26 @@ configure_syncthing_api() {
 }
 EOF
 )
-        curl -s -X POST -H "$auth_header" -H "Content-Type: application/json" \
-            -d "$device_json" "$api_url/config/devices"
+        local http_code
+        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$device_json" "$api_url/config/devices")
         
-        log_success "Added homeserver device"
-        changes_made=true
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            log_success "Added homeserver device"
+            changes_made=true
+        elif [[ "$http_code" -eq 400 || "$http_code" -eq 409 ]]; then
+            # 400/409 usually means it already exists or invalid request
+            log_info "Homeserver device may already exist (HTTP $http_code)"
+            # Re-check config to confirm
+            config=$(curl -s -H "$auth_header" "$api_url/config")
+            if echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
+                log_info "Homeserver device is configured"
+            else
+                log_warn "Device not found in config despite error - may need manual configuration"
+            fi
+        else
+            log_warn "Failed to add homeserver device (HTTP $http_code)"
+        fi
     else
         log_info "Homeserver device already configured"
     fi
@@ -433,19 +448,40 @@ EOF
 }
 EOF
 )
-        curl -s -X POST -H "$auth_header" -H "Content-Type: application/json" \
-            -d "$folder_json" "$api_url/config/folders"
+        local http_code
+        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$folder_json" "$api_url/config/folders")
         
-        log_success "Added folder: $folder_id"
-        changes_made=true
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            log_success "Added folder: $folder_id"
+            changes_made=true
+        elif [[ "$http_code" -eq 400 || "$http_code" -eq 409 ]]; then
+            # 400/409 usually means it already exists or invalid request
+            log_info "Folder '$folder_id' may already exist (HTTP $http_code)"
+            # Re-check config to confirm
+            config=$(curl -s -H "$auth_header" "$api_url/config")
+            if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
+                log_info "Folder '$folder_id' is configured"
+            else
+                log_warn "Folder not found in config despite error - may need manual configuration"
+            fi
+        else
+            log_warn "Failed to add folder '$folder_id' (HTTP $http_code)"
+        fi
     done
     
     # Only restart if changes were made
     if [[ "$changes_made" == true ]]; then
         log_info "Restarting Syncthing to apply changes..."
-        curl -s -X POST -H "$auth_header" "$api_url/system/restart"
-        sleep 5
-        log_success "Syncthing configured and restarted!"
+        local http_code
+        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" "$api_url/system/restart")
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            sleep 5
+            log_success "Syncthing configured and restarted!"
+        else
+            log_warn "Restart command returned HTTP $http_code, but continuing..."
+            sleep 2
+        fi
     else
         log_success "Syncthing already configured (no changes needed)"
     fi
