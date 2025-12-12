@@ -1150,6 +1150,9 @@ PYEOF
     fi
     
     log_info "Sending updated folder configuration to homeserver..."
+    log_info "API endpoint: $api_url/rest/config/folders/$folder_id"
+    log_info "Device to add: ${device_id:0:7}..."
+    
     local share_response
     share_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
         -d "$updated_config" "$api_url/rest/config/folders/$folder_id" 2>&1)
@@ -1159,15 +1162,45 @@ PYEOF
     share_body=$(echo "$share_response" | sed '$d')
     
     if [[ "$share_http_code" -ge 200 && "$share_http_code" -lt 300 ]]; then
-        log_success "Shared zen-private folder with this device on homeserver"
-        log_info "Device ${device_id:0:7}... should now appear in the folder's device list"
-        return 0
+        log_success "Folder configuration updated (HTTP $share_http_code)"
+        
+        # Verify device was actually added
+        log_info "Verifying device was added to folder..."
+        sleep 1  # Give Syncthing a moment to process
+        local verify_response
+        verify_response=$(curl -s -H "$auth_header" "$api_url/rest/config/folders/$folder_id" 2>&1)
+        if echo "$verify_response" | python3 -c "import sys, json; config=json.load(sys.stdin); devices=[d.get('deviceID') for d in config.get('devices', [])]; sys.exit(0 if '$device_id' in devices else 1)" 2>/dev/null; then
+            log_success "✓ Verified: Device ${device_id:0:7}... is now in the folder's device list"
+            log_success "Shared zen-private folder with this device on homeserver"
+            return 0
+        else
+            log_warn "⚠ Warning: Device may not have been added (verification failed)"
+            log_info "The folder share might still work - check Syncthing UI on tower"
+            return 0  # Don't fail - it might still work
+        fi
+    elif [[ "$share_http_code" -eq 400 || "$share_http_code" -eq 409 ]]; then
+        # Check if device was actually added despite the error
+        log_warn "Received HTTP $share_http_code - checking if device was actually added..."
+        sleep 1
+        local verify_response
+        verify_response=$(curl -s -H "$auth_header" "$api_url/rest/config/folders/$folder_id" 2>&1)
+        if echo "$verify_response" | python3 -c "import sys, json; config=json.load(sys.stdin); devices=[d.get('deviceID') for d in config.get('devices', [])]; sys.exit(0 if '$device_id' in devices else 1)" 2>/dev/null; then
+            log_success "Device was actually added to folder (despite HTTP $share_http_code)"
+            log_success "Shared zen-private folder with this device on homeserver"
+            return 0
+        else
+            log_error "Device was NOT added to folder"
+            if [[ -n "$share_body" ]]; then
+                log_info "Error response: ${share_body:0:500}"
+            fi
+            return 1
+        fi
     else
         log_error "Failed to share folder (HTTP $share_http_code)"
         if [[ -n "$share_body" ]]; then
             log_info "Error response: ${share_body:0:500}"
         fi
-        log_info "Updated config that was sent (first 500 chars): ${updated_config:0:500}"
+        log_info "Updated config that was sent (first 200 chars): ${updated_config:0:200}"
         return 1
     fi
 }
