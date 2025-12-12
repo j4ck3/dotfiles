@@ -490,26 +490,90 @@ EOF
     local this_device_id
     this_device_id=$(curl -s -H "$auth_header" "$api_url/config" | grep -oP '(?<="myID":")[^"]+' | head -1)
     
-    # Try to automatically configure homeserver side if credentials provided
-    if [[ -n "$this_device_id" ]]; then
-        configure_homeserver_side "$this_device_id" || true
+    if [[ -z "$this_device_id" ]]; then
+        log_warn "Could not retrieve this device's ID - cannot auto-configure homeserver"
+    else
+        log_info "This device ID: ${this_device_id:0:7}..."
+        
+        # Try to automatically configure homeserver side if credentials provided
+        if [[ -n "$HOMESERVER_SYNC_URL" ]] || [[ -n "$HOMESERVER_SSH" ]]; then
+            if configure_homeserver_side "$this_device_id"; then
+                log_success "Homeserver side configured successfully"
+                
+                # Verify configuration
+                log_info "Verifying homeserver configuration..."
+                verify_homeserver_config "$this_device_id" "$api_url" "$auth_header"
+            else
+                log_error "Failed to configure homeserver side - check errors above"
+                log_warn "You may need to manually configure Syncthing on the homeserver"
+            fi
+        fi
     fi
     
     # Only restart if changes were made
     if [[ "$changes_made" == true ]]; then
         log_info "Restarting Syncthing to apply changes..."
-        local http_code
-        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" "$api_url/system/restart")
-        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        local restart_response
+        restart_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" "$api_url/system/restart" 2>&1)
+        local restart_http_code
+        restart_http_code=$(echo "$restart_response" | tail -1)
+        
+        if [[ "$restart_http_code" -ge 200 && "$restart_http_code" -lt 300 ]]; then
             sleep 5
             log_success "Syncthing configured and restarted!"
         else
-            log_warn "Restart command returned HTTP $http_code, but continuing..."
+            log_warn "Restart command returned HTTP $restart_http_code, but continuing..."
             sleep 2
         fi
     else
         log_success "Syncthing already configured (no changes needed)"
     fi
+}
+
+# Verify homeserver configuration was successful
+verify_homeserver_config() {
+    local device_id="$1"
+    local api_url="$2"
+    local auth_header="$3"
+    
+    log_info "Verifying configuration..."
+    
+    # Re-fetch config to verify
+    local config
+    config=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
+    
+    # Verify device was added
+    if echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
+        log_success "  ✓ Homeserver device is in config"
+    else
+        log_error "  ✗ Homeserver device NOT found in config"
+        return 1
+    fi
+    
+    # Verify folder exists
+    if echo "$config" | grep -q "\"id\":\"zen-private\""; then
+        log_success "  ✓ zen-private folder is in config"
+    else
+        log_error "  ✗ zen-private folder NOT found in config"
+        return 1
+    fi
+    
+    # Check device connection status
+    local connections
+    connections=$(curl -s -H "$auth_header" "$api_url/system/connections" 2>&1)
+    if echo "$connections" | grep -q "$HOMESERVER_DEVICE_ID"; then
+        local connected
+        connected=$(echo "$connections" | grep -A 5 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,]+' | head -1 || echo "false")
+        if [[ "$connected" == "true" ]]; then
+            log_success "  ✓ Homeserver device is connected"
+        else
+            log_warn "  ⚠ Homeserver device is not connected yet (may take a moment)"
+        fi
+    else
+        log_warn "  ⚠ Homeserver device not in connections list yet"
+    fi
+    
+    log_info "Configuration verification complete"
     
     # Show device ID and instructions (only if homeserver wasn't auto-configured)
     if [[ -z "$HOMESERVER_SYNC_URL" ]] && [[ -z "$HOMESERVER_SSH" ]]; then
@@ -572,10 +636,21 @@ configure_homeserver_via_api() {
     local auth_header="X-API-Key: $api_key"
     
     log_info "Connecting to homeserver Syncthing API: $api_url"
+    log_info "Device to add: $device_name (${device_id:0:7}...)"
     
     # Test connection
-    if ! curl -s -f -H "$auth_header" "$api_url/rest/config" > /dev/null 2>&1; then
-        log_warn "Cannot connect to homeserver Syncthing API"
+    local test_response
+    test_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/rest/config" 2>&1)
+    local http_code
+    http_code=$(echo "$test_response" | tail -1)
+    local response_body
+    response_body=$(echo "$test_response" | sed '$d')
+    
+    if [[ "$http_code" != "200" ]]; then
+        log_error "Cannot connect to homeserver Syncthing API (HTTP $http_code)"
+        if [[ -n "$response_body" ]]; then
+            log_info "Response: ${response_body:0:200}"
+        fi
         return 1
     fi
     
@@ -585,9 +660,14 @@ configure_homeserver_via_api() {
     local config
     config=$(curl -s -H "$auth_header" "$api_url/rest/config")
     
+    if [[ -z "$config" ]]; then
+        log_error "Failed to retrieve homeserver config"
+        return 1
+    fi
+    
     # Add this device to homeserver
     if ! echo "$config" | grep -q "$device_id"; then
-        log_info "Adding this device to homeserver: $device_name"
+        log_info "Adding this device to homeserver: $device_name (${device_id:0:7}...)"
         
         local device_json=$(cat <<EOF
 {
@@ -600,14 +680,21 @@ configure_homeserver_via_api() {
 }
 EOF
 )
-        local http_code
-        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
-            -d "$device_json" "$api_url/rest/config/devices")
+        local add_response
+        add_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$device_json" "$api_url/rest/config/devices" 2>&1)
+        local add_http_code
+        add_http_code=$(echo "$add_response" | tail -1)
+        local add_body
+        add_body=$(echo "$add_response" | sed '$d')
         
-        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        if [[ "$add_http_code" -ge 200 && "$add_http_code" -lt 300 ]]; then
             log_success "Added this device to homeserver"
         else
-            log_warn "Failed to add device to homeserver (HTTP $http_code)"
+            log_error "Failed to add device to homeserver (HTTP $add_http_code)"
+            if [[ -n "$add_body" ]]; then
+                log_info "Error response: ${add_body:0:200}"
+            fi
             return 1
         fi
     else
@@ -618,13 +705,23 @@ EOF
     log_info "Sharing zen-private folder with this device..."
     
     # Get folder config
+    local folder_response
+    folder_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/rest/config/folders/zen-private" 2>&1)
+    local folder_http_code
+    folder_http_code=$(echo "$folder_response" | tail -1)
     local folder_config
-    folder_config=$(curl -s -H "$auth_header" "$api_url/rest/config/folders/zen-private")
+    folder_config=$(echo "$folder_response" | sed '$d')
     
-    if [[ -z "$folder_config" ]] || echo "$folder_config" | grep -q '"error"'; then
-        log_warn "zen-private folder not found on homeserver"
+    if [[ "$folder_http_code" != "200" ]] || [[ -z "$folder_config" ]] || echo "$folder_config" | grep -q '"error"'; then
+        log_error "zen-private folder not found on homeserver (HTTP $folder_http_code)"
+        if [[ -n "$folder_config" ]]; then
+            log_info "Response: ${folder_config:0:200}"
+        fi
+        log_info "Make sure the zen-private folder exists on the homeserver"
         return 1
     fi
+    
+    log_success "Found zen-private folder on homeserver"
     
     # Check if device is already in folder's device list
     if echo "$folder_config" | grep -q "$device_id"; then
@@ -633,44 +730,56 @@ EOF
     fi
     
     # Use Python to properly update JSON (more reliable than sed)
+    log_info "Updating folder configuration to include this device..."
     local updated_config
-    updated_config=$(python3 << EOF
+    updated_config=$(python3 << PYEOF
 import json
 import sys
 
 try:
-    config = json.loads('''$folder_config''')
+    folder_config_str = '''$folder_config'''
+    device_id = '$device_id'
+    config = json.loads(folder_config_str)
     
     # Add device to devices list if not present
     device_exists = False
     for dev in config.get('devices', []):
-        if dev.get('deviceID') == '$device_id':
+        if dev.get('deviceID') == device_id:
             device_exists = True
             break
     
     if not device_exists:
-        config.setdefault('devices', []).append({'deviceID': '$device_id'})
-    
-    print(json.dumps(config))
+        config.setdefault('devices', []).append({'deviceID': device_id})
+        print(json.dumps(config))
+    else:
+        print(folder_config_str)
 except Exception as e:
+    print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
-EOF
+PYEOF
 )
     
     if [[ -z "$updated_config" ]]; then
-        log_warn "Failed to update folder configuration"
+        log_error "Failed to update folder configuration (Python error)"
         return 1
     fi
     
-    local http_code
-    http_code=$(curl -s -w "%{http_code}" -o /dev/null -X PUT -H "$auth_header" -H "Content-Type: application/json" \
-        -d "$updated_config" "$api_url/rest/config/folders/zen-private")
+    local share_response
+    share_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+        -d "$updated_config" "$api_url/rest/config/folders/zen-private" 2>&1)
+    local share_http_code
+    share_http_code=$(echo "$share_response" | tail -1)
+    local share_body
+    share_body=$(echo "$share_response" | sed '$d')
     
-    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+    if [[ "$share_http_code" -ge 200 && "$share_http_code" -lt 300 ]]; then
         log_success "Shared zen-private folder with this device on homeserver"
         return 0
     else
-        log_warn "Failed to share folder (HTTP $http_code)"
+        log_error "Failed to share folder (HTTP $share_http_code)"
+        if [[ -n "$share_body" ]]; then
+            log_info "Error response: ${share_body:0:200}"
+        fi
         return 1
     fi
 }
@@ -683,31 +792,103 @@ configure_homeserver_via_ssh() {
     
     log_info "Connecting to homeserver via SSH: $ssh_target"
     
+    # Test SSH connection first
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$ssh_target" "echo 'SSH connection test'" > /dev/null 2>&1; then
+        log_error "Cannot connect to homeserver via SSH: $ssh_target"
+        log_info "Make sure SSH key authentication is set up: ssh-copy-id $ssh_target"
+        return 1
+    fi
+    log_success "SSH connection successful"
+    
     # Get homeserver Syncthing API key via SSH
-    # Try both root and jacke user paths for Syncthing config
+    # Try multiple possible paths for Syncthing config
+    log_info "Retrieving Syncthing API key from homeserver..."
     local api_key
-    api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml 2>/dev/null || grep -oP '(?<=<apikey>)[^<]+' /home/jacke/appdata/syncthing/config/config.xml 2>/dev/null" 2>/dev/null)
+    
+    # First, try to find the config file dynamically
+    log_info "  Searching for Syncthing config file..."
+    local config_file
+    config_file=$(ssh "$ssh_target" "find ~ /root /home -name 'config.xml' -path '*/syncthing/config/config.xml' 2>/dev/null | head -1" 2>/dev/null)
+    
+    if [[ -n "$config_file" ]]; then
+        log_info "  Found config file at: $config_file"
+        api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' '$config_file' 2>/dev/null" 2>/dev/null)
+    fi
+    
+    # Fallback to common paths if dynamic search didn't work
+    if [[ -z "$api_key" ]]; then
+        local config_paths=(
+            "~/appdata/syncthing/config/config.xml"
+            "/root/appdata/syncthing/config/config.xml"
+            "/home/jacke/appdata/syncthing/config/config.xml"
+        )
+        
+        # Extract username from SSH target if possible
+        local ssh_user
+        ssh_user=$(echo "$ssh_target" | cut -d'@' -f1)
+        if [[ -n "$ssh_user" ]] && [[ "$ssh_user" != "$ssh_target" ]]; then
+            config_paths+=("/home/$ssh_user/appdata/syncthing/config/config.xml")
+        fi
+        
+        for path in "${config_paths[@]}"; do
+            log_info "  Trying path: $path"
+            api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' $path 2>/dev/null" 2>/dev/null)
+            if [[ -n "$api_key" ]]; then
+                log_success "  Found API key at: $path"
+                break
+            fi
+        done
+    fi
     
     if [[ -z "$api_key" ]]; then
-        log_warn "Could not get homeserver Syncthing API key via SSH"
+        log_error "Could not get homeserver Syncthing API key via SSH"
+        log_info "Searched for config.xml in common locations"
+        log_info "Please check if Syncthing is installed and configured on the homeserver"
+        log_info "You can manually find the path: ssh $ssh_target 'find ~ -name config.xml -path \"*/syncthing/config/config.xml\"'"
         return 1
     fi
     
+    log_info "API key retrieved successfully (length: ${#api_key} chars)"
+    
     # Get homeserver Syncthing URL (usually localhost from SSH perspective)
     local api_url="http://localhost:8384/rest"
+    local tunnel_port=8385
     
     # Use API method with SSH tunnel
-    log_info "Configuring via SSH tunnel..."
+    log_info "Creating SSH tunnel: localhost:$tunnel_port -> $ssh_target:8384"
     
-    # Create SSH tunnel and configure
-    ssh -f -N -L 8385:localhost:8384 "$ssh_target" 2>/dev/null || true
-    sleep 1
+    # Check if tunnel port is already in use
+    if lsof -i :$tunnel_port > /dev/null 2>&1; then
+        log_warn "Port $tunnel_port is already in use, trying to clean up..."
+        pkill -f "ssh.*$tunnel_port:localhost:8384.*$ssh_target" 2>/dev/null || true
+        sleep 1
+    fi
     
-    configure_homeserver_via_api "$device_id" "$device_name" "http://localhost:8385" "$api_key"
+    # Create SSH tunnel
+    if ! ssh -f -N -o ExitOnForwardFailure=yes -L $tunnel_port:localhost:8384 "$ssh_target" 2>&1; then
+        log_error "Failed to create SSH tunnel"
+        return 1
+    fi
+    
+    # Wait for tunnel to be ready
+    sleep 2
+    
+    # Verify tunnel is working
+    if ! curl -s -f "http://localhost:$tunnel_port/rest/config" > /dev/null 2>&1; then
+        log_error "SSH tunnel created but cannot reach Syncthing API"
+        pkill -f "ssh.*$tunnel_port:localhost:8384.*$ssh_target" 2>/dev/null || true
+        return 1
+    fi
+    
+    log_success "SSH tunnel established and verified"
+    
+    # Configure via API through tunnel
+    configure_homeserver_via_api "$device_id" "$device_name" "http://localhost:$tunnel_port" "$api_key"
     local result=$?
     
     # Close tunnel
-    pkill -f "ssh.*8385:localhost:8384.*$ssh_target" 2>/dev/null || true
+    log_info "Closing SSH tunnel..."
+    pkill -f "ssh.*$tunnel_port:localhost:8384.*$ssh_target" 2>/dev/null || true
     
     return $result
 }
@@ -767,19 +948,31 @@ wait_for_sync() {
     local connections
     connections=$(curl -s -H "$auth_header" "$api_url/system/connections" 2>/dev/null) || true
     local homeserver_connected=false
-    if echo "$connections" | grep -q "$HOMESERVER_DEVICE_ID"; then
+    
+    if [[ -z "$connections" ]]; then
+        log_warn "Could not retrieve connection status"
+    elif echo "$connections" | grep -q "$HOMESERVER_DEVICE_ID"; then
         # Check if connected
         local connected
-        connected=$(echo "$connections" | grep -A 5 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,]+' | head -1 || echo "false")
+        connected=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,}]+' | head -1 || echo "false")
+        local paused
+        paused=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="paused":)[^,}]+' | head -1 || echo "false")
+        
         if [[ "$connected" == "true" ]]; then
             homeserver_connected=true
             log_success "Homeserver ($HOMESERVER_NAME) is connected"
+            if [[ "$paused" == "true" ]]; then
+                log_warn "  ⚠ Homeserver device is paused"
+            fi
         else
             log_warn "Homeserver ($HOMESERVER_NAME) is not connected"
-            log_info "Make sure both devices are on the same network/Tailscale"
+            log_info "  Connection status: connected=$connected, paused=$paused"
+            log_info "  Make sure both devices are on the same network/Tailscale"
+            log_info "  Check firewall rules (Syncthing uses ports 22000 and 8384)"
         fi
     else
-        log_warn "Homeserver device not found in connections"
+        log_warn "Homeserver device not found in connections list"
+        log_info "  This might mean the device hasn't been added yet or Syncthing hasn't discovered it"
     fi
     
     echo ""
