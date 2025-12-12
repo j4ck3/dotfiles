@@ -28,6 +28,7 @@ DOTFILES_REPO="https://github.com/$GITHUB_USER/dotfiles"
 COMPOSE_REPO="https://github.com/$GITHUB_USER/c"
 HOMESERVER_NAME="tower"
 HOMESERVER_DEVICE_ID="QARNKTH-UR6OW74-IFMPKOB-TQELLEZ-U4NPEEJ-UQXOX2U-2G3WE2O-YLEYPQB"
+HOMESERVER_SYNC_URL_DEFAULT="http://10.0.0.24:8384"
 
 # Tailscale pre-auth key (optional - can be passed as env var or argument)
 # Get one from: https://login.tailscale.com/admin/settings/keys

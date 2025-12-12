@@ -66,7 +66,8 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 ```bash
 # Option 1: Fully automated (with Tailscale key + Syncthing API access)
 # Get homeserver API key from: ~/appdata/syncthing/config/config.xml on tower
-HOMESERVER_SYNC_URL="http://tower:8384" \
+# SECURITY: API keys give full control - only use on trusted private networks
+HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
 HOMESERVER_SYNC_APIKEY="your-api-key-here" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
