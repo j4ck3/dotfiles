@@ -371,8 +371,8 @@ get_api_key() {
         
         # Check if container is running
         if ! docker_cmd ps | grep -q syncthing; then
-            log_error "Syncthing container is not running!"
-            docker_cmd logs syncthing 2>&1 | tail -20
+            log_error "Syncthing container is not running!" >&2
+            docker_cmd logs syncthing 2>&1 | tail -20 >&2
             return 1
         fi
         
