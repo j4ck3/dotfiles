@@ -386,6 +386,9 @@ configure_syncthing_api() {
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
+    # Trim whitespace from API key (in case of newlines or spaces)
+    api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
+    
     log_info "Got API key (length: ${#api_key} chars), configuring Syncthing..."
     
     # Test API key by making a simple request
@@ -400,8 +403,10 @@ configure_syncthing_api() {
     if [[ "$test_http_code" != "200" ]]; then
         log_error "API key test failed (HTTP $test_http_code)"
         log_info "Response: ${test_body:0:200}"
+        log_info "API key (first 20 chars): ${api_key:0:20}..."
         log_info "This suggests the API key is invalid or Syncthing requires authentication"
         log_info "Check Syncthing config: docker exec syncthing cat /config/config.xml | grep -A 5 '<gui'"
+        log_info "Manual test: curl -s -H \"X-API-Key: YOUR_KEY\" http://localhost:8384/rest/system/status"
         return 1
     fi
     log_success "API key is valid"
