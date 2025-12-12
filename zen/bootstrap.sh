@@ -547,6 +547,16 @@ EOF
             continue
         fi
         
+        # Create the directory inside the container with proper permissions
+        log_info "Creating folder directory inside container: $folder_path"
+        if ! docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null; then
+            log_warn "Failed to create directory via docker exec, trying with sudo inside container..."
+            docker_cmd exec syncthing sh -c "mkdir -p '$folder_path' && chown -R 1000:1000 '$folder_path' 2>/dev/null || mkdir -p '$folder_path'" 2>/dev/null || true
+        fi
+        
+        # Ensure proper permissions (Syncthing usually runs as UID 1000)
+        docker_cmd exec syncthing sh -c "chown -R 1000:1000 '$folder_path' 2>/dev/null || true" 2>/dev/null || true
+        
         log_info "Adding folder: $folder_id → $folder_path"
         
         local folder_json=$(cat <<EOF
