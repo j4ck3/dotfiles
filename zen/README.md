@@ -40,6 +40,7 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 
 ```
 ~/dotfiles/zen/              (Public - Git)
+├── bootstrap.sh             # Automated setup for new machines
 ├── setup.sh                 # Install browser + apply all config
 ├── export.sh                # Export current settings
 ├── config/
@@ -60,11 +61,34 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 
 ## Usage
 
-### On a new machine:
+### On a new machine (Automated - Recommended):
+
+```bash
+# 1. Connect to Tailscale
+sudo tailscale up
+
+# 2. Run the bootstrap script (does everything automatically)
+curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/main/zen/bootstrap.sh | bash
+
+# 3. Launch browser - everything is configured!
+```
+
+The bootstrap script will:
+
+- ✅ Check prerequisites (Tailscale, Docker, yay)
+- ✅ Clone dotfiles and compose repos
+- ✅ Start Syncthing container
+- ✅ Configure Syncthing via API (add homeserver, folders)
+- ✅ Wait for sync to complete
+- ✅ Install Zen Browser and apply all settings
+
+**Note:** Your homeserver (tower) needs to accept the new device connection once in its Syncthing UI.
+
+### On a new machine (Manual):
 
 ```bash
 # 1. Clone your dotfiles
-git clone <your-dotfiles-repo> ~/dotfiles
+git clone https://github.com/j4ck3/dotfiles ~/dotfiles
 
 # 2. Set up Syncthing and add the zen-private folder
 #    (wait for it to sync from your homeserver)
@@ -87,34 +111,42 @@ git clone <your-dotfiles-repo> ~/dotfiles
 
 ## What Gets Synced Where
 
-| Data | Location | How |
-|------|----------|-----|
-| Extensions list | Public (git) | policies.json |
-| Keyboard shortcuts | Public (git) | Automatic |
-| Browser preferences | Public (git) | user.js |
-| Zen themes/CSS | Public (git) | Automatic |
-| uBlock Origin filters | Private (Syncthing) | Automatic |
-| Vimium-C keybindings | Private (Syncthing) | Automatic |
-| MetaMask wallet | Private (Syncthing) | Automatic |
-| Bitwarden data | Private (Syncthing) | Automatic |
-| All extension settings | Private (Syncthing) | Automatic |
+| Data                   | Location            | How           |
+| ---------------------- | ------------------- | ------------- |
+| Extensions list        | Public (git)        | policies.json |
+| Keyboard shortcuts     | Public (git)        | Automatic     |
+| Browser preferences    | Public (git)        | user.js       |
+| Zen themes/CSS         | Public (git)        | Automatic     |
+| uBlock Origin filters  | Private (Syncthing) | Automatic     |
+| Vimium-C keybindings   | Private (Syncthing) | Automatic     |
+| MetaMask wallet        | Private (Syncthing) | Automatic     |
+| Bitwarden data         | Private (Syncthing) | Automatic     |
+| All extension settings | Private (Syncthing) | Automatic     |
 
 ## Setup Requirements
+
+**For automated setup (bootstrap.sh):**
+
+1. **Tailscale** installed (will auto-connect if needed)
+2. **Docker** installed
+3. **yay or paru** (AUR helper) installed
+4. Both machines on the same Tailscale network
+
+**The bootstrap script handles:**
+
+- Syncthing installation (via Docker Compose)
+- Syncthing configuration (API-based, fully automated)
+- Folder sharing setup
+- Everything else!
+
+**Manual setup requirements:**
 
 1. **Tailscale** installed and connected on all machines
    - Both machines must be on the same Tailscale network
    - Homeserver (tower) must be accessible via Tailscale
-   - First-time setup may require browser authentication
 2. **Syncthing** installed on all machines (via Docker Compose)
 3. **Docker** installed on new machines
-4. Shared folder `zen-private` between machines (auto-configured)
-
-### Syncthing Setup
-
-1. Create folder `~/Sync/zen-private` on your main machine
-2. Add it as a shared folder in Syncthing
-3. Share with your homeserver (always-on relay)
-4. Share with any other machines that need it
+4. Shared folder `zen-private` between machines (configure manually)
 
 ## Extensions
 
@@ -139,6 +171,7 @@ Your 13 extensions auto-install via `policies.json`:
 Firefox assigns a unique UUID to each extension per-profile. Extension storage is keyed by this UUID.
 
 When you run `setup.sh` on a new machine:
+
 1. Extensions install with new UUIDs
 2. Script reads old UUID mapping from Syncthing
 3. Script reads new UUID mapping from new profile
@@ -149,15 +182,18 @@ This means your uBlock filters, Vimium keybindings, etc. "just work" on the new 
 ## Troubleshooting
 
 ### Extensions not installing
+
 - Check `/usr/lib/zen-browser/distribution/policies.json` exists
 - Restart browser completely
 
 ### Extension settings not restored
+
 - Make sure Syncthing has finished syncing `~/Sync/zen-private/`
 - Run `setup.sh` again after extensions are installed
 - Check `~/Sync/zen-private/uuid-mapping.json` exists
 
 ### Syncthing not syncing
+
 - Check Tailscale/VPN connection
 - Verify folder is shared in Syncthing UI
 - Check for conflicts in Syncthing
