@@ -11,6 +11,9 @@
 
 set -e
 
+# Trap to show error location on exit
+trap 'if [[ $? -ne 0 ]]; then echo ""; echo -e "${RED}[ERROR]${NC} Script failed at line $LINENO. Check the output above for details."; fi' ERR
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -496,9 +499,14 @@ wait_for_sync() {
         return 0
     fi
     
+    log_info "Getting Syncthing API key..."
     local api_key
     if ! api_key=$(get_api_key); then
         log_error "Could not get Syncthing API key for sync check"
+        log_info "This might be a temporary issue. You can:"
+        log_info "1. Check Syncthing UI: http://localhost:8384"
+        log_info "2. Wait a bit and run the script again"
+        log_info "3. Check container logs: docker logs syncthing"
         return 1
     fi
     
@@ -507,6 +515,7 @@ wait_for_sync() {
         return 1
     fi
     
+    log_info "API key retrieved, checking sync status..."
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
@@ -520,23 +529,27 @@ wait_for_sync() {
     local max_attempts=120  # 10 minutes max
     
     while [[ $attempts -lt $max_attempts ]]; do
-        # Check folder status
+        # Check folder status (allow curl to fail without exiting)
         local status
-        status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null)
+        status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null) || true
         
-        local state
-        state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1)
+        local state="unknown"
+        if [[ -n "$status" ]]; then
+            # Extract state, allow grep to fail
+            state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1 || echo "unknown")
+        fi
         
         if [[ "$state" == "idle" ]]; then
             # Check if uuid-mapping.json exists
             if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+                echo ""  # New line after progress
                 log_success "zen-private folder synced!"
                 return 0
             fi
         fi
         
-        # Show progress
-        printf "\r  Status: %-20s (attempt %d/%d)" "$state" "$attempts" "$max_attempts"
+        # Show progress (allow printf to fail)
+        printf "\r  Status: %-20s (attempt %d/%d)" "$state" "$attempts" "$max_attempts" || true
         
         sleep 5
         ((attempts++))
@@ -553,7 +566,12 @@ wait_for_sync() {
         echo "Check Syncthing UI at http://localhost:8384"
         echo "Make sure the homeserver has accepted this device."
         echo ""
-        read -p "Press Enter to continue anyway, or Ctrl+C to abort..."
+        if [[ -t 0 ]]; then
+            # Only prompt if stdin is a terminal
+            read -p "Press Enter to continue anyway, or Ctrl+C to abort..." || true
+        else
+            log_warn "Non-interactive mode - continuing anyway..."
+        fi
     fi
 }
 
@@ -585,12 +603,39 @@ main() {
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
-    check_prerequisites
-    clone_repos
-    start_syncthing
-    configure_syncthing_api
-    wait_for_sync
-    run_setup
+    if ! check_prerequisites; then
+        log_error "Prerequisites check failed"
+        exit 1
+    fi
+    
+    if ! clone_repos; then
+        log_error "Failed to clone repositories"
+        exit 1
+    fi
+    
+    if ! start_syncthing; then
+        log_error "Failed to start Syncthing"
+        exit 1
+    fi
+    
+    if ! configure_syncthing_api; then
+        log_error "Failed to configure Syncthing"
+        exit 1
+    fi
+    
+    # wait_for_sync can fail but we might want to continue anyway
+    if ! wait_for_sync; then
+        log_warn "Sync check failed or incomplete, but continuing..."
+        if [[ ! -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+            log_warn "uuid-mapping.json not found - setup may not work correctly"
+            log_info "You may need to wait for sync to complete and run setup.sh manually"
+        fi
+    fi
+    
+    if ! run_setup; then
+        log_error "Setup failed"
+        exit 1
+    fi
     
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
