@@ -343,7 +343,13 @@ get_api_key() {
                 echo "$api_key"
                 return 0
             else
-                log_warn "API key length seems wrong (${#api_key} chars, expected 20-50), raw value: '${api_key_raw:0:50}'..."
+                # Debug: show what we got
+                log_warn "API key extraction issue:"
+                log_warn "  Raw length: ${#api_key_raw} chars"
+                log_warn "  Cleaned length: ${#api_key} chars"
+                log_warn "  Raw value (first 100): '${api_key_raw:0:100}'"
+                log_warn "  Cleaned value (first 100): '${api_key:0:100}'"
+                log_warn "  Expected: 20-50 chars (Syncthing uses 32)"
             fi
         fi
         
