@@ -41,8 +41,12 @@ TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
 
 # Homeserver Syncthing API configuration (optional - for full automation)
 # If provided, script will automatically configure homeserver side too
-# Usage: HOMESERVER_SYNC_URL="http://tower:8384" HOMESERVER_SYNC_APIKEY="..." ./bootstrap.sh
-# Or via SSH: HOMESERVER_SSH="jacke@tower" ./bootstrap.sh
+# 
+# RECOMMENDED: Use SSH method (HOMESERVER_SSH) - most secure, no API key exposure
+#   HOMESERVER_SSH="jacke@10.0.0.24" ./bootstrap.sh
+#
+# Alternative: Direct API access (less secure - exposes API key)
+#   HOMESERVER_SYNC_URL="http://10.0.0.24:8384" HOMESERVER_SYNC_APIKEY="..." ./bootstrap.sh
 HOMESERVER_SYNC_URL="${HOMESERVER_SYNC_URL:-}"
 HOMESERVER_SYNC_APIKEY="${HOMESERVER_SYNC_APIKEY:-}"
 HOMESERVER_SSH="${HOMESERVER_SSH:-}"
