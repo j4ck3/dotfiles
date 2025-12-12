@@ -535,27 +535,27 @@ EOF
         local folder_id="${folder_config%%:*}"
         local folder_path="${folder_config##*:}"
         
-        # Check if folder already exists by label (Syncthing generates its own IDs)
-        if echo "$config" | grep -q "\"label\":\"$folder_id\""; then
-            log_info "Folder '$folder_id' already configured (by label)"
-            continue
-        fi
-        
-        # Also check by ID in case it was manually set
-        if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
-            log_info "Folder '$folder_id' already configured (by ID)"
-            continue
-        fi
-        
-        # Create the directory inside the container with proper permissions
-        log_info "Creating folder directory inside container: $folder_path"
+        # Create the directory inside the container with proper permissions (do this before checking if folder exists)
+        log_info "Ensuring folder directory exists inside container: $folder_path"
         if ! docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null; then
-            log_warn "Failed to create directory via docker exec, trying with sudo inside container..."
+            log_warn "Failed to create directory via docker exec, trying alternative method..."
             docker_cmd exec syncthing sh -c "mkdir -p '$folder_path' && chown -R 1000:1000 '$folder_path' 2>/dev/null || mkdir -p '$folder_path'" 2>/dev/null || true
         fi
         
         # Ensure proper permissions (Syncthing usually runs as UID 1000)
         docker_cmd exec syncthing sh -c "chown -R 1000:1000 '$folder_path' 2>/dev/null || true" 2>/dev/null || true
+        
+        # Check if folder already exists by label (Syncthing generates its own IDs)
+        if echo "$config" | grep -q "\"label\":\"$folder_id\""; then
+            log_info "Folder '$folder_id' already configured (by label) - ensuring permissions are correct"
+            continue
+        fi
+        
+        # Also check by ID in case it was manually set
+        if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
+            log_info "Folder '$folder_id' already configured (by ID) - ensuring permissions are correct"
+            continue
+        fi
         
         log_info "Adding folder: $folder_id → $folder_path"
         
