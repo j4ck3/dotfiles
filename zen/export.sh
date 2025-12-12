@@ -27,7 +27,6 @@ declare -A EXTENSION_SLUGS=(
     ["vimium-c@gdh1995.cn"]="vimium-c"
     ["{446900e4-71c2-419f-a6a7-df9c091e268b}"]="bitwarden-password-manager"
     ["sponsorBlocker@ajay.app"]="sponsorblock"
-    ["{3c078156-979c-498b-8990-85f7987dd929}"]="sidebery"
     ["treestyletab@piro.sakura.ne.jp"]="tree-style-tab"
     ["{20fc2e06-e3e4-4b2b-812b-ab431220cada}"]="startpage-private-search"
     ["{7a7a4a92-a2a0-41d1-9fd7-1e92480d612d}"]="styl-us"

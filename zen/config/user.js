@@ -27,6 +27,7 @@ user_pref("browser.preferences.experimental.hidden", true);
 user_pref("browser.proton.toolbar.version", 3);
 user_pref("browser.region.update.updated", 1765227075);
 user_pref("browser.rights.3.shown", true);
+user_pref("browser.search.defaultenginename", "Startpage - English");
 user_pref("browser.search.region", "SE");
 user_pref("browser.search.serpEventTelemetryCategorization.regionEnabled", false);
 user_pref("browser.search.totalSearches", 100);

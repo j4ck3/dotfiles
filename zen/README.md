@@ -157,16 +157,15 @@ git clone https://github.com/j4ck3/dotfiles ~/dotfiles
 
 ## Extensions
 
-Your 13 extensions auto-install via `policies.json`:
+Your 12 extensions auto-install via `policies.json`:
 
 - uBlock Origin
 - Dark Reader
 - Vimium C
 - Bitwarden Password Manager
 - SponsorBlock
-- Sidebery
 - Tree Style Tab
-- Startpage Private Search
+- Startpage Private Search (set as default search engine)
 - Stylus
 - I still don't care about cookies
 - Enhancer for YouTube
