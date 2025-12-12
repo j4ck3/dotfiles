@@ -1016,12 +1016,17 @@ wait_for_sync() {
     fi
     log_success "zen-private folder is configured"
     
-    # Check if folder is paused or has errors
-    local folder_status
-    folder_status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null) || true
-    if echo "$folder_status" | grep -q '"invalid"'; then
-        log_warn "Folder appears to be invalid or not properly shared"
-        log_info "Make sure the homeserver has shared this folder with this device"
+    # Check if folder is paused or has errors (find folder ID by label first)
+    local folder_id
+    folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1) || true
+    
+    if [[ -n "$folder_id" ]]; then
+        local folder_status
+        folder_status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>/dev/null) || true
+        if echo "$folder_status" | grep -q '"invalid"'; then
+            log_warn "Folder appears to be invalid or not properly shared"
+            log_info "Make sure the homeserver has shared this folder with this device"
+        fi
     fi
     
     # Check device connection status
@@ -1070,10 +1075,22 @@ wait_for_sync() {
     local last_state=""
     local last_progress=""
     
-    while [[ $attempts -lt $max_attempts ]]; do
-        # Check folder status (allow curl to fail without exiting)
-        local status
-        status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null) || true
+            # Find folder ID by label
+            local folder_id
+            folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1) || true
+            
+            if [[ -z "$folder_id" ]]; then
+                log_warn "Could not find zen-private folder ID, checking by file existence only"
+            fi
+            
+            while [[ $attempts -lt $max_attempts ]]; do
+                # Check folder status (allow curl to fail without exiting)
+                local status
+                if [[ -n "$folder_id" ]]; then
+                    status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>/dev/null) || true
+                else
+                    status=""
+                fi
         
         local state="unknown"
         local progress=""
