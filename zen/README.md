@@ -64,15 +64,17 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 ### On a new machine (Automated - Recommended):
 
 ```bash
-# Option 1: Fully automated (with Tailscale key + Syncthing API access)
-# Get homeserver API key from: ~/appdata/syncthing/config/config.xml on tower
+# Option 1: Fully automated via SSH (RECOMMENDED - Most Secure)
+# Automatically configures both sides of Syncthing connection
+# Requires SSH access to tower (passwordless SSH key recommended)
+HOMESERVER_SSH="jacke@10.0.0.24" \
+curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
+
+# Option 2: Fully automated via API (Less Secure)
+# Get homeserver API key: ssh jacke@10.0.0.24 "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml"
 # SECURITY: API keys give full control - only use on trusted private networks
 HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
 HOMESERVER_SYNC_APIKEY="your-api-key-here" \
-curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
-
-# Option 2: Via SSH (if you have SSH access to tower)
-HOMESERVER_SSH="jacke@tower" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 3: With Tailscale key only (manual Syncthing setup required)
