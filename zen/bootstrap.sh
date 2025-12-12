@@ -1357,11 +1357,11 @@ wait_for_sync() {
     if [[ -z "$connections" ]]; then
         log_warn "Could not retrieve connection status"
     elif echo "$connections" | grep -q "$HOMESERVER_DEVICE_ID"; then
-        # Check if connected
+        # Check if connected (trim whitespace from grep output)
         local connected
-        connected=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,}]+' | head -1 || echo "false")
+        connected=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,}]+' | head -1 | tr -d ' \t\n\r' || echo "false")
         local paused
-        paused=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="paused":)[^,}]+' | head -1 || echo "false")
+        paused=$(echo "$connections" | grep -A 10 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="paused":)[^,}]+' | head -1 | tr -d ' \t\n\r' || echo "false")
         
         if [[ "$connected" == "true" ]]; then
             homeserver_connected=true
@@ -1371,10 +1371,7 @@ wait_for_sync() {
             fi
         else
             log_warn "Homeserver ($HOMESERVER_NAME) is not connected"
-            log_info "  Connection status: connected=$connected, paused=$paused"
-            if [[ "$connected" == "true" ]]; then
-                log_info "  Note: API shows connected=true but device may still be establishing connection"
-            fi
+            log_info "  Connection status: connected='$connected', paused='$paused'"
             log_info "  Make sure both devices are on the same network/Tailscale"
             log_info "  Check firewall rules (Syncthing uses ports 22000 and 8384)"
         fi
@@ -1393,19 +1390,24 @@ wait_for_sync() {
     
     # Find folder ID by label (do this once before the loop)
     local folder_id
-    folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1) || true
-    
-    # Fallback to grep if Python fails
-    if [[ -z "$folder_id" ]]; then
-        folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1) || true
-    fi
-    
-    if [[ -z "$folder_id" ]]; then
-        log_warn "Could not find zen-private folder ID, checking by file existence only"
-        log_info "Available folders:"
-        echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in c.get('folders', [])]" 2>/dev/null || true
+    if [[ -n "$config" ]]; then
+        folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+        
+        # Fallback to grep if Python fails
+        if [[ -z "$folder_id" ]]; then
+            folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1 | tr -d '\n\r') || true
+        fi
+        
+        if [[ -z "$folder_id" ]]; then
+            log_warn "Could not find zen-private folder ID, checking by file existence only"
+            log_info "Available folders:"
+            echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in c.get('folders', [])]" 2>/dev/null || true
+        else
+            log_info "Found zen-private folder ID: $folder_id"
+        fi
     else
-        log_info "Found zen-private folder ID: $folder_id"
+        log_warn "Could not retrieve config from API - folder ID lookup skipped"
+        log_info "Will check sync status by file existence only"
     fi
     
     # Wait for folder to be up to date
