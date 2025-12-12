@@ -18,6 +18,7 @@ NC='\033[0m' # No Color
 DOTFILES_ZEN_DIR="$HOME/dotfiles/zen"
 CONFIG_DIR="$DOTFILES_ZEN_DIR/config"
 ZEN_DIR="$HOME/.zen"
+PRIVATE_DIR="$HOME/Sync/zen-private"  # Syncthing-synced private storage
 
 # Extension ID to AMO slug mapping (for policies.json generation)
 declare -A EXTENSION_SLUGS=(
@@ -230,47 +231,84 @@ export_keyboard_shortcuts() {
     fi
 }
 
-# Copy extension-related files
+# Copy extension-related files (safe ones only - to public dotfiles)
 export_extension_data() {
     local profile_dir="$1"
     
-    log_info "Exporting extension data..."
+    log_info "Exporting extension metadata (safe files only)..."
     
-    # Copy extension preferences
+    # Copy extension preferences (permissions - safe)
     if [[ -f "$profile_dir/extension-preferences.json" ]]; then
         cp "$profile_dir/extension-preferences.json" "$CONFIG_DIR/"
         log_success "  Copied extension-preferences.json"
     fi
     
-    # Copy extension settings
+    # Copy extension settings (command overrides - safe)
     if [[ -f "$profile_dir/extension-settings.json" ]]; then
         cp "$profile_dir/extension-settings.json" "$CONFIG_DIR/"
         log_success "  Copied extension-settings.json"
     fi
+}
+
+# Export private/sensitive data to Syncthing folder
+export_private_data() {
+    local profile_dir="$1"
     
-    # Copy browser-extension-data directory
+    log_info "Exporting private data to Syncthing folder..."
+    
+    # Check if Syncthing folder exists
+    if [[ ! -d "$HOME/Sync" ]]; then
+        log_warn "Syncthing folder ~/Sync not found"
+        log_info "Create it and set up Syncthing sync, then re-run export"
+        return 0
+    fi
+    
+    # Create private directory structure
+    mkdir -p "$PRIVATE_DIR"
+    
+    # Export extension UUID mapping (needed for storage restore)
+    log_info "  Extracting extension UUID mapping..."
+    local prefs_file="$profile_dir/prefs.js"
+    if [[ -f "$prefs_file" ]]; then
+        # Extract the UUID mapping from prefs.js
+        grep 'extensions.webextensions.uuids' "$prefs_file" | \
+            sed 's/user_pref("extensions.webextensions.uuids", "\(.*\)");/\1/' | \
+            sed 's/\\"/"/g' | \
+            python3 -m json.tool > "$PRIVATE_DIR/uuid-mapping.json" 2>/dev/null || true
+        
+        if [[ -f "$PRIVATE_DIR/uuid-mapping.json" ]]; then
+            log_success "  Saved UUID mapping to uuid-mapping.json"
+        fi
+    fi
+    
+    # Copy browser-extension-data (contains extension local storage)
     if [[ -d "$profile_dir/browser-extension-data" ]]; then
-        rm -rf "$CONFIG_DIR/browser-extension-data"
-        cp -r "$profile_dir/browser-extension-data" "$CONFIG_DIR/"
+        rm -rf "$PRIVATE_DIR/browser-extension-data"
+        cp -r "$profile_dir/browser-extension-data" "$PRIVATE_DIR/"
         log_success "  Copied browser-extension-data/"
     fi
     
-    # Copy extension storage (IndexedDB data for extensions)
-    # This contains settings for uBlock, Vimium, etc.
+    # Copy extension storage (IndexedDB data)
     if [[ -d "$profile_dir/storage/default" ]]; then
-        rm -rf "$CONFIG_DIR/storage"
-        mkdir -p "$CONFIG_DIR/storage"
+        rm -rf "$PRIVATE_DIR/storage"
+        mkdir -p "$PRIVATE_DIR/storage"
         
         # Only copy extension-related storage (moz-extension:// URLs)
         for dir in "$profile_dir/storage/default/moz-extension"*; do
             if [[ -d "$dir" ]]; then
-                cp -r "$dir" "$CONFIG_DIR/storage/"
+                cp -r "$dir" "$PRIVATE_DIR/storage/"
             fi
         done
         
-        local ext_count=$(ls -d "$CONFIG_DIR/storage/moz-extension"* 2>/dev/null | wc -l)
+        local ext_count=$(ls -d "$PRIVATE_DIR/storage/moz-extension"* 2>/dev/null | wc -l)
         log_success "  Copied storage data for $ext_count extensions"
     fi
+    
+    # Save export timestamp
+    echo "$(date -Iseconds)" > "$PRIVATE_DIR/last-export.txt"
+    
+    log_success "Private data exported to: $PRIVATE_DIR"
+    log_info "  This folder should be synced via Syncthing to your other machines"
 }
 
 # Copy Zen-specific theme files
@@ -357,7 +395,11 @@ main() {
     export_zen_themes "$profile_dir"
     echo ""
     
-    # Git commit
+    # Export private data to Syncthing
+    export_private_data "$profile_dir"
+    echo ""
+    
+    # Git commit (public dotfiles only)
     git_commit
     
     echo ""
@@ -365,7 +407,18 @@ main() {
     echo -e "${GREEN}║           Export Complete!               ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
     echo ""
-    echo "Config exported to: $CONFIG_DIR"
+    echo "Public config exported to:  $CONFIG_DIR"
+    echo "Private data exported to:   $PRIVATE_DIR"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  What was exported:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  Public (git):     policies.json, user.js, keybindings, themes"
+    echo "  Private (Sync):   Extension storage (uBlock, Vimium, MetaMask, etc.)"
+    echo ""
+    echo "  Syncthing will automatically sync private data to your other machines."
+    echo "  On a new machine, run setup.sh after Syncthing has synced."
     echo ""
 }
 

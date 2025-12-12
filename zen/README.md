@@ -1,61 +1,124 @@
 # Zen Browser Configuration
 
 Automated setup and sync for Zen Browser settings, extensions, and keybindings.
+Uses **Syncthing** for private extension data (passwords, wallet, filters).
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Your Machine                             │
+│  ┌─────────────────┐    ┌─────────────────────────────────────┐ │
+│  │  Zen Browser    │───▶│  export.sh                          │ │
+│  │  Profile        │    │                                     │ │
+│  └─────────────────┘    │  Public → ~/dotfiles/zen/config/    │ │
+│                         │  Private → ~/Sync/zen-private/      │ │
+│                         └─────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+            ┌──────────────┐                ┌──────────────┐
+            │  Git (GitHub)│                │  Syncthing   │
+            │  Public repo │                │  Private sync│
+            └──────────────┘                └──────────────┘
+                    │                               │
+                    └───────────────┬───────────────┘
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        New Machine                              │
+│  ┌─────────────────────────────────────┐    ┌─────────────────┐ │
+│  │  setup.sh                           │───▶│  Zen Browser    │ │
+│  │                                     │    │  Profile        │ │
+│  │  Clones dotfiles + imports from     │    └─────────────────┘ │
+│  │  Syncthing with UUID remapping      │                        │
+│  └─────────────────────────────────────┘                        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Files
 
 ```
-~/dotfiles/zen/
-├── setup.sh      # Install Zen Browser + apply config (run on new machine)
-├── export.sh     # Export current settings to config/ (run after changes)
-├── config/       # Your saved configuration
-│   ├── policies.json                  # Extension auto-install list
-│   ├── user.js                        # Browser preferences
-│   ├── zen-keyboard-shortcuts.json    # Keyboard shortcuts
-│   ├── extension-preferences.json     # Extension permissions
-│   ├── extension-settings.json        # Extension command overrides
-│   ├── zen-themes.json                # Zen themes config
-│   ├── chrome/                        # Custom CSS
-│   ├── browser-extension-data/        # Extension local storage
-│   └── storage/                       # Extension IndexedDB data
-└── README.md
+~/dotfiles/zen/              (Public - Git)
+├── setup.sh                 # Install browser + apply all config
+├── export.sh                # Export current settings
+├── config/
+│   ├── policies.json        # Extension auto-install list
+│   ├── user.js              # Browser preferences
+│   ├── zen-keyboard-shortcuts.json
+│   ├── extension-preferences.json
+│   ├── extension-settings.json
+│   ├── zen-themes.json
+│   └── chrome/              # Custom CSS
+
+~/Sync/zen-private/          (Private - Syncthing)
+├── uuid-mapping.json        # Extension ID to UUID mapping
+├── last-export.txt          # Timestamp of last export
+├── browser-extension-data/  # Extension local storage
+└── storage/                 # Extension IndexedDB (uBlock, Vimium, etc.)
 ```
 
 ## Usage
 
 ### On a new machine:
+
 ```bash
 # 1. Clone your dotfiles
-git clone <your-dotfiles-repo> ~/.dotfiles
+git clone <your-dotfiles-repo> ~/dotfiles
 
-# 2. Run setup
+# 2. Set up Syncthing and add the zen-private folder
+#    (wait for it to sync from your homeserver)
+
+# 3. Run setup
 ~/dotfiles/zen/setup.sh
+
+# 4. Launch browser - everything is configured!
 ```
 
 ### After making changes in the browser:
+
 ```bash
-# Export your current settings
+# Just run export - everything is automatic
 ~/dotfiles/zen/export.sh
 
-# Changes are auto-committed to git
+# Public config → auto-committed to git
+# Private data → auto-synced via Syncthing
 ```
 
-## What gets exported/restored
+## What Gets Synced Where
 
-| Setting | Export | Restore |
-|---------|--------|---------|
-| Extensions | ✅ Auto-generates policies.json | ✅ Auto-installs via policies |
-| Keyboard shortcuts | ✅ | ✅ |
-| Browser preferences | ✅ Filters user-relevant prefs | ✅ via user.js |
-| Extension permissions | ✅ | ✅ |
-| Zen themes/CSS | ✅ | ✅ |
-| Extension storage (uBlock filters, etc.) | ⚠️ Partial* | ⚠️ Manual |
+| Data | Location | How |
+|------|----------|-----|
+| Extensions list | Public (git) | policies.json |
+| Keyboard shortcuts | Public (git) | Automatic |
+| Browser preferences | Public (git) | user.js |
+| Zen themes/CSS | Public (git) | Automatic |
+| uBlock Origin filters | Private (Syncthing) | Automatic |
+| Vimium-C keybindings | Private (Syncthing) | Automatic |
+| MetaMask wallet | Private (Syncthing) | Automatic |
+| Bitwarden data | Private (Syncthing) | Automatic |
+| All extension settings | Private (Syncthing) | Automatic |
 
-*Extension storage uses per-install UUIDs, so some settings may need manual reconfiguration.
+## Setup Requirements
+
+1. **Tailscale** installed and connected on all machines
+   - Both machines must be on the same Tailscale network
+   - Homeserver (tower) must be accessible via Tailscale
+   - First-time setup may require browser authentication
+2. **Syncthing** installed on all machines (via Docker Compose)
+3. **Docker** installed on new machines
+4. Shared folder `zen-private` between machines (auto-configured)
+
+### Syncthing Setup
+
+1. Create folder `~/Sync/zen-private` on your main machine
+2. Add it as a shared folder in Syncthing
+3. Share with your homeserver (always-on relay)
+4. Share with any other machines that need it
 
 ## Extensions
 
-Your extensions are automatically installed via `policies.json`:
+Your 13 extensions auto-install via `policies.json`:
 
 - uBlock Origin
 - Dark Reader
@@ -71,17 +134,30 @@ Your extensions are automatically installed via `policies.json`:
 - Floccus bookmarks sync
 - MetaMask
 
+## How UUID Remapping Works
+
+Firefox assigns a unique UUID to each extension per-profile. Extension storage is keyed by this UUID.
+
+When you run `setup.sh` on a new machine:
+1. Extensions install with new UUIDs
+2. Script reads old UUID mapping from Syncthing
+3. Script reads new UUID mapping from new profile
+4. Script copies storage directories, renaming UUIDs
+
+This means your uBlock filters, Vimium keybindings, etc. "just work" on the new machine.
+
 ## Troubleshooting
 
 ### Extensions not installing
-1. Check that `policies.json` was deployed to `/usr/lib/zen-browser/distribution/`
-2. Restart the browser completely (not just reload)
+- Check `/usr/lib/zen-browser/distribution/policies.json` exists
+- Restart browser completely
 
-### Settings not applied
-1. Make sure the browser was closed when running `setup.sh`
-2. Check that `user.js` exists in your profile directory
+### Extension settings not restored
+- Make sure Syncthing has finished syncing `~/Sync/zen-private/`
+- Run `setup.sh` again after extensions are installed
+- Check `~/Sync/zen-private/uuid-mapping.json` exists
 
-### Export failing
-1. Close Zen Browser before exporting
-2. Check that your profile exists in `~/.zen/`
-
+### Syncthing not syncing
+- Check Tailscale/VPN connection
+- Verify folder is shared in Syncthing UI
+- Check for conflicts in Syncthing

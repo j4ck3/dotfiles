@@ -19,6 +19,7 @@ NC='\033[0m' # No Color
 DOTFILES_ZEN_DIR="$HOME/dotfiles/zen"
 CONFIG_DIR="$DOTFILES_ZEN_DIR/config"
 ZEN_DIR="$HOME/.zen"
+PRIVATE_DIR="$HOME/Sync/zen-private"  # Syncthing-synced private storage
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -249,19 +250,120 @@ deploy_config() {
         log_success "  Copied extension-settings.json"
     fi
     
-    # Copy browser-extension-data
-    if [[ -d "$CONFIG_DIR/browser-extension-data" ]]; then
+}
+
+# Import private data from Syncthing folder
+import_private_data() {
+    local profile_dir
+    profile_dir=$(find_zen_profile)
+    
+    if [[ -z "$profile_dir" ]] || [[ ! -d "$profile_dir" ]]; then
+        log_warn "Profile directory not found. Private data will be imported after first launch."
+        return 0
+    fi
+    
+    # Check if Syncthing folder exists
+    if [[ ! -d "$PRIVATE_DIR" ]]; then
+        log_warn "Syncthing private folder not found: $PRIVATE_DIR"
+        log_info "Make sure Syncthing has synced the zen-private folder"
+        log_info "Then run this script again or manually copy the data"
+        return 0
+    fi
+    
+    # Check if data has been synced
+    if [[ ! -f "$PRIVATE_DIR/last-export.txt" ]]; then
+        log_warn "No export data found in Syncthing folder"
+        log_info "Run export.sh on your main machine first"
+        return 0
+    fi
+    
+    local export_date=$(cat "$PRIVATE_DIR/last-export.txt")
+    log_info "Importing private data (exported: $export_date)"
+    
+    # Get the old UUID mapping (from source machine)
+    local old_uuid_mapping="$PRIVATE_DIR/uuid-mapping.json"
+    
+    # Get current UUID mapping (this machine - will be populated after extensions install)
+    local current_prefs="$profile_dir/prefs.js"
+    
+    # Copy browser-extension-data (doesn't need UUID remapping)
+    if [[ -d "$PRIVATE_DIR/browser-extension-data" ]]; then
         rm -rf "$profile_dir/browser-extension-data"
-        cp -r "$CONFIG_DIR/browser-extension-data" "$profile_dir/"
+        cp -r "$PRIVATE_DIR/browser-extension-data" "$profile_dir/"
         log_success "  Copied browser-extension-data/"
     fi
     
-    # Note about extension storage
-    if [[ -d "$CONFIG_DIR/storage" ]]; then
-        log_warn "Extension storage data found but not auto-deployed"
-        log_info "Extension storage is tied to UUIDs that change per-install."
-        log_info "You may need to reconfigure extension settings manually."
+    # Copy extension storage with UUID remapping
+    if [[ -d "$PRIVATE_DIR/storage" ]] && [[ -f "$old_uuid_mapping" ]]; then
+        log_info "  Importing extension storage with UUID remapping..."
+        
+        # Check if we have current UUIDs (extensions must be installed first)
+        if [[ -f "$current_prefs" ]] && grep -q "extensions.webextensions.uuids" "$current_prefs"; then
+            # Extract current UUID mapping
+            local current_uuid_json=$(grep 'extensions.webextensions.uuids' "$current_prefs" | \
+                sed 's/user_pref("extensions.webextensions.uuids", "\(.*\)");/\1/' | \
+                sed 's/\\"/"/g')
+            
+            # Use Python to do the UUID remapping
+            python3 << EOF
+import json
+import os
+import shutil
+
+# Load UUID mappings
+with open('$old_uuid_mapping', 'r') as f:
+    old_uuids = json.load(f)
+
+current_uuids = json.loads('''$current_uuid_json''')
+
+# Create reverse mapping: old_uuid -> extension_id -> new_uuid
+uuid_remap = {}
+for ext_id, old_uuid in old_uuids.items():
+    if ext_id in current_uuids:
+        new_uuid = current_uuids[ext_id]
+        uuid_remap[old_uuid] = new_uuid
+        print(f"  Mapping: {old_uuid[:8]}... -> {new_uuid[:8]}... ({ext_id})")
+
+# Copy storage directories with remapped names
+src_storage = '$PRIVATE_DIR/storage'
+dst_storage = '$profile_dir/storage/default'
+
+os.makedirs(dst_storage, exist_ok=True)
+
+for dirname in os.listdir(src_storage):
+    src_path = os.path.join(src_storage, dirname)
+    if not os.path.isdir(src_path):
+        continue
+    
+    # Check if this directory contains an old UUID that needs remapping
+    new_dirname = dirname
+    for old_uuid, new_uuid in uuid_remap.items():
+        if old_uuid in dirname:
+            new_dirname = dirname.replace(old_uuid, new_uuid)
+            break
+    
+    dst_path = os.path.join(dst_storage, new_dirname)
+    
+    # Remove existing and copy
+    if os.path.exists(dst_path):
+        shutil.rmtree(dst_path)
+    shutil.copytree(src_path, dst_path)
+
+print(f"  Imported {len(os.listdir(src_storage))} storage directories")
+EOF
+            log_success "  Extension storage imported with UUID remapping"
+        else
+            log_warn "  Extensions not installed yet - storage import skipped"
+            log_info "  Launch browser first, let extensions install, then run setup.sh again"
+        fi
+    elif [[ -d "$PRIVATE_DIR/storage" ]]; then
+        # No UUID mapping available, just copy directly (may not work)
+        log_warn "  No UUID mapping found, copying storage directly (may need manual fix)"
+        mkdir -p "$profile_dir/storage/default"
+        cp -r "$PRIVATE_DIR/storage/"* "$profile_dir/storage/default/" 2>/dev/null || true
     fi
+    
+    log_success "Private data import complete"
 }
 
 # Print summary and next steps
@@ -271,23 +373,42 @@ print_summary() {
     echo -e "${GREEN}║                    Setup Complete!                           ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
+    echo -e "${CYAN}What was configured:${NC}"
+    echo ""
+    echo "  ✓ Zen Browser installed"
+    echo "  ✓ Extensions will auto-install on first launch"
+    echo "  ✓ Keyboard shortcuts restored"
+    echo "  ✓ Browser preferences applied"
+    echo "  ✓ Zen themes applied"
+    
+    if [[ -d "$PRIVATE_DIR" ]] && [[ -f "$PRIVATE_DIR/last-export.txt" ]]; then
+        echo "  ✓ Extension settings imported from Syncthing"
+    else
+        echo "  ⚠ Extension settings pending (Syncthing not synced yet)"
+    fi
+    
+    echo ""
     echo -e "${CYAN}Next steps:${NC}"
     echo ""
     echo "  1. Launch Zen Browser"
-    echo "     Extensions will auto-install from policies.json"
+    echo "  2. Wait for extensions to install and load"
+    echo "  3. Restart browser to apply extension settings"
     echo ""
-    echo "  2. Wait for extensions to fully load"
-    echo "     Some extensions may prompt for permissions"
-    echo ""
-    echo "  3. Verify your settings"
-    echo "     - Keyboard shortcuts should be restored"
-    echo "     - Browser preferences should be applied"
-    echo ""
-    echo "  4. Reconfigure extension-specific settings if needed:"
-    echo "     - uBlock Origin: Import backup if you have custom filters"
-    echo "     - Vimium C: Re-enter custom keybindings"
-    echo "     - Dark Reader: Site-specific settings"
-    echo ""
+    
+    # Check if private data was imported
+    if [[ ! -d "$PRIVATE_DIR" ]] || [[ ! -f "$PRIVATE_DIR/last-export.txt" ]]; then
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}  Note: Private extension data not yet synced${NC}"
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "  Waiting for Syncthing to sync: ~/Sync/zen-private/"
+        echo ""
+        echo "  After Syncthing syncs, run this command to import extension settings:"
+        echo ""
+        echo "    ~/dotfiles/zen/setup.sh"
+        echo ""
+    fi
+    
     echo -e "${YELLOW}Tip:${NC} After making changes, run ${CYAN}export.sh${NC} to update your config!"
     echo ""
 }
@@ -316,6 +437,9 @@ main() {
     
     log_step "Step 5: Deploying configuration"
     deploy_config
+    
+    log_step "Step 6: Importing private data from Syncthing"
+    import_private_data
     
     print_summary
 }
