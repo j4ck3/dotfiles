@@ -442,14 +442,28 @@ EOF
             if [[ -n "$response_body" ]]; then
                 log_info "Response: ${response_body:0:200}"
             fi
-            # Re-check config to confirm
-            config=$(curl -s -H "$auth_header" "$api_url/config")
+            # Re-check config to confirm - use the config we already have
             if echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
                 log_success "Homeserver device is already configured"
             else
-                log_error "Device not found in config despite HTTP $http_code"
-                log_info "Full error response: $response_body"
-                log_warn "This may indicate a configuration issue - check Syncthing logs"
+                # Try fetching config again
+                local recheck_config_response
+                recheck_config_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/config" 2>&1)
+                local recheck_http_code
+                recheck_http_code=$(echo "$recheck_config_response" | tail -1)
+                local recheck_config
+                recheck_config=$(echo "$recheck_config_response" | sed '$d')
+                
+                if [[ "$recheck_http_code" == "200" ]] && echo "$recheck_config" | grep -q "$HOMESERVER_DEVICE_ID"; then
+                    log_success "Homeserver device is already configured (verified on recheck)"
+                    config="$recheck_config"  # Update config for later use
+                else
+                    log_error "Device not found in config despite HTTP $http_code"
+                    if [[ -n "$response_body" ]] && [[ "$response_body" != "400 Bad Request" ]] && [[ "$response_body" != "409 Conflict" ]]; then
+                        log_info "Full error response: ${response_body:0:300}"
+                    fi
+                    log_warn "This may indicate a configuration issue - check Syncthing logs"
+                fi
             fi
         else
             log_error "Failed to add homeserver device (HTTP $http_code)"
