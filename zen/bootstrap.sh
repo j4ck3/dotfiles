@@ -324,15 +324,19 @@ get_api_key() {
     
     while [[ $attempts -lt $max_attempts ]]; do
         # Try to get API key from container first (most reliable)
-        local api_key
-        api_key=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1) || true
+        local api_key_raw
+        api_key_raw=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1) || true
         
-        # Trim whitespace and newlines
-        if [[ -n "$api_key" ]]; then
-            api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
-            if [[ ${#api_key} -ge 20 ]]; then  # API keys should be at least 20 chars
+        # Trim whitespace and newlines, and take only the first API key if multiple found
+        if [[ -n "$api_key_raw" ]]; then
+            local api_key
+            api_key=$(echo "$api_key_raw" | head -1 | tr -d '\n\r\t ' | head -c 50)
+            # API keys are typically 20-50 characters
+            if [[ ${#api_key} -ge 20 ]] && [[ ${#api_key} -le 100 ]]; then
                 echo "$api_key"
                 return 0
+            else
+                log_warn "API key length seems wrong (${#api_key} chars), trying again..."
             fi
         fi
         
