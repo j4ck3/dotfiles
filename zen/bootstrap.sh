@@ -461,9 +461,15 @@ EOF
         local folder_id="${folder_config%%:*}"
         local folder_path="${folder_config##*:}"
         
-        # Check if folder already exists
+        # Check if folder already exists by label (Syncthing generates its own IDs)
+        if echo "$config" | grep -q "\"label\":\"$folder_id\""; then
+            log_info "Folder '$folder_id' already configured (by label)"
+            continue
+        fi
+        
+        # Also check by ID in case it was manually set
         if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
-            log_info "Folder '$folder_id' already configured"
+            log_info "Folder '$folder_id' already configured (by ID)"
             continue
         fi
         
