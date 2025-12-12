@@ -384,10 +384,10 @@ get_api_key() {
         fi
     done
     
-    log_error "Timeout waiting for Syncthing config.xml"
-    log_info "Container logs:"
-    docker_cmd logs syncthing 2>&1 | tail -30
-    echo ""
+    log_error "Timeout waiting for Syncthing config.xml" >&2
+    log_info "Container logs:" >&2
+    docker_cmd logs syncthing 2>&1 | tail -30 >&2
+    echo "" >&2
     return 1
 }
 
