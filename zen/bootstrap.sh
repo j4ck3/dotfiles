@@ -947,15 +947,20 @@ configure_homeserver_side() {
     log_info "  1. Add this device to tower's Syncthing"
     log_info "  2. Share zen-private folder from tower to this device"
     log_info "  3. No manual steps needed on tower!"
+    log_info ""
+    log_info "Device ID to add: ${this_device_id:0:7}..."
+    log_info "Device name: $this_device_name"
     
     # Method 1: Direct API access
     if [[ -n "$HOMESERVER_SYNC_URL" ]] && [[ -n "$HOMESERVER_SYNC_APIKEY" ]]; then
         log_info "Using direct API access to homeserver..."
+        log_info "API URL: $HOMESERVER_SYNC_URL"
         if configure_homeserver_via_api "$this_device_id" "$this_device_name" "$HOMESERVER_SYNC_URL" "$HOMESERVER_SYNC_APIKEY"; then
             log_success "Homeserver configuration complete!"
             return 0
         else
             log_error "Failed to configure homeserver via API"
+            log_error "Check the error messages above for details"
             return 1
         fi
     fi
@@ -963,16 +968,19 @@ configure_homeserver_side() {
     # Method 2: SSH access
     if [[ -n "$HOMESERVER_SSH" ]]; then
         log_info "Using SSH to configure homeserver..."
+        log_info "SSH target: $HOMESERVER_SSH"
         if configure_homeserver_via_ssh "$this_device_id" "$this_device_name" "$HOMESERVER_SSH"; then
             log_success "Homeserver configuration complete!"
             return 0
         else
             log_error "Failed to configure homeserver via SSH"
+            log_error "Check the error messages above for details"
             return 1
         fi
     fi
     
     log_error "No homeserver configuration method provided"
+    log_error "Provide either HOMESERVER_SYNC_URL + HOMESERVER_SYNC_APIKEY or HOMESERVER_SSH"
     return 1
 }
 
