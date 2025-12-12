@@ -577,6 +577,10 @@ EOF
         fi
     fi
     
+    # Check for and accept pending folders (from homeserver)
+    log_info "Checking for pending folders to accept..."
+    accept_pending_folders "$api_url" "$auth_header"
+    
     # Only restart if changes were made
     if [[ "$changes_made" == true ]]; then
         log_info "Restarting Syncthing to apply changes..."
@@ -588,6 +592,9 @@ EOF
         if [[ "$restart_http_code" -ge 200 && "$restart_http_code" -lt 300 ]]; then
             sleep 5
             log_success "Syncthing configured and restarted!"
+            # Check for pending folders again after restart
+            log_info "Checking for pending folders again after restart..."
+            accept_pending_folders "$api_url" "$auth_header"
         else
             log_warn "Restart command returned HTTP $restart_http_code, but continuing..."
             sleep 2
