@@ -868,7 +868,7 @@ verify_homeserver_config() {
     fi
 }
 
-# Accept pending folders from homeserver
+# Accept pending folders and devices from homeserver
 accept_pending_folders() {
     local api_url="$1"
     local auth_header="$2"
@@ -879,6 +879,33 @@ accept_pending_folders() {
     
     if [[ -z "$pending" ]] || echo "$pending" | grep -q '"error"'; then
         return 0  # No pending items or API error (not critical)
+    fi
+    
+    # Check for pending devices first (need to accept device before folder)
+    local pending_devices
+    pending_devices=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); devices=p.get('devices', []); [print(f\"{d['deviceID']}|{d.get('name', 'Unknown')}\") for d in devices]" 2>/dev/null) || true
+    
+    if [[ -n "$pending_devices" ]]; then
+        echo "$pending_devices" | while IFS='|' read -r device_id device_name; do
+            if [[ -n "$device_id" ]]; then
+                log_info "Accepting pending device: $device_name (${device_id:0:7}...)"
+                
+                # Accept the device
+                local accept_device_response
+                accept_device_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"device\":\"$device_id\"}" \
+                    "$api_url/system/pending/devices" 2>&1)
+                local accept_device_http_code
+                accept_device_http_code=$(echo "$accept_device_response" | tail -1)
+                
+                if [[ "$accept_device_http_code" -ge 200 && "$accept_device_http_code" -lt 300 ]]; then
+                    log_success "Accepted pending device: $device_name"
+                else
+                    log_warn "Failed to accept device $device_name (HTTP $accept_device_http_code)"
+                fi
+            fi
+        done
     fi
     
     # Check for pending folders
