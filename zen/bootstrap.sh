@@ -544,13 +544,22 @@ EOF
             if [[ -n "$response_body" ]]; then
                 log_info "Response: ${response_body:0:200}"
             fi
-            # Re-check config to confirm
-            config=$(curl -s -H "$auth_header" "$api_url/config")
-            if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
+            # Re-check config to confirm - use proper HTTP code parsing
+            local recheck_config_response
+            recheck_config_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/config" 2>&1)
+            local recheck_config_http_code
+            recheck_config_http_code=$(echo "$recheck_config_response" | tail -1)
+            local recheck_config
+            recheck_config=$(echo "$recheck_config_response" | sed '$d')
+            
+            if [[ "$recheck_config_http_code" == "200" ]] && echo "$recheck_config" | grep -q "\"id\":\"$folder_id\""; then
                 log_success "Folder '$folder_id' is already configured"
+                config="$recheck_config"  # Update config for later use
             else
                 log_error "Folder not found in config despite HTTP $http_code"
-                log_info "Full error response: $response_body"
+                if [[ -n "$response_body" ]] && [[ "$response_body" != "400 Bad Request" ]] && [[ "$response_body" != "409 Conflict" ]]; then
+                    log_info "Full error response: ${response_body:0:300}"
+                fi
                 log_warn "This may indicate a configuration issue - check Syncthing logs"
             fi
         else
