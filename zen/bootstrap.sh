@@ -592,11 +592,11 @@ EOF
         if [[ -n "$config_for_id" ]]; then
             log_info "Config sample (first 500 chars): ${config_for_id:0:500}"
         fi
+        log_warn "Homeserver auto-configuration will be skipped"
+        log_warn "You'll need to manually configure Syncthing on both machines"
     fi
     
-    if [[ -z "$this_device_id" ]]; then
-        log_warn "Could not retrieve this device's ID - cannot auto-configure homeserver"
-    else
+    if [[ -n "$this_device_id" ]]; then
         log_info "This device ID: ${this_device_id:0:7}..."
         
         # Try to automatically configure homeserver side if credentials provided
