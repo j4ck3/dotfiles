@@ -357,6 +357,34 @@ deploy_config() {
         log_success "  Copied extension-settings.json"
     fi
     
+    # Set Startpage as default search engine
+    set_startpage_default "$profile_dir"
+}
+
+# Set Startpage as default search engine
+set_startpage_default() {
+    local profile_dir="$1"
+    
+    log_info "Setting Startpage as default search engine..."
+    
+    # Method 1: Update user.js to ensure it's set
+    # (This is already in user.js, but we'll verify it's there)
+    if ! grep -q "browser.search.defaultenginename.*Startpage" "$profile_dir/user.js" 2>/dev/null; then
+        echo 'user_pref("browser.search.defaultenginename", "Startpage - English");' >> "$profile_dir/user.js"
+        log_info "  Added Startpage preference to user.js"
+    fi
+    
+    # Method 2: Try to update search.json.mozlz4 if it exists
+    # This file contains the search engine configuration
+    local search_json="$profile_dir/search.json.mozlz4"
+    if [[ -f "$search_json" ]]; then
+        # Note: This is a compressed JSON file, but we can't easily modify it
+        # The extension-settings.json should handle this when the extension loads
+        log_info "  Search configuration file found (will be updated by Startpage extension)"
+    fi
+    
+    log_info "  Startpage will be set as default when the browser starts"
+    log_info "  If it's not default after first launch, set it manually in browser settings"
 }
 
 # Import private data from Syncthing folder

@@ -1,5 +1,15 @@
 {
     "policies": {
+        "SearchEngines": {
+            "Default": "Startpage - English",
+            "Add": [
+                {
+                    "Name": "Startpage - English",
+                    "URL": "https://www.startpage.com/sp/search?query={searchTerms}",
+                    "Method": "GET"
+                }
+            ]
+        },
         "ExtensionSettings": {
             "idcac-pub@guus.ninja": {
                 "installation_mode": "force_installed",
@@ -24,10 +34,6 @@
             "enhancerforyoutube@maximerf.addons.mozilla.org": {
                 "installation_mode": "force_installed",
                 "install_url": "https://addons.mozilla.org/firefox/downloads/latest/enhancer-for-youtube/latest.xpi"
-            },
-            "treestyletab@piro.sakura.ne.jp": {
-                "installation_mode": "force_installed",
-                "install_url": "https://addons.mozilla.org/firefox/downloads/latest/tree-style-tab/latest.xpi"
             },
             "{446900e4-71c2-419f-a6a7-df9c091e268b}": {
                 "installation_mode": "force_installed",
