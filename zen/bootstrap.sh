@@ -537,13 +537,35 @@ EOF
         
         # Create the directory inside the container with proper permissions (do this before checking if folder exists)
         log_info "Ensuring folder directory exists inside container: $folder_path"
-        if ! docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null; then
-            log_warn "Failed to create directory via docker exec, trying alternative method..."
-            docker_cmd exec syncthing sh -c "mkdir -p '$folder_path' && chown -R 1000:1000 '$folder_path' 2>/dev/null || mkdir -p '$folder_path'" 2>/dev/null || true
+        
+        # Try multiple methods to create the directory with proper permissions
+        local dir_created=false
+        if docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null; then
+            dir_created=true
+        else
+            # Try with explicit user/group
+            if docker_cmd exec -u root syncthing mkdir -p "$folder_path" 2>/dev/null; then
+                dir_created=true
+            else
+                # Last resort: try creating parent directory first
+                local parent_dir
+                parent_dir=$(dirname "$folder_path")
+                docker_cmd exec syncthing mkdir -p "$parent_dir" 2>/dev/null || true
+                docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null && dir_created=true || true
+            fi
         fi
         
-        # Ensure proper permissions (Syncthing usually runs as UID 1000)
-        docker_cmd exec syncthing sh -c "chown -R 1000:1000 '$folder_path' 2>/dev/null || true" 2>/dev/null || true
+        if [[ "$dir_created" == true ]]; then
+            # Ensure proper permissions (Syncthing usually runs as UID 1000)
+            # Try multiple methods to set ownership
+            docker_cmd exec syncthing chown -R 1000:1000 "$folder_path" 2>/dev/null || \
+            docker_cmd exec -u root syncthing chown -R 1000:1000 "$folder_path" 2>/dev/null || \
+            docker_cmd exec syncthing sh -c "chmod -R 755 '$folder_path'" 2>/dev/null || true
+            
+            log_success "Directory created and permissions set: $folder_path"
+        else
+            log_warn "Could not create directory $folder_path - Syncthing may create it automatically"
+        fi
         
         # Check if folder already exists by label (Syncthing generates its own IDs)
         if echo "$config" | grep -q "\"label\":\"$folder_id\""; then
