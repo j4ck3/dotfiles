@@ -12,7 +12,7 @@
 set -e
 
 # Trap to show error location on exit
-trap 'if [[ $? -ne 0 ]]; then echo ""; echo -e "${RED}[ERROR]${NC} Script failed at line $LINENO. Check the output above for details."; fi' ERR
+trap 'if [[ $? -ne 0 ]]; then echo "" >&2; echo -e "${RED}[ERROR]${NC} Script failed at line $LINENO. Check the output above for details." >&2; fi' ERR
 
 # Colors
 RED='\033[0;31m'
@@ -307,13 +307,13 @@ start_syncthing() {
     local device_id
     device_id=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<device id=")[^"]+' | head -1) || true
     
-    echo ""
-    echo -e "${GREEN}Syncthing is running!${NC}"
-    echo ""
-    echo "Your Device ID: $device_id"
-    echo ""
-    echo "Web UI: http://localhost:8384"
-    echo ""
+    echo "" >&2
+    echo -e "${GREEN}Syncthing is running!${NC}" >&2
+    echo "" >&2
+    echo "Your Device ID: $device_id" >&2
+    echo "" >&2
+    echo "Web UI: http://localhost:8384" >&2
+    echo "" >&2
 }
 
 get_api_key() {
