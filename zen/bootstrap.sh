@@ -325,28 +325,38 @@ get_api_key() {
     while [[ $attempts -lt $max_attempts ]]; do
         # Try to get API key from container first (most reliable)
         local api_key_raw
-        api_key_raw=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1) || true
+        # Extract API key - use sed to be more precise, get only the first match
+        api_key_raw=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | sed -n 's/.*<apikey>\([^<]*\)<\/apikey>.*/\1/p' | head -1) || true
         
-        # Trim whitespace and newlines, and take only the first API key if multiple found
+        # If sed didn't work, try grep as fallback
+        if [[ -z "$api_key_raw" ]]; then
+            api_key_raw=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1 | tr -d '\n\r') || true
+        fi
+        
+        # Trim whitespace and newlines, ensure we only have one API key
         if [[ -n "$api_key_raw" ]]; then
             local api_key
-            api_key=$(echo "$api_key_raw" | head -1 | tr -d '\n\r\t ' | head -c 50)
-            # API keys are typically 20-50 characters
-            if [[ ${#api_key} -ge 20 ]] && [[ ${#api_key} -le 100 ]]; then
+            # Remove all whitespace, newlines, tabs - API keys should be alphanumeric only
+            api_key=$(echo "$api_key_raw" | tr -d '\n\r\t ' | sed 's/[^a-zA-Z0-9]//g')
+            # API keys are typically 20-50 characters (Syncthing generates 32-char keys)
+            if [[ ${#api_key} -ge 20 ]] && [[ ${#api_key} -le 50 ]]; then
                 echo "$api_key"
                 return 0
             else
-                log_warn "API key length seems wrong (${#api_key} chars), trying again..."
+                log_warn "API key length seems wrong (${#api_key} chars, expected 20-50), raw value: '${api_key_raw:0:50}'..."
             fi
         fi
         
         # Also try from host filesystem (in case it's mounted)
         local config_file="$HOME/appdata/syncthing/config/config.xml"
         if [[ -f "$config_file" ]]; then
-            api_key=$(grep -oP '(?<=<apikey>)[^<]+' "$config_file" | head -1) || true
-            if [[ -n "$api_key" ]]; then
-                api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
-                if [[ ${#api_key} -ge 20 ]]; then
+            api_key_raw=$(sed -n 's/.*<apikey>\([^<]*\)<\/apikey>.*/\1/p' "$config_file" | head -1) || true
+            if [[ -z "$api_key_raw" ]]; then
+                api_key_raw=$(grep -oP '(?<=<apikey>)[^<]+' "$config_file" | head -1 | tr -d '\n\r') || true
+            fi
+            if [[ -n "$api_key_raw" ]]; then
+                api_key=$(echo "$api_key_raw" | tr -d '\n\r\t ' | sed 's/[^a-zA-Z0-9]//g')
+                if [[ ${#api_key} -ge 20 ]] && [[ ${#api_key} -le 50 ]]; then
                     echo "$api_key"
                     return 0
                 fi
