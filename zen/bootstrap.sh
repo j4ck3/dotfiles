@@ -519,14 +519,51 @@ wait_for_sync() {
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
+    # First, check if folder exists in config
+    log_info "Checking if zen-private folder is configured..."
+    local config
+    config=$(curl -s -H "$auth_header" "$api_url/config" 2>/dev/null) || true
+    if ! echo "$config" | grep -q "\"id\":\"zen-private\""; then
+        log_error "zen-private folder not found in Syncthing config!"
+        log_info "The folder may not have been added correctly."
+        log_info "Check Syncthing UI: http://localhost:8384"
+        return 1
+    fi
+    log_success "zen-private folder is configured"
+    
+    # Check device connection status
+    log_info "Checking device connection status..."
+    local connections
+    connections=$(curl -s -H "$auth_header" "$api_url/system/connections" 2>/dev/null) || true
+    local homeserver_connected=false
+    if echo "$connections" | grep -q "$HOMESERVER_DEVICE_ID"; then
+        # Check if connected
+        local connected
+        connected=$(echo "$connections" | grep -A 5 "$HOMESERVER_DEVICE_ID" | grep -oP '(?<="connected":)[^,]+' | head -1 || echo "false")
+        if [[ "$connected" == "true" ]]; then
+            homeserver_connected=true
+            log_success "Homeserver ($HOMESERVER_NAME) is connected"
+        else
+            log_warn "Homeserver ($HOMESERVER_NAME) is not connected"
+            log_info "Make sure both devices are on the same network/Tailscale"
+        fi
+    else
+        log_warn "Homeserver device not found in connections"
+    fi
+    
     echo ""
     echo "Waiting for zen-private folder to sync..."
     echo "(This may take a moment on first sync)"
+    if [[ "$homeserver_connected" == "false" ]]; then
+        echo -e "${YELLOW}Note: Homeserver appears disconnected - sync may not work${NC}"
+    fi
     echo ""
     
     # Wait for folder to be up to date
     local attempts=0
     local max_attempts=120  # 10 minutes max
+    local last_state=""
+    local last_progress=""
     
     while [[ $attempts -lt $max_attempts ]]; do
         # Check folder status (allow curl to fail without exiting)
@@ -534,9 +571,41 @@ wait_for_sync() {
         status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null) || true
         
         local state="unknown"
+        local progress=""
+        local need_items=0
+        local global_bytes=0
+        local local_bytes=0
+        
         if [[ -n "$status" ]]; then
             # Extract state, allow grep to fail
             state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1 || echo "unknown")
+            
+            # Extract progress info
+            need_items=$(echo "$status" | grep -oP '(?<="needItems":)[0-9]+' | head -1 || echo "0")
+            global_bytes=$(echo "$status" | grep -oP '(?<="globalBytes":)[0-9]+' | head -1 || echo "0")
+            local_bytes=$(echo "$status" | grep -oP '(?<="localBytes":)[0-9]+' | head -1 || echo "0")
+            
+            if [[ "$need_items" -gt 0 ]]; then
+                progress=" (need $need_items items)"
+            elif [[ "$global_bytes" -gt 0 ]]; then
+                local percent=0
+                if [[ "$global_bytes" -gt 0 ]]; then
+                    percent=$((local_bytes * 100 / global_bytes))
+                fi
+                progress=" ($percent% - ${local_bytes}/${global_bytes} bytes)"
+            fi
+        fi
+        
+        # Show detailed status every 10 attempts or when state changes
+        if [[ "$attempts" -eq 0 ]] || [[ "$attempts" -eq 10 ]] || [[ "$((attempts % 20))" -eq 0 ]] || [[ "$state" != "$last_state" ]]; then
+            echo ""
+            log_info "Status: $state$progress (attempt $attempts/$max_attempts)"
+            if [[ -d "$HOME/Sync/zen-private" ]]; then
+                local file_count
+                file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
+                log_info "Files in local folder: $file_count"
+            fi
+            last_state="$state"
         fi
         
         if [[ "$state" == "idle" ]]; then
@@ -545,26 +614,50 @@ wait_for_sync() {
                 echo ""  # New line after progress
                 log_success "zen-private folder synced!"
                 return 0
+            elif [[ "$need_items" -eq 0 ]]; then
+                # State is idle and no items needed, but file doesn't exist
+                echo ""
+                log_warn "Folder state is 'idle' but uuid-mapping.json not found"
+                log_info "This might mean the folder is empty on the homeserver"
+                log_info "Check if the homeserver has the file and has shared the folder"
+                break
             fi
         fi
         
-        # Show progress (allow printf to fail)
-        printf "\r  Status: %-20s (attempt %d/%d)" "$state" "$attempts" "$max_attempts" || true
+        # Show progress on same line
+        if [[ "$((attempts % 5))" -eq 0 ]]; then
+            printf "\r  Status: %-20s%s (attempt %d/%d)" "$state" "$progress" "$attempts" "$max_attempts" || true
+        fi
         
         sleep 5
         ((attempts++))
     done
     
     echo ""
-    log_warn "Sync taking longer than expected"
+    log_warn "Sync timeout or incomplete"
     
     if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
         log_success "But uuid-mapping.json exists, continuing..."
     else
-        log_warn "uuid-mapping.json not found"
+        log_warn "uuid-mapping.json not found after waiting"
         echo ""
-        echo "Check Syncthing UI at http://localhost:8384"
-        echo "Make sure the homeserver has accepted this device."
+        echo "Troubleshooting steps:"
+        echo "1. Check Syncthing UI on this machine: http://localhost:8384"
+        echo "2. Check Syncthing UI on homeserver (tower)"
+        echo "3. Verify both devices are connected:"
+        echo "   - Check 'Remote Devices' in Syncthing UI"
+        echo "   - Make sure 'tower' device shows as 'Connected'"
+        echo "4. Verify folder sharing:"
+        echo "   - On homeserver: Check that 'zen-private' folder is shared with this device"
+        echo "   - On this machine: Check that 'zen-private' folder shows the homeserver"
+        echo "5. Check folder status:"
+        echo "   - Look for any error messages in Syncthing UI"
+        echo "   - Check if folder is 'Paused' or has conflicts"
+        echo "6. Check network connectivity:"
+        echo "   - If using Tailscale: tailscale ping tower"
+        echo "   - If local network: ping the homeserver IP"
+        echo ""
+        echo "You can continue and run setup.sh manually later, or fix the sync issue and re-run bootstrap.sh"
         echo ""
         if [[ -t 0 ]]; then
             # Only prompt if stdin is a terminal
