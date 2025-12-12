@@ -412,9 +412,13 @@ configure_syncthing_api() {
 }
 EOF
 )
+        local device_response
+        device_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$device_json" "$api_url/config/devices" 2>&1)
         local http_code
-        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
-            -d "$device_json" "$api_url/config/devices")
+        http_code=$(echo "$device_response" | tail -1)
+        local response_body
+        response_body=$(echo "$device_response" | sed '$d')
         
         if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
             log_success "Added homeserver device"
@@ -422,15 +426,23 @@ EOF
         elif [[ "$http_code" -eq 400 || "$http_code" -eq 409 ]]; then
             # 400/409 usually means it already exists or invalid request
             log_info "Homeserver device may already exist (HTTP $http_code)"
+            if [[ -n "$response_body" ]]; then
+                log_info "Response: ${response_body:0:200}"
+            fi
             # Re-check config to confirm
             config=$(curl -s -H "$auth_header" "$api_url/config")
             if echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
-                log_info "Homeserver device is configured"
+                log_success "Homeserver device is already configured"
             else
-                log_warn "Device not found in config despite error - may need manual configuration"
+                log_error "Device not found in config despite HTTP $http_code"
+                log_info "Full error response: $response_body"
+                log_warn "This may indicate a configuration issue - check Syncthing logs"
             fi
         else
-            log_warn "Failed to add homeserver device (HTTP $http_code)"
+            log_error "Failed to add homeserver device (HTTP $http_code)"
+            if [[ -n "$response_body" ]]; then
+                log_info "Error response: ${response_body:0:200}"
+            fi
         fi
     else
         log_info "Homeserver device already configured"
@@ -464,9 +476,13 @@ EOF
 }
 EOF
 )
+        local folder_response
+        folder_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$folder_json" "$api_url/config/folders" 2>&1)
         local http_code
-        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
-            -d "$folder_json" "$api_url/config/folders")
+        http_code=$(echo "$folder_response" | tail -1)
+        local response_body
+        response_body=$(echo "$folder_response" | sed '$d')
         
         if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
             log_success "Added folder: $folder_id"
@@ -474,21 +490,58 @@ EOF
         elif [[ "$http_code" -eq 400 || "$http_code" -eq 409 ]]; then
             # 400/409 usually means it already exists or invalid request
             log_info "Folder '$folder_id' may already exist (HTTP $http_code)"
+            if [[ -n "$response_body" ]]; then
+                log_info "Response: ${response_body:0:200}"
+            fi
             # Re-check config to confirm
             config=$(curl -s -H "$auth_header" "$api_url/config")
             if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
-                log_info "Folder '$folder_id' is configured"
+                log_success "Folder '$folder_id' is already configured"
             else
-                log_warn "Folder not found in config despite error - may need manual configuration"
+                log_error "Folder not found in config despite HTTP $http_code"
+                log_info "Full error response: $response_body"
+                log_warn "This may indicate a configuration issue - check Syncthing logs"
             fi
         else
-            log_warn "Failed to add folder '$folder_id' (HTTP $http_code)"
+            log_error "Failed to add folder '$folder_id' (HTTP $http_code)"
+            if [[ -n "$response_body" ]]; then
+                log_info "Error response: ${response_body:0:200}"
+            fi
         fi
     done
     
     # Get this device's ID for sharing with homeserver
     local this_device_id
-    this_device_id=$(curl -s -H "$auth_header" "$api_url/config" | grep -oP '(?<="myID":")[^"]+' | head -1)
+    # Use the config we already fetched, or fetch again if needed
+    if [[ -n "$config" ]]; then
+        this_device_id=$(echo "$config" | grep -oP '(?<="myID":")[^"]+' | head -1)
+    fi
+    
+    if [[ -z "$this_device_id" ]]; then
+        # Try fetching again
+        log_info "Fetching config again to get device ID..."
+        local config_for_id
+        config_for_id=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
+        if [[ -n "$config_for_id" ]]; then
+            this_device_id=$(echo "$config_for_id" | grep -oP '(?<="myID":")[^"]+' | head -1)
+            # Also try alternative pattern
+            if [[ -z "$this_device_id" ]]; then
+                this_device_id=$(echo "$config_for_id" | grep -oP '(?<="myID" : ")[^"]+' | head -1)
+            fi
+            # Try with jq if available
+            if [[ -z "$this_device_id" ]] && command -v jq &> /dev/null; then
+                this_device_id=$(echo "$config_for_id" | jq -r '.myID' 2>/dev/null)
+            fi
+        fi
+    fi
+    
+    if [[ -z "$this_device_id" ]]; then
+        log_error "Could not retrieve this device's ID - cannot auto-configure homeserver"
+        log_info "Tried multiple methods to extract device ID from config"
+        if [[ -n "$config_for_id" ]]; then
+            log_info "Config sample (first 500 chars): ${config_for_id:0:500}"
+        fi
+    fi
     
     if [[ -z "$this_device_id" ]]; then
         log_warn "Could not retrieve this device's ID - cannot auto-configure homeserver"
