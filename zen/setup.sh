@@ -84,18 +84,74 @@ check_aur_helper() {
 install_zen_browser() {
     local aur_helper="${AUR_HELPER:-yay}"
     
-    if command -v zen &> /dev/null || [[ -f /usr/bin/zen ]]; then
+    # Check multiple possible locations
+    local zen_paths=(
+        "/usr/bin/zen"
+        "/usr/bin/zen-browser"
+        "/usr/local/bin/zen"
+        "/usr/local/bin/zen-browser"
+    )
+    
+    # Check if already installed
+    for path in "${zen_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            log_success "Zen Browser is already installed at $path"
+            return 0
+        fi
+    done
+    
+    if command -v zen &> /dev/null; then
         log_success "Zen Browser is already installed"
         return 0
     fi
     
     log_info "Installing zen-browser-bin from AUR..."
-    $aur_helper -S --noconfirm zen-browser-bin
+    if ! $aur_helper -S --noconfirm zen-browser-bin; then
+        log_error "Failed to install zen-browser-bin package"
+        exit 1
+    fi
     
-    if command -v zen &> /dev/null || [[ -f /usr/bin/zen ]]; then
-        log_success "Zen Browser installed successfully"
-    else
-        log_error "Zen Browser installation failed"
+    # Wait a moment for installation to complete and PATH to update
+    sleep 2
+    
+    # Check if package is installed
+    if ! pacman -Q zen-browser-bin &> /dev/null; then
+        log_error "zen-browser-bin package not found after installation"
+        exit 1
+    fi
+    
+    log_info "Package installed, verifying binary location..."
+    
+    # Check all possible locations
+    local found=false
+    for path in "${zen_paths[@]}"; do
+        if [[ -f "$path" ]]; then
+            log_success "Zen Browser installed successfully at $path"
+            found=true
+            break
+        fi
+    done
+    
+    # Also check via command
+    if [[ "$found" == false ]] && command -v zen &> /dev/null; then
+        log_success "Zen Browser installed successfully (found via PATH)"
+        found=true
+    fi
+    
+    # Check for zen-browser command
+    if [[ "$found" == false ]] && command -v zen-browser &> /dev/null; then
+        log_success "Zen Browser installed successfully (found as zen-browser)"
+        found=true
+    fi
+    
+    if [[ "$found" == false ]]; then
+        log_error "Zen Browser installation verification failed"
+        log_info "Package is installed, but binary not found in expected locations:"
+        for path in "${zen_paths[@]}"; do
+            log_info "  - $path"
+        done
+        log_info "Checking installed files..."
+        pacman -Ql zen-browser-bin | grep -E "bin/zen" | head -5 || true
         exit 1
     fi
 }
