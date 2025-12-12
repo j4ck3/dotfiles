@@ -64,14 +64,24 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 ### On a new machine (Automated - Recommended):
 
 ```bash
-# Option 1: With pre-auth key (fully automated)
+# Option 1: Fully automated (with Tailscale key + Syncthing API access)
+# Get homeserver API key from: ~/appdata/syncthing/config/config.xml on tower
+HOMESERVER_SYNC_URL="http://tower:8384" \
+HOMESERVER_SYNC_APIKEY="your-api-key-here" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
-# Option 2: Manual Tailscale auth
+# Option 2: Via SSH (if you have SSH access to tower)
+HOMESERVER_SSH="jacke@tower" \
+curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
+
+# Option 3: With Tailscale key only (manual Syncthing setup required)
+curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
+
+# Option 4: Manual Tailscale auth
 sudo tailscale up
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash
 
-# 3. Launch browser - everything is configured!
+# Launch browser - everything is configured!
 ```
 
 **Get a Tailscale pre-auth key:** https://login.tailscale.com/admin/settings/keys

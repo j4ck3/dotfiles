@@ -38,6 +38,14 @@ if [[ -n "${1:-}" ]] && [[ "${1}" == tskey-* ]]; then
 fi
 TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
 
+# Homeserver Syncthing API configuration (optional - for full automation)
+# If provided, script will automatically configure homeserver side too
+# Usage: HOMESERVER_SYNC_URL="http://tower:8384" HOMESERVER_SYNC_APIKEY="..." ./bootstrap.sh
+# Or via SSH: HOMESERVER_SSH="jacke@tower" ./bootstrap.sh
+HOMESERVER_SYNC_URL="${HOMESERVER_SYNC_URL:-}"
+HOMESERVER_SYNC_APIKEY="${HOMESERVER_SYNC_APIKEY:-}"
+HOMESERVER_SSH="${HOMESERVER_SSH:-}"
+
 # Folders to sync (folder_id:container_path)
 SYNC_FOLDERS=(
     "zen-private:/syncthing/zen-private"
@@ -477,6 +485,11 @@ EOF
     local this_device_id
     this_device_id=$(curl -s -H "$auth_header" "$api_url/config" | grep -oP '(?<="myID":")[^"]+' | head -1)
     
+    # Try to automatically configure homeserver side if credentials provided
+    if [[ -n "$this_device_id" ]]; then
+        configure_homeserver_side "$this_device_id" || true
+    fi
+    
     # Only restart if changes were made
     if [[ "$changes_made" == true ]]; then
         log_info "Restarting Syncthing to apply changes..."
@@ -493,30 +506,204 @@ EOF
         log_success "Syncthing already configured (no changes needed)"
     fi
     
-    # Important: Show device ID and instructions
-    echo ""
-    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_info "IMPORTANT: Complete the Syncthing setup manually"
-    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-    log_info "This device ID: ${this_device_id:0:7}..."
-    log_info "Full ID: $this_device_id"
-    echo ""
-    log_warn "You need to add this device on your homeserver (tower):"
-    echo ""
-    echo "1. Open Syncthing UI on homeserver: http://tower:8384"
-    echo "2. Go to 'Actions' → 'Show ID' to see homeserver's device ID"
-    echo "3. On THIS machine, go to: http://localhost:8384"
-    echo "4. Click 'Add Device' and enter homeserver's device ID"
-    echo "5. On homeserver, accept the new device when prompted"
-    echo "6. On homeserver, share the 'zen-private' folder with this device"
-    echo "7. On THIS machine, accept the folder share when prompted"
-    echo ""
-    log_info "Alternatively, if both devices are on Tailscale:"
-    echo "  - They should auto-discover each other"
-    echo "  - Just accept the device connection on both sides"
-    echo "  - Then share the folder on the homeserver"
-    echo ""
+    # Show device ID and instructions (only if homeserver wasn't auto-configured)
+    if [[ -z "$HOMESERVER_SYNC_URL" ]] && [[ -z "$HOMESERVER_SSH" ]]; then
+        echo ""
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "IMPORTANT: Complete the Syncthing setup manually"
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        log_info "This device ID: ${this_device_id:0:7}..."
+        log_info "Full ID: $this_device_id"
+        echo ""
+        log_warn "You need to add this device on your homeserver (tower):"
+        echo ""
+        echo "1. Open Syncthing UI on homeserver: http://tower:8384"
+        echo "2. Go to 'Actions' → 'Show ID' to see homeserver's device ID"
+        echo "3. On THIS machine, go to: http://localhost:8384"
+        echo "4. Click 'Add Device' and enter homeserver's device ID"
+        echo "5. On homeserver, accept the new device when prompted"
+        echo "6. On homeserver, share the 'zen-private' folder with this device"
+        echo "7. On THIS machine, accept the folder share when prompted"
+        echo ""
+        log_info "Alternatively, for full automation, provide homeserver API access:"
+        echo "  HOMESERVER_SYNC_URL='http://tower:8384' HOMESERVER_SYNC_APIKEY='...' ./bootstrap.sh"
+        echo "  Or via SSH: HOMESERVER_SSH='jacke@tower' ./bootstrap.sh"
+        echo ""
+    fi
+}
+
+# Configure homeserver side automatically
+configure_homeserver_side() {
+    local this_device_id="$1"
+    local this_device_name
+    this_device_name=$(hostname)
+    
+    log_info "Attempting to auto-configure homeserver side..."
+    
+    # Method 1: Direct API access
+    if [[ -n "$HOMESERVER_SYNC_URL" ]] && [[ -n "$HOMESERVER_SYNC_APIKEY" ]]; then
+        log_info "Using direct API access to homeserver..."
+        configure_homeserver_via_api "$this_device_id" "$this_device_name" "$HOMESERVER_SYNC_URL" "$HOMESERVER_SYNC_APIKEY"
+        return $?
+    fi
+    
+    # Method 2: SSH access
+    if [[ -n "$HOMESERVER_SSH" ]]; then
+        log_info "Using SSH to configure homeserver..."
+        configure_homeserver_via_ssh "$this_device_id" "$this_device_name" "$HOMESERVER_SSH"
+        return $?
+    fi
+    
+    return 1
+}
+
+# Configure homeserver via direct API
+configure_homeserver_via_api() {
+    local device_id="$1"
+    local device_name="$2"
+    local api_url="$3"
+    local api_key="$4"
+    local auth_header="X-API-Key: $api_key"
+    
+    log_info "Connecting to homeserver Syncthing API: $api_url"
+    
+    # Test connection
+    if ! curl -s -f -H "$auth_header" "$api_url/rest/config" > /dev/null 2>&1; then
+        log_warn "Cannot connect to homeserver Syncthing API"
+        return 1
+    fi
+    
+    log_success "Connected to homeserver Syncthing API"
+    
+    # Get homeserver config
+    local config
+    config=$(curl -s -H "$auth_header" "$api_url/rest/config")
+    
+    # Add this device to homeserver
+    if ! echo "$config" | grep -q "$device_id"; then
+        log_info "Adding this device to homeserver: $device_name"
+        
+        local device_json=$(cat <<EOF
+{
+    "deviceID": "$device_id",
+    "name": "$device_name",
+    "addresses": ["dynamic"],
+    "compression": "metadata",
+    "introducer": false,
+    "paused": false
+}
+EOF
+)
+        local http_code
+        http_code=$(curl -s -w "%{http_code}" -o /dev/null -X POST -H "$auth_header" -H "Content-Type: application/json" \
+            -d "$device_json" "$api_url/rest/config/devices")
+        
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            log_success "Added this device to homeserver"
+        else
+            log_warn "Failed to add device to homeserver (HTTP $http_code)"
+            return 1
+        fi
+    else
+        log_info "Device already exists on homeserver"
+    fi
+    
+    # Share zen-private folder with this device
+    log_info "Sharing zen-private folder with this device..."
+    
+    # Get folder config
+    local folder_config
+    folder_config=$(curl -s -H "$auth_header" "$api_url/rest/config/folders/zen-private")
+    
+    if [[ -z "$folder_config" ]] || echo "$folder_config" | grep -q '"error"'; then
+        log_warn "zen-private folder not found on homeserver"
+        return 1
+    fi
+    
+    # Check if device is already in folder's device list
+    if echo "$folder_config" | grep -q "$device_id"; then
+        log_info "Folder already shared with this device"
+        return 0
+    fi
+    
+    # Use Python to properly update JSON (more reliable than sed)
+    local updated_config
+    updated_config=$(python3 << EOF
+import json
+import sys
+
+try:
+    config = json.loads('''$folder_config''')
+    
+    # Add device to devices list if not present
+    device_exists = False
+    for dev in config.get('devices', []):
+        if dev.get('deviceID') == '$device_id':
+            device_exists = True
+            break
+    
+    if not device_exists:
+        config.setdefault('devices', []).append({'deviceID': '$device_id'})
+    
+    print(json.dumps(config))
+except Exception as e:
+    sys.exit(1)
+EOF
+)
+    
+    if [[ -z "$updated_config" ]]; then
+        log_warn "Failed to update folder configuration"
+        return 1
+    fi
+    
+    local http_code
+    http_code=$(curl -s -w "%{http_code}" -o /dev/null -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+        -d "$updated_config" "$api_url/rest/config/folders/zen-private")
+    
+    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        log_success "Shared zen-private folder with this device on homeserver"
+        return 0
+    else
+        log_warn "Failed to share folder (HTTP $http_code)"
+        return 1
+    fi
+}
+
+# Configure homeserver via SSH
+configure_homeserver_via_ssh() {
+    local device_id="$1"
+    local device_name="$2"
+    local ssh_target="$3"
+    
+    log_info "Connecting to homeserver via SSH: $ssh_target"
+    
+    # Get homeserver Syncthing API key via SSH
+    local api_key
+    api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml 2>/dev/null" 2>/dev/null)
+    
+    if [[ -z "$api_key" ]]; then
+        log_warn "Could not get homeserver Syncthing API key via SSH"
+        return 1
+    fi
+    
+    # Get homeserver Syncthing URL (usually localhost from SSH perspective)
+    local api_url="http://localhost:8384/rest"
+    
+    # Use API method with SSH tunnel
+    log_info "Configuring via SSH tunnel..."
+    
+    # Create SSH tunnel and configure
+    ssh -f -N -L 8385:localhost:8384 "$ssh_target" 2>/dev/null || true
+    sleep 1
+    
+    configure_homeserver_via_api "$device_id" "$device_name" "http://localhost:8385" "$api_key"
+    local result=$?
+    
+    # Close tunnel
+    pkill -f "ssh.*8385:localhost:8384.*$ssh_target" 2>/dev/null || true
+    
+    return $result
 }
 
 wait_for_sync() {
