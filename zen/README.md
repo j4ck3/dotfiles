@@ -67,7 +67,7 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 # Option 1: Fully automated via SSH (RECOMMENDED - Most Secure)
 # Automatically configures both sides of Syncthing connection
 # Requires SSH access to tower (passwordless SSH key recommended)
-HOMESERVER_SSH="jacke@10.0.0.24" \
+HOMESERVER_SSH="root@10.0.0.24" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 2: Fully automated via API (Less Secure)

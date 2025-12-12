@@ -43,7 +43,7 @@ TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
 # If provided, script will automatically configure homeserver side too
 # 
 # RECOMMENDED: Use SSH method (HOMESERVER_SSH) - most secure, no API key exposure
-#   HOMESERVER_SSH="jacke@10.0.0.24" ./bootstrap.sh
+#   HOMESERVER_SSH="root@10.0.0.24" ./bootstrap.sh
 #
 # Alternative: Direct API access (less secure - exposes API key)
 #   HOMESERVER_SYNC_URL="http://10.0.0.24:8384" HOMESERVER_SYNC_APIKEY="..." ./bootstrap.sh
@@ -684,8 +684,9 @@ configure_homeserver_via_ssh() {
     log_info "Connecting to homeserver via SSH: $ssh_target"
     
     # Get homeserver Syncthing API key via SSH
+    # Try both root and jacke user paths for Syncthing config
     local api_key
-    api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml 2>/dev/null" 2>/dev/null)
+    api_key=$(ssh "$ssh_target" "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml 2>/dev/null || grep -oP '(?<=<apikey>)[^<]+' /home/jacke/appdata/syncthing/config/config.xml 2>/dev/null" 2>/dev/null)
     
     if [[ -z "$api_key" ]]; then
         log_warn "Could not get homeserver Syncthing API key via SSH"
