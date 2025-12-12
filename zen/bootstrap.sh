@@ -394,11 +394,16 @@ configure_syncthing_api() {
         return 1
     fi
     
+    # Trim whitespace from API key BEFORE using it (in case of newlines or spaces)
+    api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
+    
+    if [[ ${#api_key} -lt 20 ]]; then
+        log_error "API key is too short (${#api_key} chars), expected at least 20"
+        return 1
+    fi
+    
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
-    
-    # Trim whitespace from API key (in case of newlines or spaces)
-    api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
     
     log_info "Got API key (length: ${#api_key} chars), configuring Syncthing..."
     
