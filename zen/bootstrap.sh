@@ -983,12 +983,32 @@ wait_for_sync() {
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
-    # First, check if folder exists in config
+    # First, check if folder exists in config (by label or by checking if files exist)
     log_info "Checking if zen-private folder is configured..."
+    
+    # Check if the sync directory and uuid-mapping.json exist (most reliable)
+    if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+        log_success "zen-private folder is synced (uuid-mapping.json exists)"
+        return 0
+    fi
+    
+    # Also check via API
     local config
     config=$(curl -s -H "$auth_header" "$api_url/config" 2>/dev/null) || true
-    if ! echo "$config" | grep -q "\"id\":\"zen-private\""; then
-        log_error "zen-private folder not found in Syncthing config!"
+    local folder_found=false
+    
+    # Check by label "zen-private" (folder might have different ID)
+    if echo "$config" | grep -q "\"label\":\"zen-private\""; then
+        folder_found=true
+    fi
+    
+    # Also check if folder directory exists
+    if [[ -d "$HOME/Sync/zen-private" ]]; then
+        folder_found=true
+    fi
+    
+    if [[ "$folder_found" == false ]]; then
+        log_warn "zen-private folder not found in Syncthing config or filesystem"
         log_info "The folder may not have been added correctly."
         log_info "Check Syncthing UI: http://localhost:8384"
         log_warn "You may need to manually add the folder or accept it from the homeserver"
