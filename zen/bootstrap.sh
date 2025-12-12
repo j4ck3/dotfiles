@@ -22,12 +22,18 @@ COMPOSE_REPO="https://github.com/$GITHUB_USER/c"
 HOMESERVER_NAME="tower"
 HOMESERVER_DEVICE_ID="QARNKTH-UR6OW74-IFMPKOB-TQELLEZ-U4NPEEJ-UQXOX2U-2G3WE2O-YLEYPQB"
 
+# Tailscale pre-auth key (optional - can be passed as env var or argument)
+# Get one from: https://login.tailscale.com/admin/settings/keys
+# Usage: TAILSCALE_AUTHKEY="tskey-..." ./bootstrap.sh
+# Or: ./bootstrap.sh "tskey-..."
+if [[ -n "${1:-}" ]] && [[ "${1}" == tskey-* ]]; then
+    TAILSCALE_AUTHKEY="${1}"
+fi
+TAILSCALE_AUTHKEY="${TAILSCALE_AUTHKEY:-}"
+
 # Folders to sync (folder_id:container_path)
 SYNC_FOLDERS=(
     "zen-private:/syncthing/zen-private"
-    "syncthing:/syncthing"
-    "trilium:/trilium"
-    "unraid-appdata:/unraid-appdata"
 )
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
@@ -46,35 +52,70 @@ log_step() {
 check_prerequisites() {
     log_step "Step 1: Checking prerequisites"
     
-    # Check Tailscale
-    if ! command -v tailscale &> /dev/null; then
-        log_error "Tailscale not installed. Install it first:"
-        echo "  curl -fsSL https://tailscale.com/install.sh | sh"
-        exit 1
-    fi
+    # Check Tailscale (optional if on same network)
+    TAILSCALE_NEEDED=true
     
-    # Check if Tailscale is connected
-    if ! tailscale status &> /dev/null; then
-        log_warn "Tailscale not connected."
+    if command -v tailscale &> /dev/null; then
+        # Check if Tailscale is connected
+        if tailscale status &> /dev/null; then
+            local tailscale_status
+            tailscale_status=$(tailscale status 2>/dev/null | head -1)
+            log_success "Tailscale connected: $tailscale_status"
+            TAILSCALE_NEEDED=false
+        elif [[ -n "$TAILSCALE_AUTHKEY" ]]; then
+            log_info "Connecting to Tailscale using pre-auth key..."
+            sudo tailscale up --authkey "$TAILSCALE_AUTHKEY"
+            sleep 2
+            if tailscale status &> /dev/null; then
+                log_success "Tailscale connected"
+                TAILSCALE_NEEDED=false
+            fi
+        else
+            log_warn "Tailscale installed but not connected"
+            log_info "If both machines are on the same local network, Tailscale is optional"
+            log_info "Syncthing will use local network discovery"
+            echo ""
+            read -p "Connect to Tailscale anyway? [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                log_info "Connecting to Tailscale..."
+                echo "This may open a browser for authentication."
+                sudo tailscale up
+                sleep 2
+                if tailscale status &> /dev/null; then
+                    log_success "Tailscale connected"
+                    TAILSCALE_NEEDED=false
+                fi
+            else
+                log_info "Skipping Tailscale - using local network"
+                TAILSCALE_NEEDED=false
+            fi
+        fi
+    else
+        log_info "Tailscale not installed"
+        log_info "If both machines are on the same local network, Tailscale is optional"
+        log_info "Syncthing will use local network discovery"
         echo ""
-        echo "Connecting to Tailscale..."
-        echo "This may open a browser for authentication."
-        echo ""
-        sudo tailscale up
-        
-        # Wait a moment and verify connection
-        sleep 2
-        if ! tailscale status &> /dev/null; then
-            log_error "Tailscale connection failed or requires authentication"
-            log_info "Please run manually: sudo tailscale up"
-            exit 1
+        read -p "Install Tailscale anyway? [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Installing Tailscale..."
+            curl -fsSL https://tailscale.com/install.sh | sh
+            if [[ -n "$TAILSCALE_AUTHKEY" ]]; then
+                sudo tailscale up --authkey "$TAILSCALE_AUTHKEY"
+            else
+                sudo tailscale up
+            fi
+            sleep 2
+            if tailscale status &> /dev/null; then
+                log_success "Tailscale connected"
+                TAILSCALE_NEEDED=false
+            fi
+        else
+            log_info "Skipping Tailscale - using local network"
+            TAILSCALE_NEEDED=false
         fi
     fi
-    
-    # Verify we can get status
-    local tailscale_status
-    tailscale_status=$(tailscale status 2>/dev/null | head -1)
-    log_success "Tailscale connected: $tailscale_status"
     
     # Check Docker
     if ! command -v docker &> /dev/null; then
@@ -124,8 +165,6 @@ start_syncthing() {
     # Create directories
     mkdir -p ~/appdata/syncthing/config
     mkdir -p ~/Sync/zen-private
-    mkdir -p ~/Sync/trilium
-    mkdir -p ~/Sync/unraid-appdata
     
     # Start Syncthing
     cd "$HOME/c/z-syncthing"

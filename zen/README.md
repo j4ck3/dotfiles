@@ -64,14 +64,17 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 ### On a new machine (Automated - Recommended):
 
 ```bash
-# 1. Connect to Tailscale
-sudo tailscale up
+# Option 1: With pre-auth key (fully automated)
+curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/main/zen/bootstrap.sh | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
-# 2. Run the bootstrap script (does everything automatically)
+# Option 2: Manual Tailscale auth
+sudo tailscale up
 curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/main/zen/bootstrap.sh | bash
 
 # 3. Launch browser - everything is configured!
 ```
+
+**Get a Tailscale pre-auth key:** https://login.tailscale.com/admin/settings/keys
 
 The bootstrap script will:
 
