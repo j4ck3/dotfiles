@@ -1343,6 +1343,10 @@ wait_for_sync() {
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
+    # Check for and accept pending folders/devices first (before checking sync status)
+    log_info "Checking for pending folders/devices to accept..."
+    accept_pending_folders "$api_url" "$auth_header"
+    
     # First, check if folder exists in config (by label or by checking if files exist)
     log_info "Checking if zen-private folder is configured..."
     
