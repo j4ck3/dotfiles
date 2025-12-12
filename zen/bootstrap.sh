@@ -1078,11 +1078,17 @@ EOF
     
     log_success "Found zen-private folder on homeserver"
     
-    # Check if device is already in folder's device list
-    if echo "$folder_config" | grep -q "$device_id"; then
-        log_info "Folder already shared with this device"
+    # Check if device is already in folder's device list (use Python for accurate JSON parsing)
+    local device_in_folder
+    device_in_folder=$(echo "$folder_config" | python3 -c "import sys, json; config=json.load(sys.stdin); devices=[d.get('deviceID') for d in config.get('devices', [])]; print('yes' if '$device_id' in devices else 'no')" 2>/dev/null) || device_in_folder="no"
+    
+    if [[ "$device_in_folder" == "yes" ]]; then
+        log_success "Folder already shared with this device (device ID: ${device_id:0:7}...)"
         return 0
     fi
+    
+    log_info "Device not yet in folder's device list, adding it..."
+    log_info "Device ID to add: ${device_id:0:7}..."
     
     # Use Python to properly update JSON (more reliable than sed)
     log_info "Updating folder configuration to include this device..."
@@ -1116,9 +1122,11 @@ PYEOF
     
     if [[ -z "$updated_config" ]]; then
         log_error "Failed to update folder configuration (Python error)"
+        log_info "Original folder config (first 500 chars): ${folder_config:0:500}"
         return 1
     fi
     
+    log_info "Sending updated folder configuration to homeserver..."
     local share_response
     share_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
         -d "$updated_config" "$api_url/rest/config/folders/$folder_id" 2>&1)
@@ -1129,12 +1137,14 @@ PYEOF
     
     if [[ "$share_http_code" -ge 200 && "$share_http_code" -lt 300 ]]; then
         log_success "Shared zen-private folder with this device on homeserver"
+        log_info "Device ${device_id:0:7}... should now appear in the folder's device list"
         return 0
     else
         log_error "Failed to share folder (HTTP $share_http_code)"
         if [[ -n "$share_body" ]]; then
-            log_info "Error response: ${share_body:0:200}"
+            log_info "Error response: ${share_body:0:500}"
         fi
+        log_info "Updated config that was sent (first 500 chars): ${updated_config:0:500}"
         return 1
     fi
 }
