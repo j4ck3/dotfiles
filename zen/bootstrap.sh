@@ -473,6 +473,10 @@ EOF
         fi
     done
     
+    # Get this device's ID for sharing with homeserver
+    local this_device_id
+    this_device_id=$(curl -s -H "$auth_header" "$api_url/config" | grep -oP '(?<="myID":")[^"]+' | head -1)
+    
     # Only restart if changes were made
     if [[ "$changes_made" == true ]]; then
         log_info "Restarting Syncthing to apply changes..."
@@ -488,6 +492,31 @@ EOF
     else
         log_success "Syncthing already configured (no changes needed)"
     fi
+    
+    # Important: Show device ID and instructions
+    echo ""
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "IMPORTANT: Complete the Syncthing setup manually"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    log_info "This device ID: ${this_device_id:0:7}..."
+    log_info "Full ID: $this_device_id"
+    echo ""
+    log_warn "You need to add this device on your homeserver (tower):"
+    echo ""
+    echo "1. Open Syncthing UI on homeserver: http://tower:8384"
+    echo "2. Go to 'Actions' → 'Show ID' to see homeserver's device ID"
+    echo "3. On THIS machine, go to: http://localhost:8384"
+    echo "4. Click 'Add Device' and enter homeserver's device ID"
+    echo "5. On homeserver, accept the new device when prompted"
+    echo "6. On homeserver, share the 'zen-private' folder with this device"
+    echo "7. On THIS machine, accept the folder share when prompted"
+    echo ""
+    log_info "Alternatively, if both devices are on Tailscale:"
+    echo "  - They should auto-discover each other"
+    echo "  - Just accept the device connection on both sides"
+    echo "  - Then share the folder on the homeserver"
+    echo ""
 }
 
 wait_for_sync() {
@@ -527,9 +556,18 @@ wait_for_sync() {
         log_error "zen-private folder not found in Syncthing config!"
         log_info "The folder may not have been added correctly."
         log_info "Check Syncthing UI: http://localhost:8384"
+        log_warn "You may need to manually add the folder or accept it from the homeserver"
         return 1
     fi
     log_success "zen-private folder is configured"
+    
+    # Check if folder is paused or has errors
+    local folder_status
+    folder_status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=zen-private" 2>/dev/null) || true
+    if echo "$folder_status" | grep -q '"invalid"'; then
+        log_warn "Folder appears to be invalid or not properly shared"
+        log_info "Make sure the homeserver has shared this folder with this device"
+    fi
     
     # Check device connection status
     log_info "Checking device connection status..."
