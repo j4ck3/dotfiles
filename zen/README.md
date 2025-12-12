@@ -71,7 +71,7 @@ HOMESERVER_SSH="root@10.0.0.24" \
 curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 2: Fully automated via API (Less Secure)
-# Get homeserver API key: ssh jacke@10.0.0.24 "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml"
+# Get homeserver API key: ssh root@10.0.0.24 "grep -oP '(?<=<apikey>)[^<]+' ~/appdata/syncthing/config/config.xml"
 # SECURITY: API keys give full control - only use on trusted private networks
 HOMESERVER_SYNC_URL="http://10.0.0.24:8384" \
 HOMESERVER_SYNC_APIKEY="your-api-key-here" \
