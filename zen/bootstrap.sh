@@ -557,14 +557,14 @@ EOF
             continue
         fi
         
-        log_info "Adding folder: $folder_id → $folder_path"
+        log_info "Adding folder: $folder_id → $folder_path (receive-only from homeserver)"
         
         local folder_json=$(cat <<EOF
 {
     "id": "$folder_id",
     "label": "$folder_id",
     "path": "$folder_path",
-    "type": "sendreceive",
+    "type": "receiveonly",
     "devices": [
         {"deviceID": "$HOMESERVER_DEVICE_ID"}
     ],
@@ -675,6 +675,22 @@ EOF
                 log_error "Failed to configure homeserver side - check errors above"
                 log_warn "You may need to manually configure Syncthing on the homeserver"
             fi
+        else
+            # Manual configuration reminder
+            echo "" >&2
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            log_warn "  MANUAL STEP REQUIRED: Accept device on homeserver" >&2
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            log_warn "" >&2
+            log_warn "1. Open Syncthing UI on homeserver (tower): http://10.0.0.24:8384" >&2
+            log_warn "2. Go to 'Remote Devices' section" >&2
+            log_warn "3. Find this device: ${this_device_id:0:7}..." >&2
+            log_warn "4. Click 'Add Device' or accept the pending device invitation" >&2
+            log_warn "5. The zen-private folder should then start syncing automatically" >&2
+            log_warn "" >&2
+            log_warn "This device ID: $this_device_id" >&2
+            log_warn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+            echo "" >&2
         fi
     fi
     
