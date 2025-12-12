@@ -37,7 +37,7 @@
 4. **Test the bootstrap script:**
    ```bash
    # With pre-auth key (recommended for testing)
-   curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh | bash -s -- "YOUR-TAILSCALE-AUTH-KEY"
+   curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "YOUR-TAILSCALE-AUTH-KEY"
    ```
 
 5. **Verify everything works:**

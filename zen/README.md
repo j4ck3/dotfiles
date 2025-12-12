@@ -65,11 +65,11 @@ Uses **Syncthing** for private extension data (passwords, wallet, filters).
 
 ```bash
 # Option 1: With pre-auth key (fully automated)
-curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh | bash -s -- "tskey-auth-XXXXX-XXXXX"
+curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash -s -- "tskey-auth-XXXXX-XXXXX"
 
 # Option 2: Manual Tailscale auth
 sudo tailscale up
-curl -fsSL https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh | bash
+curl -fsSL -H "Cache-Control: no-cache" "https://raw.githubusercontent.com/j4ck3/dotfiles/refs/heads/master/zen/bootstrap.sh?t=$(date +%s)" | bash
 
 # 3. Launch browser - everything is configured!
 ```
