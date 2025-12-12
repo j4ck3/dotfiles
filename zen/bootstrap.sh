@@ -259,15 +259,33 @@ start_syncthing() {
     mkdir -p ~/appdata/syncthing/config
     mkdir -p ~/Sync/zen-private
     
-    # Start Syncthing
-    cd "$HOME/c/z-syncthing"
-    docker_cmd compose up -d
+    # Check if Syncthing container is already running
+    if docker_cmd ps | grep -q syncthing; then
+        log_info "Syncthing container is already running"
+    else
+        # Start Syncthing
+        cd "$HOME/c/z-syncthing"
+        log_info "Starting Syncthing container..."
+        docker_cmd compose up -d
+        
+        # Wait for container to be running
+        log_info "Waiting for Syncthing container to start..."
+        local attempts=0
+        while ! docker_cmd ps | grep -q syncthing && [[ $attempts -lt 30 ]]; do
+            sleep 1
+            ((attempts++))
+        done
+        
+        if ! docker_cmd ps | grep -q syncthing; then
+            log_error "Syncthing container failed to start"
+            docker_cmd logs syncthing 2>&1 | tail -20
+            return 1
+        fi
+        
+        log_success "Syncthing container started"
+    fi
     
-    log_success "Syncthing started"
-    
-    # Wait for it to be ready
-    log_info "Waiting for Syncthing to initialize..."
-    sleep 5
+    log_success "Syncthing container is running"
     
     # Get device ID
     local device_id
@@ -283,29 +301,69 @@ start_syncthing() {
 }
 
 get_api_key() {
-    # Wait for config.xml to be created
-    local config_file="$HOME/appdata/syncthing/config/config.xml"
+    # Wait for Syncthing container to be ready and config.xml to be created
+    log_info "Waiting for Syncthing to initialize config..."
     local attempts=0
-    while [[ ! -f "$config_file" ]] && [[ $attempts -lt 30 ]]; do
+    local max_attempts=60  # Wait up to 60 seconds
+    
+    while [[ $attempts -lt $max_attempts ]]; do
+        # Try to get API key from container first (most reliable)
+        local api_key
+        api_key=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1) || true
+        
+        if [[ -n "$api_key" ]]; then
+            echo "$api_key"
+            return 0
+        fi
+        
+        # Also try from host filesystem (in case it's mounted)
+        local config_file="$HOME/appdata/syncthing/config/config.xml"
+        if [[ -f "$config_file" ]]; then
+            api_key=$(grep -oP '(?<=<apikey>)[^<]+' "$config_file" | head -1) || true
+            if [[ -n "$api_key" ]]; then
+                echo "$api_key"
+                return 0
+            fi
+        fi
+        
+        # Check if container is running
+        if ! docker_cmd ps | grep -q syncthing; then
+            log_error "Syncthing container is not running!"
+            docker_cmd logs syncthing 2>&1 | tail -20
+            return 1
+        fi
+        
         sleep 1
         ((attempts++))
+        
+        if [[ $((attempts % 10)) -eq 0 ]]; then
+            log_info "Still waiting for Syncthing config... (${attempts}/${max_attempts})"
+        fi
     done
     
-    if [[ -f "$config_file" ]]; then
-        grep -oP '(?<=<apikey>)[^<]+' "$config_file"
-    else
-        echo ""
-    fi
+    log_error "Timeout waiting for Syncthing config.xml"
+    log_info "Container logs:"
+    docker_cmd logs syncthing 2>&1 | tail -30
+    echo ""
+    return 1
 }
 
 configure_syncthing_api() {
     log_step "Step 4: Configuring Syncthing via API"
     
     local api_key
-    api_key=$(get_api_key)
+    if ! api_key=$(get_api_key); then
+        log_error "Could not get Syncthing API key"
+        log_info "Troubleshooting:"
+        log_info "1. Check if Syncthing container is running: docker ps"
+        log_info "2. Check container logs: docker logs syncthing"
+        log_info "3. Check if config directory exists: ls -la ~/appdata/syncthing/config/"
+        log_info "4. Try accessing Syncthing UI: http://localhost:8384"
+        return 1
+    fi
     
     if [[ -z "$api_key" ]]; then
-        log_error "Could not get Syncthing API key"
+        log_error "API key is empty"
         return 1
     fi
     
@@ -320,6 +378,8 @@ configure_syncthing_api() {
     log_info "Fetching current config..."
     local config
     config=$(curl -s -H "$auth_header" "$api_url/config")
+    
+    local changes_made=false
     
     # Add homeserver device if not already added
     if ! echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
@@ -340,6 +400,7 @@ EOF
             -d "$device_json" "$api_url/config/devices"
         
         log_success "Added homeserver device"
+        changes_made=true
     else
         log_info "Homeserver device already configured"
     fi
@@ -376,21 +437,40 @@ EOF
             -d "$folder_json" "$api_url/config/folders"
         
         log_success "Added folder: $folder_id"
+        changes_made=true
     done
     
-    # Restart Syncthing to apply changes
-    log_info "Restarting Syncthing to apply changes..."
-    curl -s -X POST -H "$auth_header" "$api_url/system/restart"
-    sleep 5
-    
-    log_success "Syncthing configured!"
+    # Only restart if changes were made
+    if [[ "$changes_made" == true ]]; then
+        log_info "Restarting Syncthing to apply changes..."
+        curl -s -X POST -H "$auth_header" "$api_url/system/restart"
+        sleep 5
+        log_success "Syncthing configured and restarted!"
+    else
+        log_success "Syncthing already configured (no changes needed)"
+    fi
 }
 
 wait_for_sync() {
     log_step "Step 5: Waiting for Syncthing to sync"
     
+    # Check if already synced
+    if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+        log_success "zen-private folder already synced (uuid-mapping.json exists)"
+        return 0
+    fi
+    
     local api_key
-    api_key=$(get_api_key)
+    if ! api_key=$(get_api_key); then
+        log_error "Could not get Syncthing API key for sync check"
+        return 1
+    fi
+    
+    if [[ -z "$api_key" ]]; then
+        log_error "API key is empty"
+        return 1
+    fi
+    
     local api_url="http://localhost:8384/rest"
     local auth_header="X-API-Key: $api_key"
     
@@ -443,6 +523,18 @@ wait_for_sync() {
 
 run_setup() {
     log_step "Step 6: Running Zen Browser setup"
+    
+    # Check if Zen Browser is already installed and configured
+    if command -v zen &> /dev/null && [[ -d "$HOME/.zen" ]] && [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+        log_info "Zen Browser appears to be already installed and configured"
+        echo ""
+        read -t 5 -p "Run setup anyway? [y/N] " -n 1 -r || REPLY="n"
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Skipping setup (Zen Browser already configured)"
+            return 0
+        fi
+    fi
     
     cd "$HOME/dotfiles/zen"
     ./setup.sh
