@@ -1,8 +1,5 @@
 {
     "policies": {
-        "SearchEngines": {
-            "Default": "Startpage - English"
-        },
         "ExtensionSettings": {
             "idcac-pub@guus.ninja": {
                 "installation_mode": "force_installed",
