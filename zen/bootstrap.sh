@@ -579,8 +579,50 @@ EOF
         fi
         
         # Check if folder already exists by label (Syncthing generates its own IDs)
-        if echo "$config" | grep -q "\"label\":\"$folder_id\""; then
-            log_info "Folder '$folder_id' already configured (by label) - ensuring permissions are correct"
+        local existing_folder_id
+        existing_folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == '$folder_id']" 2>/dev/null | head -1) || true
+        
+        if [[ -n "$existing_folder_id" ]]; then
+            log_info "Folder '$folder_id' already exists (ID: $existing_folder_id) - checking type..."
+            
+            # Get the existing folder config to check its type
+            local existing_folder_response
+            existing_folder_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/config/folders/$existing_folder_id" 2>&1)
+            local existing_folder_http_code
+            existing_folder_http_code=$(echo "$existing_folder_response" | tail -1)
+            local existing_folder_config
+            existing_folder_config=$(echo "$existing_folder_response" | sed '$d')
+            
+            if [[ "$existing_folder_http_code" == "200" ]] && [[ -n "$existing_folder_config" ]]; then
+                # Check if folder type is not "receiveonly"
+                local folder_type
+                folder_type=$(echo "$existing_folder_config" | python3 -c "import sys, json; f=json.load(sys.stdin); print(f.get('type', 'sendreceive'))" 2>/dev/null) || folder_type="sendreceive"
+                
+                if [[ "$folder_type" != "receiveonly" ]]; then
+                    log_info "Updating folder type from '$folder_type' to 'receiveonly'..."
+                    
+                    # Update folder type to receiveonly
+                    local updated_folder_config
+                    updated_folder_config=$(echo "$existing_folder_config" | python3 -c "import sys, json; f=json.load(sys.stdin); f['type']='receiveonly'; print(json.dumps(f))" 2>/dev/null)
+                    
+                    if [[ -n "$updated_folder_config" ]]; then
+                        local update_response
+                        update_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+                            -d "$updated_folder_config" "$api_url/config/folders/$existing_folder_id" 2>&1)
+                        local update_http_code
+                        update_http_code=$(echo "$update_response" | tail -1)
+                        
+                        if [[ "$update_http_code" -ge 200 && "$update_http_code" -lt 300 ]]; then
+                            log_success "Updated folder type to 'receiveonly'"
+                            changes_made=true
+                        else
+                            log_warn "Failed to update folder type (HTTP $update_http_code)"
+                        fi
+                    fi
+                else
+                    log_info "Folder type is already 'receiveonly'"
+                fi
+            fi
             continue
         fi
         
@@ -955,12 +997,18 @@ EOF
         
         if [[ "$add_http_code" -ge 200 && "$add_http_code" -lt 300 ]]; then
             log_success "Added this device to homeserver"
+        elif [[ "$add_http_code" -eq 400 || "$add_http_code" -eq 409 ]]; then
+            # Device might already exist or be pending
+            log_info "Device may already exist on homeserver (HTTP $add_http_code)"
+            if [[ -n "$add_body" ]] && echo "$add_body" | grep -qi "already exists\|duplicate"; then
+                log_info "Device already exists on homeserver"
+            fi
         else
             log_error "Failed to add device to homeserver (HTTP $add_http_code)"
             if [[ -n "$add_body" ]]; then
                 log_info "Error response: ${add_body:0:200}"
             fi
-            return 1
+            # Don't return 1 here - continue to try sharing folder anyway
         fi
     else
         log_info "Device already exists on homeserver"
