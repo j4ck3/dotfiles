@@ -829,7 +829,9 @@ verify_homeserver_config() {
     
     # Verify folder exists (check by label since ID might be different)
     local folder_exists=false
-    if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\""; then
+    
+    # Try multiple methods to find the folder
+    if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\"" || echo "$config" | grep -q "zen-private"; then
         log_success "  ✓ zen-private folder is in config"
         folder_exists=true
     else
@@ -838,17 +840,19 @@ verify_homeserver_config() {
         log_info "  Checking for pending folders to accept..."
         accept_pending_folders "$api_url" "$auth_header"
         
-        # Re-check config after accepting
-        sleep 2
+        # Re-check config after accepting (wait a bit longer for it to process)
+        sleep 3
         config=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
-        if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\""; then
+        
+        # Try multiple methods again
+        if echo "$config" | grep -q "\"label\":\"zen-private\"" || echo "$config" | grep -q "\"id\":\"zen-private\"" || echo "$config" | grep -q "zen-private"; then
             log_success "  ✓ zen-private folder is now in config (after accepting)"
             folder_exists=true
         else
-            log_error "  ✗ zen-private folder still NOT found in config"
-            log_info "  This might be normal if the folder hasn't been shared yet"
-            log_info "  The folder will appear after tower shares it and you accept it"
-            return 1
+            log_warn "  ⚠ zen-private folder still not found in config"
+            log_info "  This is okay - the folder may appear later during sync wait"
+            log_info "  The script will continue and check again during sync wait"
+            # Don't return error - let it continue, the folder might appear later
         fi
     fi
     
@@ -903,10 +907,24 @@ accept_pending_folders() {
     
     # Get pending folders/devices
     local pending
-    pending=$(curl -s -H "$auth_header" "$api_url/system/pending" 2>/dev/null) || true
+    pending=$(curl -s -H "$auth_header" "$api_url/system/pending" 2>&1) || true
     
-    if [[ -z "$pending" ]] || echo "$pending" | grep -q '"error"'; then
-        return 0  # No pending items or API error (not critical)
+    # Debug: check what we got
+    if [[ -z "$pending" ]]; then
+        log_debug "No pending items found (empty response)"
+        return 0  # No pending items (not critical)
+    fi
+    
+    if echo "$pending" | grep -q '"error"'; then
+        log_debug "API error checking pending items: $(echo "$pending" | head -1)"
+        return 0  # API error (not critical)
+    fi
+    
+    # Debug: show pending counts
+    local pending_info
+    pending_info=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); d=len(p.get('devices', [])); f=len(p.get('folders', [])); print(f'{d} device(s), {f} folder(s)')" 2>/dev/null) || true
+    if [[ -n "$pending_info" ]]; then
+        log_info "Found pending items: $pending_info"
     fi
     
     # Check for pending devices first (need to accept device before folder)
