@@ -1391,30 +1391,30 @@ wait_for_sync() {
     fi
     echo ""
     
+    # Find folder ID by label (do this once before the loop)
+    local folder_id
+    folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1) || true
+    
+    # Fallback to grep if Python fails
+    if [[ -z "$folder_id" ]]; then
+        folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1) || true
+    fi
+    
+    if [[ -z "$folder_id" ]]; then
+        log_warn "Could not find zen-private folder ID, checking by file existence only"
+        log_info "Available folders:"
+        echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in c.get('folders', [])]" 2>/dev/null || true
+    else
+        log_info "Found zen-private folder ID: $folder_id"
+    fi
+    
     # Wait for folder to be up to date
     local attempts=0
     local max_attempts=120  # 10 minutes max
     local last_state=""
     local last_progress=""
     
-            # Find folder ID by label (use Python for more reliable JSON parsing)
-            local folder_id
-            folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1) || true
-            
-            # Fallback to grep if Python fails
-            if [[ -z "$folder_id" ]]; then
-                folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1) || true
-            fi
-            
-            if [[ -z "$folder_id" ]]; then
-                log_warn "Could not find zen-private folder ID, checking by file existence only"
-                log_info "Available folders:"
-                echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in c.get('folders', [])]" 2>/dev/null || true
-            else
-                log_info "Found zen-private folder ID: $folder_id"
-            fi
-            
-            while [[ $attempts -lt $max_attempts ]]; do
+    while [[ $attempts -lt $max_attempts ]]; do
                 # Check folder status (allow curl to fail without exiting)
                 local status
                 if [[ -n "$folder_id" ]]; then
