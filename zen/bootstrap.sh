@@ -538,7 +538,17 @@ EOF
         # Create the directory inside the container with proper permissions (do this before checking if folder exists)
         log_info "Ensuring folder directory exists inside container: $folder_path"
         
-        # Try multiple methods to create the directory with proper permissions
+        # Also ensure the host directory exists (in case it's a volume mount)
+        # Map container path to host path: /syncthing/zen-private -> ~/Sync/zen-private
+        local host_path
+        if [[ "$folder_path" == "/syncthing/zen-private" ]]; then
+            host_path="$HOME/Sync/zen-private"
+            log_info "Ensuring host directory exists: $host_path"
+            mkdir -p "$host_path"
+            chmod 755 "$host_path" 2>/dev/null || true
+        fi
+        
+        # Try multiple methods to create the directory with proper permissions inside container
         local dir_created=false
         if docker_cmd exec syncthing mkdir -p "$folder_path" 2>/dev/null; then
             dir_created=true
@@ -565,6 +575,7 @@ EOF
             log_success "Directory created and permissions set: $folder_path"
         else
             log_warn "Could not create directory $folder_path - Syncthing may create it automatically"
+            log_warn "If you see permission errors, try: docker exec -u root syncthing mkdir -p $folder_path && docker exec -u root syncthing chown -R 1000:1000 $folder_path"
         fi
         
         # Check if folder already exists by label (Syncthing generates its own IDs)
