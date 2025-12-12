@@ -327,9 +327,13 @@ get_api_key() {
         local api_key
         api_key=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<apikey>)[^<]+' | head -1) || true
         
+        # Trim whitespace and newlines
         if [[ -n "$api_key" ]]; then
-            echo "$api_key"
-            return 0
+            api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
+            if [[ ${#api_key} -ge 20 ]]; then  # API keys should be at least 20 chars
+                echo "$api_key"
+                return 0
+            fi
         fi
         
         # Also try from host filesystem (in case it's mounted)
@@ -337,8 +341,11 @@ get_api_key() {
         if [[ -f "$config_file" ]]; then
             api_key=$(grep -oP '(?<=<apikey>)[^<]+' "$config_file" | head -1) || true
             if [[ -n "$api_key" ]]; then
-                echo "$api_key"
-                return 0
+                api_key=$(echo "$api_key" | tr -d '\n\r\t ' | head -c 50)
+                if [[ ${#api_key} -ge 20 ]]; then
+                    echo "$api_key"
+                    return 0
+                fi
             fi
         fi
         
