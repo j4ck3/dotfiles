@@ -2,7 +2,9 @@
 #
 # Zen Browser Bootstrap Script
 # Run this on a fresh machine to set up everything automatically.
-# Prerequisites: Tailscale connected, Docker installed
+# Prerequisites: None (everything will be installed automatically)
+# Optional: Tailscale (will prompt to install/connect if needed)
+# Docker and yay will be installed automatically if not present
 #
 
 set -e
@@ -40,6 +42,15 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Docker command helper - uses sudo if needed
+docker_cmd() {
+    if docker info &> /dev/null; then
+        docker "$@"
+    else
+        sudo docker "$@"
+    fi
+}
 
 log_step() {
     echo ""
@@ -119,10 +130,38 @@ check_prerequisites() {
     
     # Check Docker
     if ! command -v docker &> /dev/null; then
-        log_error "Docker not installed. Install it first."
-        exit 1
+        log_info "Docker not installed"
+        echo ""
+        read -p "Install Docker? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            log_info "Installing Docker..."
+            sudo pacman -S --noconfirm docker docker-compose
+            
+            log_info "Enabling and starting Docker service..."
+            sudo systemctl enable --now docker
+            
+            log_info "Adding user to docker group..."
+            sudo usermod -aG docker "$USER"
+            
+            log_success "Docker installed and service started"
+            log_warn "You may need to log out and back in for docker group changes to take effect"
+            log_info "For now, using sudo for docker commands..."
+        else
+            log_error "Docker is required. Exiting."
+            exit 1
+        fi
+    else
+        log_success "Docker installed"
+        
+        # Check if Docker service is running
+        if ! systemctl is-active --quiet docker; then
+            log_info "Docker service not running, starting it..."
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            log_success "Docker service started"
+        fi
     fi
-    log_success "Docker installed"
     
     # Check yay/paru
     if command -v yay &> /dev/null; then
@@ -130,8 +169,43 @@ check_prerequisites() {
     elif command -v paru &> /dev/null; then
         log_success "paru installed"
     else
-        log_error "No AUR helper (yay/paru) found"
-        exit 1
+        log_info "No AUR helper (yay/paru) found"
+        echo ""
+        read -p "Install yay? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            log_info "Installing yay..."
+            
+            # Install base-devel and git if not already installed
+            if ! pacman -Q base-devel &> /dev/null; then
+                log_info "Installing base-devel group..."
+                sudo pacman -S --needed --noconfirm base-devel
+            fi
+            
+            if ! pacman -Q git &> /dev/null; then
+                log_info "Installing git..."
+                sudo pacman -S --needed --noconfirm git
+            fi
+            
+            # Clone and build yay
+            log_info "Cloning yay from AUR..."
+            cd /tmp
+            rm -rf yay
+            git clone https://aur.archlinux.org/yay.git
+            cd yay
+            makepkg -si --noconfirm
+            
+            # Verify installation
+            if command -v yay &> /dev/null; then
+                log_success "yay installed successfully"
+            else
+                log_error "yay installation failed"
+                exit 1
+            fi
+        else
+            log_error "AUR helper is required. Exiting."
+            exit 1
+        fi
     fi
 }
 
@@ -168,7 +242,7 @@ start_syncthing() {
     
     # Start Syncthing
     cd "$HOME/c/z-syncthing"
-    docker compose up -d
+    docker_cmd compose up -d
     
     log_success "Syncthing started"
     
@@ -178,7 +252,7 @@ start_syncthing() {
     
     # Get device ID
     local device_id
-    device_id=$(docker exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<device id=")[^"]+' | head -1) || true
+    device_id=$(docker_cmd exec syncthing cat /config/config.xml 2>/dev/null | grep -oP '(?<=<device id=")[^"]+' | head -1) || true
     
     echo ""
     echo -e "${GREEN}Syncthing is running!${NC}"

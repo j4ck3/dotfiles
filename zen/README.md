@@ -130,13 +130,17 @@ git clone https://github.com/j4ck3/dotfiles ~/dotfiles
 
 **For automated setup (bootstrap.sh):**
 
-1. **Tailscale** installed (will auto-connect if needed)
-2. **Docker** installed
-3. **yay or paru** (AUR helper) installed
-4. Both machines on the same Tailscale network
+**No prerequisites needed!** The bootstrap script will automatically install:
+
+- **yay** (AUR helper) - if not already installed
+- **Docker** - if not already installed
+- **Tailscale** - optional, will prompt to install/connect if needed
 
 **The bootstrap script handles:**
 
+- yay installation (from AUR)
+- Docker installation and service setup
+- Tailscale installation and connection (optional)
 - Syncthing installation (via Docker Compose)
 - Syncthing configuration (API-based, fully automated)
 - Folder sharing setup

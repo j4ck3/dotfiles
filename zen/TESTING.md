@@ -17,16 +17,19 @@
    # Install base system, network, etc.
    ```
 
-3. **Install prerequisites:**
+3. **Install prerequisites (optional):**
+   
+   **Note:** The bootstrap script will automatically install yay, Docker, and optionally Tailscale if they're not present. You can skip this step to test the full automated installation, or install them manually if you prefer:
+   
    ```bash
-   # Install Tailscale
+   # Install Tailscale (optional - script will prompt)
    curl -fsSL https://tailscale.com/install.sh | sh
    
-   # Install Docker
+   # Install Docker (optional - script will install automatically)
    pacman -S docker
    systemctl enable --now docker
    
-   # Install yay
+   # Install yay (optional - script will install automatically)
    git clone https://aur.archlinux.org/yay.git
    cd yay && makepkg -si
    ```
