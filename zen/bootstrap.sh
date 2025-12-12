@@ -571,27 +571,35 @@ EOF
     done
     
     # Get this device's ID for sharing with homeserver
+    # Device ID is in /rest/system/status, not /rest/config
     local this_device_id
-    # Use the config we already fetched, or fetch again if needed
-    if [[ -n "$config" ]]; then
-        this_device_id=$(echo "$config" | grep -oP '(?<="myID":")[^"]+' | head -1)
+    log_info "Getting this device's ID..."
+    local status_response
+    status_response=$(curl -s -w "\n%{http_code}" -H "$auth_header" "$api_url/system/status" 2>&1)
+    local status_http_code
+    status_http_code=$(echo "$status_response" | tail -1)
+    local status_body
+    status_body=$(echo "$status_response" | sed '$d')
+    
+    if [[ "$status_http_code" == "200" ]] && [[ -n "$status_body" ]]; then
+        # Try multiple methods to extract device ID
+        this_device_id=$(echo "$status_body" | grep -oP '(?<="myID":")[^"]+' | head -1)
+        if [[ -z "$this_device_id" ]]; then
+            this_device_id=$(echo "$status_body" | grep -oP '(?<="myID" : ")[^"]+' | head -1)
+        fi
+        if [[ -z "$this_device_id" ]] && command -v jq &> /dev/null; then
+            this_device_id=$(echo "$status_body" | jq -r '.myID' 2>/dev/null)
+        fi
+        if [[ -z "$this_device_id" ]] && command -v python3 &> /dev/null; then
+            this_device_id=$(echo "$status_body" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('myID', ''))" 2>/dev/null)
+        fi
     fi
     
     if [[ -z "$this_device_id" ]]; then
-        # Try fetching again
-        log_info "Fetching config again to get device ID..."
-        local config_for_id
-        config_for_id=$(curl -s -H "$auth_header" "$api_url/config" 2>&1)
-        if [[ -n "$config_for_id" ]]; then
-            this_device_id=$(echo "$config_for_id" | grep -oP '(?<="myID":")[^"]+' | head -1)
-            # Also try alternative pattern
-            if [[ -z "$this_device_id" ]]; then
-                this_device_id=$(echo "$config_for_id" | grep -oP '(?<="myID" : ")[^"]+' | head -1)
-            fi
-            # Try with jq if available
-            if [[ -z "$this_device_id" ]] && command -v jq &> /dev/null; then
-                this_device_id=$(echo "$config_for_id" | jq -r '.myID' 2>/dev/null)
-            fi
+        log_warn "Could not get device ID from /rest/system/status, trying config endpoint..."
+        # Fallback: try config endpoint (though it usually doesn't have myID)
+        if [[ -n "$config" ]]; then
+            this_device_id=$(echo "$config" | grep -oP '(?<="myID":")[^"]+' | head -1)
         fi
     fi
     
