@@ -27,7 +27,7 @@ user_pref("browser.preferences.experimental.hidden", true);
 user_pref("browser.proton.toolbar.version", 3);
 user_pref("browser.region.update.updated", 1765227075);
 user_pref("browser.rights.3.shown", true);
-user_pref("browser.search.defaultenginename", "Startpage - English");
+user_pref("browser.search.defaultenginename", "Startpage");
 user_pref("browser.search.region", "SE");
 user_pref("browser.search.serpEventTelemetryCategorization.regionEnabled", false);
 user_pref("browser.search.totalSearches", 100);
@@ -133,3 +133,9 @@ user_pref("zen.urlbar.suggestions-learner", "{\"zen:extension-sponsorBlocker@aja
 user_pref("zen.view.compact.enable-at-startup", false);
 user_pref("zen.view.use-single-toolbar", false);
 user_pref("zen.welcome-screen.seen", true);
+user_pref("browser.startup.homepage", "about:blank");
+user_pref("browser.startup.page", 0);
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("browser.startup.firstrunSkipsHomepage", true);
+user_pref("browser.aboutwelcome.enabled", false);

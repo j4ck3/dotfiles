@@ -1,12 +1,11 @@
 {
     "policies": {
         "SearchEngines": {
-            "Default": "Startpage - English",
+            "Default": "Startpage",
             "Add": [
                 {
-                    "Name": "Startpage - English",
-                    "URL": "https://www.startpage.com/sp/search?query={searchTerms}",
-                    "Method": "GET"
+                    "Name": "Startpage",
+                    "URLTemplate": "https://www.startpage.com/do/search?query={searchTerms}"
                 }
             ]
         },
