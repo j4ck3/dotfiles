@@ -1767,41 +1767,58 @@ wait_for_sync() {
     fi
     echo ""
     
-    # Find folder ID - prefer the actual folder ID from homeserver if available
+    # Find folder ID - prioritize finding folder with homeserver device in device list
     local folder_id
-    if [[ -n "$ACTUAL_FOLDER_ID" ]]; then
-        # Use the folder ID we got from homeserver
-        folder_id="$ACTUAL_FOLDER_ID"
-        log_info "Using folder ID from homeserver: $folder_id"
-        
-        # Verify it exists in config
-        if [[ -n "$config" ]] && ! echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=[f['id'] for f in c.get('folders', [])]; sys.exit(0 if '$folder_id' in folders else 1)" 2>/dev/null; then
-            log_warn "Folder ID $folder_id not found in config, searching by label instead..."
-            folder_id=""  # Will search by label below
-        fi
-    fi
-    
-    # If we don't have the actual folder ID, search by label or find folder with homeserver device
-    if [[ -z "$folder_id" ]] && [[ -n "$config" ]]; then
+    if [[ -n "$config" ]]; then
         # First, try to find folder that has the homeserver device in its device list
-        folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if '$HOMESERVER_DEVICE_ID' in [d.get('deviceID') for d in f.get('devices', [])] and f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+        # This is the most reliable way to find the correct folder
+        folder_id=$(echo "$config" | python3 -c "
+import sys, json
+c = json.load(sys.stdin)
+homeserver_id = '$HOMESERVER_DEVICE_ID'
+for f in c.get('folders', []):
+    devices = [d.get('deviceID') for d in f.get('devices', [])]
+    if homeserver_id in devices:
+        print(f['id'])
+        break
+" 2>/dev/null | head -1 | tr -d '\n\r') || true
         
-        # Fallback to searching by label only
-        if [[ -z "$folder_id" ]]; then
-            folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
-        fi
-        
-        # Fallback to grep if Python fails
-        if [[ -z "$folder_id" ]]; then
-            folder_id=$(echo "$config" | grep -B 5 '"label":"zen-private"' | grep -oP '(?<="id":")[^"]+' | head -1 | tr -d '\n\r') || true
-        fi
-        
-        if [[ -z "$folder_id" ]]; then
-            log_warn "Could not find zen-private folder ID, checking by file existence only"
-            log_info "Available folders:"
-            echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')}) - Devices: {[d.get('deviceID', '')[:7] for d in f.get('devices', [])]}\") for f in c.get('folders', [])]" 2>/dev/null || true
+        if [[ -n "$folder_id" ]]; then
+            log_info "Found folder with homeserver device: $folder_id"
         else
-            log_info "Found zen-private folder ID: $folder_id"
+            # Fallback: use the actual folder ID from homeserver if available
+            if [[ -n "$ACTUAL_FOLDER_ID" ]]; then
+                folder_id="$ACTUAL_FOLDER_ID"
+                log_info "Using folder ID from homeserver: $folder_id"
+                
+                # Verify it exists in config
+                if ! echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=[f['id'] for f in c.get('folders', [])]; sys.exit(0 if '$folder_id' in folders else 1)" 2>/dev/null; then
+                    log_warn "Folder ID $folder_id not found in config, searching by label..."
+                    folder_id=""  # Will search by label below
+                fi
+            fi
+            
+            # Last resort: search by label
+            if [[ -z "$folder_id" ]]; then
+                folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+                
+                if [[ -n "$folder_id" ]]; then
+                    log_warn "Found folder by label 'zen-private' (ID: $folder_id) - may not be the correct folder"
+                    log_info "Verifying this folder has homeserver device..."
+                    # Check if this folder has the homeserver device
+                    local has_homeserver
+                    has_homeserver=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); f=[f for f in c.get('folders', []) if f.get('id') == '$folder_id'][0] if '$folder_id' else {}; devices=[d.get('deviceID') for d in f.get('devices', [])]; print('yes' if '$HOMESERVER_DEVICE_ID' in devices else 'no')" 2>/dev/null) || has_homeserver="no"
+                    if [[ "$has_homeserver" != "yes" ]]; then
+                        log_warn "Folder $folder_id does NOT have homeserver device - this may be wrong folder"
+                    fi
+                fi
+            fi
+            
+            if [[ -z "$folder_id" ]]; then
+                log_warn "Could not find zen-private folder ID, checking by file existence only"
+                log_info "Available folders:"
+                echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')}) - Devices: {[d.get('deviceID', '')[:7] for d in f.get('devices', [])]}\") for f in c.get('folders', [])]" 2>/dev/null || true
+            fi
         fi
     elif [[ -z "$config" ]]; then
         log_warn "Could not retrieve config from API - folder ID lookup skipped"
