@@ -961,12 +961,14 @@ accept_pending_folders() {
     local pending_folders
     pending_folders=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); folders=p.get('folders', []); [print(f\"{f['id']}|{f.get('label', '')}\") for f in folders]" 2>/dev/null) || true
     
-    if [[ -n "$pending_folders" ]]; then
+    if [[ -z "$pending_folders" ]] || [[ "$pending_folders" == "" ]]; then
+        log_debug "No pending folders found in API response"
+    else
+        log_info "Found pending folder(s), attempting to accept..."
         echo "$pending_folders" | while IFS='|' read -r folder_id folder_label; do
-            if [[ -n "$folder_id" ]]; then
+            if [[ -n "$folder_id" ]] && [[ "$folder_id" != "" ]]; then
                 # Accept any pending folder (the label might be empty or different)
-                # We'll accept it and let Syncthing handle it
-                log_info "Found pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
+                log_info "Attempting to accept pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
                 
                 # Accept the folder
                 local accept_response
@@ -981,11 +983,11 @@ accept_pending_folders() {
                 response_body=$(echo "$accept_response" | head -n -1)
                 
                 if [[ "$accept_http_code" -ge 200 && "$accept_http_code" -lt 300 ]]; then
-                    log_success "Accepted pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
+                    log_success "✅ Accepted pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
                 else
-                    log_warn "Failed to accept folder ${folder_label:-unnamed} (HTTP $accept_http_code)"
-                    if [[ -n "$response_body" ]]; then
-                        log_debug "Response: $response_body"
+                    log_warn "❌ Failed to accept folder ${folder_label:-unnamed} (HTTP $accept_http_code)"
+                    if [[ -n "$response_body" ]] && [[ "$response_body" != "null" ]] && [[ "$response_body" != "" ]]; then
+                        log_info "API response: $response_body"
                     fi
                 fi
             fi
