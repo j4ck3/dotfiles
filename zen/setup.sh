@@ -20,7 +20,19 @@ DOTFILES_ZEN_DIR="$HOME/dotfiles/zen"
 CONFIG_DIR="$DOTFILES_ZEN_DIR/config"
 ZEN_DIR="$HOME/.zen"
 # Detect actual Syncthing volume mount path
-PRIVATE_DIR="${SYNC_HOST_PATH:-$HOME/Sync/zen-private}"  # Syncthing-synced private storage
+# Try to get from environment (set by bootstrap.sh) or detect it
+if [[ -z "$SYNC_HOST_PATH" ]]; then
+    # Try to detect from docker inspect
+    if command -v docker &> /dev/null && docker ps | grep -q syncthing; then
+        SYNC_HOST_PATH=$(docker inspect syncthing --format '{{range .Mounts}}{{if eq .Destination "/syncthing"}}{{.Source}}{{end}}{{end}}' 2>/dev/null | head -1)
+        if [[ -n "$SYNC_HOST_PATH" ]]; then
+            SYNC_HOST_PATH="${SYNC_HOST_PATH}/zen-private"
+        fi
+    fi
+    # Fallback to default
+    SYNC_HOST_PATH="${SYNC_HOST_PATH:-$HOME/Sync/zen-private}"
+fi
+PRIVATE_DIR="$SYNC_HOST_PATH"  # Syncthing-synced private storage
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
