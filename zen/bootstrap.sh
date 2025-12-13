@@ -784,8 +784,11 @@ EOF
                 
                 # Directly add the folder from homeserver to our config
                 log_info "Attempting to directly add shared folder from homeserver..."
-                if add_folder_from_homeserver "$api_url" "$auth_header"; then
-                    log_success "Folder added directly from homeserver"
+                local actual_folder_id
+                actual_folder_id=$(add_folder_from_homeserver "$api_url" "$auth_header")
+                if [[ -n "$actual_folder_id" ]]; then
+                    log_success "Folder added directly from homeserver (ID: $actual_folder_id)"
+                    export ACTUAL_FOLDER_ID="$actual_folder_id"
                 else
                     # Fallback: accept pending folders
                     log_info "Falling back to accepting pending folders..."
@@ -942,6 +945,7 @@ verify_homeserver_config() {
 }
 
 # Directly add folder from homeserver by getting its config and adding it
+# Returns the folder ID via echo (for calling scripts to capture)
 add_folder_from_homeserver() {
     local api_url="$1"
     local auth_header="$2"
@@ -1015,6 +1019,9 @@ add_folder_from_homeserver() {
     
     log_info "Found zen-private folder on homeserver (ID: $folder_id)"
     
+    # Store folder ID for later use (export for wait_for_sync to use)
+    export ACTUAL_FOLDER_ID="$folder_id"
+    
     # Check if folder already exists on new PC
     local local_config
     local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
@@ -1052,6 +1059,8 @@ add_folder_from_homeserver() {
         ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
         
         log_success "✅ Folder is properly configured and ready to sync"
+        # Return the folder ID
+        echo "$folder_id"
         return 0
     fi
     
@@ -1095,6 +1104,8 @@ EOF
                     # Verify folder type is receiveonly
                     sleep 1
                     ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
+                    # Return the folder ID
+                    echo "$folder_id"
                     return 0
                 elif [[ "$add_http_code" -eq 400 || "$add_http_code" -eq 409 ]]; then
                     # Might already exist or conflict - verify it's receiveonly
@@ -1756,10 +1767,29 @@ wait_for_sync() {
     fi
     echo ""
     
-    # Find folder ID by label (do this once before the loop)
+    # Find folder ID - prefer the actual folder ID from homeserver if available
     local folder_id
-    if [[ -n "$config" ]]; then
-        folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+    if [[ -n "$ACTUAL_FOLDER_ID" ]]; then
+        # Use the folder ID we got from homeserver
+        folder_id="$ACTUAL_FOLDER_ID"
+        log_info "Using folder ID from homeserver: $folder_id"
+        
+        # Verify it exists in config
+        if [[ -n "$config" ]] && ! echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=[f['id'] for f in c.get('folders', [])]; sys.exit(0 if '$folder_id' in folders else 1)" 2>/dev/null; then
+            log_warn "Folder ID $folder_id not found in config, searching by label instead..."
+            folder_id=""  # Will search by label below
+        fi
+    fi
+    
+    # If we don't have the actual folder ID, search by label or find folder with homeserver device
+    if [[ -z "$folder_id" ]] && [[ -n "$config" ]]; then
+        # First, try to find folder that has the homeserver device in its device list
+        folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if '$HOMESERVER_DEVICE_ID' in [d.get('deviceID') for d in f.get('devices', [])] and f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+        
+        # Fallback to searching by label only
+        if [[ -z "$folder_id" ]]; then
+            folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1 | tr -d '\n\r') || true
+        fi
         
         # Fallback to grep if Python fails
         if [[ -z "$folder_id" ]]; then
@@ -1769,11 +1799,11 @@ wait_for_sync() {
         if [[ -z "$folder_id" ]]; then
             log_warn "Could not find zen-private folder ID, checking by file existence only"
             log_info "Available folders:"
-            echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')})\") for f in c.get('folders', [])]" 2>/dev/null || true
+            echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); [print(f\"  - {f.get('label', 'N/A')} (ID: {f.get('id', 'N/A')}) - Devices: {[d.get('deviceID', '')[:7] for d in f.get('devices', [])]}\") for f in c.get('folders', [])]" 2>/dev/null || true
         else
             log_info "Found zen-private folder ID: $folder_id"
         fi
-    else
+    elif [[ -z "$config" ]]; then
         log_warn "Could not retrieve config from API - folder ID lookup skipped"
         log_info "Will check sync status by file existence only"
     fi
