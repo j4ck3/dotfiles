@@ -769,14 +769,20 @@ EOF
                 
                 # Wait a moment for Syncthing to process the folder share
                 log_info "Waiting for folder share to be processed..."
-                sleep 3
+                sleep 5
                 
-                # Accept pending folders/devices (folder should be pending now)
-                log_info "Checking for and accepting pending folders from homeserver..."
-                accept_pending_folders "$api_url" "$auth_header"
+                # Directly add the folder from homeserver to our config
+                log_info "Attempting to directly add shared folder from homeserver..."
+                if add_folder_from_homeserver "$api_url" "$auth_header"; then
+                    log_success "Folder added directly from homeserver"
+                else
+                    # Fallback: accept pending folders
+                    log_info "Falling back to accepting pending folders..."
+                    accept_pending_folders "$api_url" "$auth_header"
+                fi
                 
                 # Wait a bit more for acceptance to be processed
-                sleep 2
+                sleep 3
                 
                 # Verify configuration
                 log_info "Verifying homeserver configuration..."
