@@ -80,15 +80,50 @@ get_host_path_for_container_path() {
     local container_path="$1"
     
     # Try to get from docker inspect (most reliable)
+    # Get all mounts and find the one that matches the base path
     local mount_info
-    mount_info=$(docker_cmd inspect syncthing --format '{{range .Mounts}}{{.Destination}} {{.Source}}{{println}}{{end}}' 2>/dev/null | grep "^${container_path} " | head -1) || true
+    mount_info=$(docker_cmd inspect syncthing --format '{{range .Mounts}}{{.Destination}} {{.Source}}{{println}}{{end}}' 2>/dev/null) || true
     
     if [[ -n "$mount_info" ]]; then
-        local host_path
-        host_path=$(echo "$mount_info" | awk '{print $2}')
-        if [[ -n "$host_path" ]] && [[ -d "$host_path" ]]; then
-            echo "$host_path"
+        # Find the mount that matches the base directory of container_path
+        # e.g., for /syncthing/zen-private, find the /syncthing mount
+        local base_path="${container_path%%/*}"  # Get first component (/syncthing)
+        if [[ "$base_path" == "" ]]; then
+            base_path="/"
+        fi
+        
+        # Try to find exact match first
+        local exact_match
+        exact_match=$(echo "$mount_info" | grep "^${container_path} " | head -1 | awk '{print $2}') || true
+        
+        if [[ -n "$exact_match" ]] && [[ -d "$exact_match" ]]; then
+            echo "$exact_match"
             return 0
+        fi
+        
+        # Find base mount (e.g., /syncthing -> /home/jacke/Sync)
+        local base_mount
+        base_mount=$(echo "$mount_info" | grep "^${base_path} " | head -1) || true
+        
+        if [[ -n "$base_mount" ]]; then
+            local host_base
+            host_base=$(echo "$base_mount" | awk '{print $2}')
+            if [[ -n "$host_base" ]]; then
+                # Append the subdirectory path
+                local subdir
+                subdir=$(echo "$container_path" | sed "s|^${base_path}||" || echo "")
+                # Remove leading slash if host_base doesn't end with one
+                if [[ "$subdir" =~ ^/ ]] && [[ ! "$host_base" =~ /$ ]]; then
+                    subdir="${subdir#/}"
+                fi
+                local host_path="${host_base}/${subdir}"
+                # Clean up double slashes
+                host_path=$(echo "$host_path" | sed 's|//|/|g')
+                if [[ -d "$host_base" ]]; then
+                    echo "$host_path"
+                    return 0
+                fi
+            fi
         fi
     fi
     
@@ -100,11 +135,15 @@ get_host_path_for_container_path() {
         volume_line=$(grep -E "^\s*-\s*/.*:/syncthing" "$compose_file" | head -1 | sed 's/.*-\s*\([^:]*\):.*/\1/' | tr -d '"' | tr -d "'" || true)
         if [[ -n "$volume_line" ]] && [[ -d "$volume_line" ]]; then
             # Replace /syncthing with the subdirectory
-            local host_base
-            host_base=$(echo "$volume_line" | sed 's|/syncthing.*||' || echo "$volume_line")
             local subdir
             subdir=$(echo "$container_path" | sed 's|^/syncthing||' || echo "")
-            echo "${host_base}${subdir}"
+            # Handle subdir properly
+            if [[ "$subdir" =~ ^/ ]]; then
+                subdir="${subdir#/}"
+            fi
+            local host_path="${volume_line}/${subdir}"
+            host_path=$(echo "$host_path" | sed 's|//|/|g')
+            echo "$host_path"
             return 0
         fi
     fi
