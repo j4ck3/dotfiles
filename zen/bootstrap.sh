@@ -1844,6 +1844,17 @@ wait_for_sync() {
         local global_bytes=0
         local local_bytes=0
         
+        # Check if status response indicates an error
+        if [[ -n "$status" ]] && echo "$status" | grep -q '"error"'; then
+            local error_msg
+            error_msg=$(echo "$status" | python3 -c "import sys, json; s=json.load(sys.stdin); print(s.get('error', 'Unknown error'))" 2>/dev/null) || error_msg="Unknown error"
+            if [[ $attempts -eq 0 ]] || [[ $attempts -eq 5 ]]; then
+                log_warn "Folder status API returned error: $error_msg"
+                log_info "This might mean the folder needs to be properly configured or the path is wrong"
+            fi
+            status=""  # Treat as no status
+        fi
+        
         if [[ -n "$status" ]]; then
             # Extract state, allow grep to fail
             state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1 || echo "unknown")
