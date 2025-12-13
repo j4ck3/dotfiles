@@ -60,6 +60,7 @@ log_info() { echo -e "${BLUE}[INFO]${NC} $1" >&2; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1" >&2; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+log_debug() { echo -e "${CYAN}[DEBUG]${NC} $1" >&2; }  # Debug messages (can be verbose)
 
 # Docker command helper - uses sudo if needed
 docker_cmd() {
@@ -910,7 +911,7 @@ accept_pending_folders() {
     pending=$(curl -s -H "$auth_header" "$api_url/system/pending" 2>&1) || true
     
     # Debug: check what we got
-    if [[ -z "$pending" ]]; then
+    if [[ -z "$pending" ]] || [[ "$pending" == "" ]]; then
         log_debug "No pending items found (empty response)"
         return 0  # No pending items (not critical)
     fi
@@ -920,11 +921,13 @@ accept_pending_folders() {
         return 0  # API error (not critical)
     fi
     
-    # Debug: show pending counts
+    # Debug: show pending counts (helpful for troubleshooting)
     local pending_info
     pending_info=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); d=len(p.get('devices', [])); f=len(p.get('folders', [])); print(f'{d} device(s), {f} folder(s)')" 2>/dev/null) || true
-    if [[ -n "$pending_info" ]]; then
+    if [[ -n "$pending_info" ]] && [[ "$pending_info" != "" ]]; then
         log_info "Found pending items: $pending_info"
+    else
+        log_debug "No pending items detected in response"
     fi
     
     # Check for pending devices first (need to accept device before folder)
