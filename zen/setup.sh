@@ -19,7 +19,8 @@ NC='\033[0m' # No Color
 DOTFILES_ZEN_DIR="$HOME/dotfiles/zen"
 CONFIG_DIR="$DOTFILES_ZEN_DIR/config"
 ZEN_DIR="$HOME/.zen"
-PRIVATE_DIR="$HOME/Sync/zen-private"  # Syncthing-synced private storage
+# Detect actual Syncthing volume mount path
+PRIVATE_DIR="${SYNC_HOST_PATH:-$HOME/Sync/zen-private}"  # Syncthing-synced private storage
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"

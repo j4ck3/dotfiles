@@ -56,6 +56,9 @@ SYNC_FOLDERS=(
     "zen-private:/syncthing/zen-private"
 )
 
+# Actual host path for zen-private (detected at runtime)
+SYNC_HOST_PATH=""
+
 log_info() { echo -e "${BLUE}[INFO]${NC} $1" >&2; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1" >&2; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
@@ -69,6 +72,45 @@ docker_cmd() {
     else
         sudo docker "$@"
     fi
+}
+
+# Get the actual host path for a container path
+# Returns the host path where the container path is mounted
+get_host_path_for_container_path() {
+    local container_path="$1"
+    
+    # Try to get from docker inspect (most reliable)
+    local mount_info
+    mount_info=$(docker_cmd inspect syncthing --format '{{range .Mounts}}{{.Destination}} {{.Source}}{{println}}{{end}}' 2>/dev/null | grep "^${container_path} " | head -1) || true
+    
+    if [[ -n "$mount_info" ]]; then
+        local host_path
+        host_path=$(echo "$mount_info" | awk '{print $2}')
+        if [[ -n "$host_path" ]] && [[ -d "$host_path" ]]; then
+            echo "$host_path"
+            return 0
+        fi
+    fi
+    
+    # Fallback: try to parse docker-compose.yml
+    local compose_file="$HOME/c/z-syncthing/docker-compose.yml"
+    if [[ -f "$compose_file" ]]; then
+        # Extract the volume mount for /syncthing
+        local volume_line
+        volume_line=$(grep -E "^\s*-\s*/.*:/syncthing" "$compose_file" | head -1 | sed 's/.*-\s*\([^:]*\):.*/\1/' | tr -d '"' | tr -d "'" || true)
+        if [[ -n "$volume_line" ]] && [[ -d "$volume_line" ]]; then
+            # Replace /syncthing with the subdirectory
+            local host_base
+            host_base=$(echo "$volume_line" | sed 's|/syncthing.*||' || echo "$volume_line")
+            local subdir
+            subdir=$(echo "$container_path" | sed 's|^/syncthing||' || echo "")
+            echo "${host_base}${subdir}"
+            return 0
+        fi
+    fi
+    
+    # Last resort: return the default expected path
+    echo "$HOME/Sync/zen-private"
 }
 
 log_step() {
@@ -274,7 +316,11 @@ start_syncthing() {
     
     # Create directories
     mkdir -p ~/appdata/syncthing/config
-    mkdir -p ~/Sync/zen-private
+    
+    # Detect actual host path for syncthing volume (will be updated after container starts)
+    SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    log_info "Detected Syncthing volume mount path: $SYNC_HOST_PATH"
+    mkdir -p "$SYNC_HOST_PATH"
     
     # Check if Syncthing container is already running
     if docker_cmd ps | grep -q syncthing; then
@@ -574,10 +620,12 @@ EOF
         log_info "Ensuring folder directory exists inside container: $folder_path"
         
         # Also ensure the host directory exists (in case it's a volume mount)
-        # Map container path to host path: /syncthing/zen-private -> ~/Sync/zen-private
+        # Detect actual volume mount path from docker-compose.yml or docker inspect
         local host_path
         if [[ "$folder_path" == "/syncthing/zen-private" ]]; then
-            host_path="$HOME/Sync/zen-private"
+            host_path=$(get_host_path_for_container_path "/syncthing/zen-private")
+            SYNC_HOST_PATH="$host_path"  # Store for later use
+            log_info "Detected host path for $folder_path: $host_path"
             log_info "Ensuring host directory exists: $host_path"
             mkdir -p "$host_path"
             chmod 755 "$host_path" 2>/dev/null || true
@@ -1088,7 +1136,11 @@ add_folder_from_homeserver() {
     # Add folder to new PC config using the same ID and path from homeserver
     log_info "Adding folder directly to new PC config..."
     
-    local folder_path="$HOME/Sync/zen-private"
+    # Get the actual host path if not set
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    local folder_path="$SYNC_HOST_PATH"
     mkdir -p "$folder_path" 2>/dev/null || true
     chmod 755 "$folder_path" 2>/dev/null || true
     
@@ -1672,8 +1724,13 @@ configure_homeserver_via_ssh() {
 wait_for_sync() {
     log_step "Step 5: Waiting for Syncthing to sync"
     
+    # Get the actual host path if not set
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    
     # Check if already synced
-    if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+    if [[ -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
         log_success "zen-private folder already synced (uuid-mapping.json exists)"
         return 0
     fi
@@ -1705,8 +1762,13 @@ wait_for_sync() {
     # First, check if folder exists in config (by label or by checking if files exist)
     log_info "Checking if zen-private folder is configured..."
     
+    # Get the actual host path if not set
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    
     # Check if the sync directory and uuid-mapping.json exist (most reliable)
-    if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+    if [[ -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
         log_success "zen-private folder is synced (uuid-mapping.json exists)"
         return 0
     fi
@@ -1722,7 +1784,10 @@ wait_for_sync() {
     fi
     
     # Also check if folder directory exists
-    if [[ -d "$HOME/Sync/zen-private" ]]; then
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    if [[ -d "$SYNC_HOST_PATH" ]]; then
         folder_found=true
     fi
     
@@ -1928,10 +1993,10 @@ for f in c.get('folders', []):
         if [[ "$attempts" -eq 0 ]] || [[ "$attempts" -eq 10 ]] || [[ "$((attempts % 20))" -eq 0 ]] || [[ "$state" != "$last_state" ]]; then
             echo ""
             log_info "Status: $state$progress (attempt $attempts/$max_attempts)"
-            if [[ -d "$HOME/Sync/zen-private" ]]; then
+            if [[ -n "$SYNC_HOST_PATH" ]] && [[ -d "$SYNC_HOST_PATH" ]]; then
                 local file_count
-                file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
-                log_info "Files in local folder: $file_count"
+                file_count=$(find "$SYNC_HOST_PATH" -type f 2>/dev/null | wc -l || echo "0")
+                log_info "Files in local folder ($SYNC_HOST_PATH): $file_count"
             fi
             last_state="$state"
         fi
@@ -1939,14 +2004,19 @@ for f in c.get('folders', []):
         # Check if sync is complete (REQUIRE ACTUAL FILES, not just bytes)
         local sync_complete=false
         
+        # Get the actual host path (detect if not already set)
+        if [[ -z "$SYNC_HOST_PATH" ]]; then
+            SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+        fi
+        
         # Always check for actual files in the folder (most reliable indicator)
         local actual_file_count=0
-        if [[ -d "$HOME/Sync/zen-private" ]]; then
-            actual_file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
+        if [[ -n "$SYNC_HOST_PATH" ]] && [[ -d "$SYNC_HOST_PATH" ]]; then
+            actual_file_count=$(find "$SYNC_HOST_PATH" -type f 2>/dev/null | wc -l || echo "0")
         fi
         
         # Condition 1: uuid-mapping.json exists (primary indicator - this file MUST exist)
-        if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+        if [[ -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
             sync_complete=true
             log_info "Found uuid-mapping.json - sync complete!"
         # Condition 2: State is idle AND no items needed AND we have actual files
@@ -1963,7 +2033,7 @@ for f in c.get('folders', []):
                 fi
             elif [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]] && [[ "$actual_file_count" -eq 0 ]]; then
                 # Bytes match but NO FILES - this is wrong! Files might be in wrong location
-                log_warn "Bytes match but no files found in ~/Sync/zen-private/"
+                log_warn "Bytes match but no files found in $SYNC_HOST_PATH"
                 log_warn "This might indicate a folder path mismatch - checking container path..."
                 
                 # Check if files are in the container path instead
@@ -1972,8 +2042,9 @@ for f in c.get('folders', []):
                     container_file_count=$(docker_cmd exec syncthing find /syncthing/zen-private -type f 2>/dev/null | wc -l || echo "0")
                     if [[ "$container_file_count" -gt 0 ]]; then
                         log_warn "Found $container_file_count files in container path /syncthing/zen-private"
-                        log_warn "But 0 files in host path ~/Sync/zen-private"
+                        log_warn "But 0 files in host path $SYNC_HOST_PATH"
                         log_warn "This suggests a volume mount issue - files are syncing to container but not mounted to host"
+                        log_info "Try checking the actual mount path: docker inspect syncthing | grep -A 5 Mounts"
                     fi
                 fi
             fi
@@ -1987,8 +2058,8 @@ for f in c.get('folders', []):
         
         # If state is idle but sync not complete, check what's missing
         if [[ "$state" == "idle" ]] && [[ "$need_items" -eq 0 ]]; then
-            if [[ ! -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
-                log_info "State is 'idle' but uuid-mapping.json not found"
+            if [[ ! -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
+                log_info "State is 'idle' but uuid-mapping.json not found at $SYNC_HOST_PATH"
                 log_info "Global: ${global_bytes} bytes, Local: ${local_bytes} bytes"
                 log_info "Files may still be syncing or folder might be empty on homeserver"
             fi
@@ -2006,7 +2077,12 @@ for f in c.get('folders', []):
     echo ""
     log_warn "Sync timeout or incomplete"
     
-    if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+    # Get the actual host path if not set
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    
+    if [[ -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
         log_success "But uuid-mapping.json exists, continuing..."
     else
         log_warn "uuid-mapping.json not found after waiting"
@@ -2014,8 +2090,9 @@ for f in c.get('folders', []):
         echo "Troubleshooting steps:"
         echo ""
         echo "1. Check if files are actually syncing:"
-        echo "   ls -la ~/Sync/zen-private/"
-        echo "   find ~/Sync/zen-private -type f | wc -l"
+        echo "   ls -la $SYNC_HOST_PATH/"
+        echo "   find $SYNC_HOST_PATH -type f | wc -l"
+        echo "   (Expected path: $SYNC_HOST_PATH)"
         echo ""
         echo "2. Check Syncthing UI on this machine: http://localhost:8384"
         echo "   - Look at the 'zen-private' folder status"
@@ -2059,7 +2136,12 @@ run_setup() {
     log_step "Step 6: Running Zen Browser setup"
     
     # Check if Zen Browser is already installed and configured
-    if command -v zen &> /dev/null && [[ -d "$HOME/.zen" ]] && [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+    # Get the actual host path if not set
+    if [[ -z "$SYNC_HOST_PATH" ]]; then
+        SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+    fi
+    
+    if command -v zen &> /dev/null && [[ -d "$HOME/.zen" ]] && [[ -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
         log_info "Zen Browser appears to be already installed and configured"
         echo ""
         read -t 5 -p "Run setup anyway? [y/N] " -n 1 -r || REPLY="n"
@@ -2106,7 +2188,10 @@ main() {
     # wait_for_sync can fail but we might want to continue anyway
     if ! wait_for_sync; then
         log_warn "Sync check failed or incomplete, but continuing..."
-        if [[ ! -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+        if [[ -z "$SYNC_HOST_PATH" ]]; then
+            SYNC_HOST_PATH=$(get_host_path_for_container_path "/syncthing/zen-private")
+        fi
+        if [[ ! -f "$SYNC_HOST_PATH/uuid-mapping.json" ]]; then
             log_warn "uuid-mapping.json not found - setup may not work correctly"
             log_info "You may need to wait for sync to complete and run setup.sh manually"
         fi
