@@ -1027,9 +1027,25 @@ add_folder_from_homeserver() {
     # Store folder ID for later use (export for wait_for_sync to use)
     export ACTUAL_FOLDER_ID="$folder_id"
     
-    # Check if folder already exists on new PC
+    # Check if folder already exists on new PC (by ID or by label)
     local local_config
     local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
+    
+    # Also check if any folder with label "zen-private" exists (to prevent duplicates)
+    local all_folders
+    all_folders=$(curl -s -H "$auth_header" "$api_url/config/folders" 2>/dev/null) || true
+    local existing_zen_private_id
+    if [[ -n "$all_folders" ]] && ! echo "$all_folders" | grep -q '"error"'; then
+        existing_zen_private_id=$(echo "$all_folders" | python3 -c "import sys, json; folders=json.load(sys.stdin); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1) || true
+    fi
+    
+    # If we found an existing zen-private folder with a different ID, use that instead
+    if [[ -n "$existing_zen_private_id" ]] && [[ "$existing_zen_private_id" != "$folder_id" ]]; then
+        log_info "Found existing zen-private folder with different ID: $existing_zen_private_id"
+        log_info "Using existing folder instead of creating duplicate"
+        folder_id="$existing_zen_private_id"
+        local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
+    fi
     
     if [[ -n "$local_config" ]] && ! echo "$local_config" | grep -q '"error"'; then
         log_info "Folder already exists on new PC (ID: $folder_id) - verifying configuration..."
