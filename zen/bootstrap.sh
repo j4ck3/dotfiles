@@ -1876,13 +1876,21 @@ for f in c.get('folders', []):
         fi
         
         if [[ -n "$status" ]]; then
-            # Extract state, allow grep to fail
-            state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1 || echo "unknown")
+            # Extract state and progress info using Python for reliable JSON parsing
+            state=$(echo "$status" | python3 -c "import sys, json; s=json.load(sys.stdin); print(s.get('state', 'unknown'))" 2>/dev/null || echo "unknown")
+            need_items=$(echo "$status" | python3 -c "import sys, json; s=json.load(sys.stdin); print(s.get('needItems', 0))" 2>/dev/null || echo "0")
+            global_bytes=$(echo "$status" | python3 -c "import sys, json; s=json.load(sys.stdin); print(s.get('globalBytes', 0))" 2>/dev/null || echo "0")
+            local_bytes=$(echo "$status" | python3 -c "import sys, json; s=json.load(sys.stdin); print(s.get('localBytes', 0))" 2>/dev/null || echo "0")
             
-            # Extract progress info
-            need_items=$(echo "$status" | grep -oP '(?<="needItems":)[0-9]+' | head -1 || echo "0")
-            global_bytes=$(echo "$status" | grep -oP '(?<="globalBytes":)[0-9]+' | head -1 || echo "0")
-            local_bytes=$(echo "$status" | grep -oP '(?<="localBytes":)[0-9]+' | head -1 || echo "0")
+            # Fallback to grep if Python fails
+            if [[ "$state" == "unknown" ]]; then
+                state=$(echo "$status" | grep -oP '(?<="state":")[^"]+' | head -1 || echo "unknown")
+            fi
+            if [[ "$need_items" == "0" ]] && [[ "$global_bytes" == "0" ]] && [[ "$local_bytes" == "0" ]]; then
+                need_items=$(echo "$status" | grep -oP '(?<="needItems":)[0-9]+' | head -1 || echo "0")
+                global_bytes=$(echo "$status" | grep -oP '(?<="globalBytes":)[0-9]+' | head -1 || echo "0")
+                local_bytes=$(echo "$status" | grep -oP '(?<="localBytes":)[0-9]+' | head -1 || echo "0")
+            fi
             
             if [[ "$need_items" -gt 0 ]]; then
                 progress=" (need $need_items items)"
