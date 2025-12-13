@@ -930,6 +930,144 @@ verify_homeserver_config() {
     fi
 }
 
+# Directly add folder from homeserver by getting its config and adding it
+add_folder_from_homeserver() {
+    local api_url="$1"
+    local auth_header="$2"
+    
+    # Try to get the folder config from homeserver
+    if [[ -z "$HOMESERVER_SYNC_URL" ]] && [[ -z "$HOMESERVER_SSH" ]]; then
+        return 1  # Can't access homeserver
+    fi
+    
+    log_info "Getting zen-private folder config from homeserver..."
+    
+    # Get homeserver API URL and key
+    local homeserver_api_url
+    local homeserver_api_key
+    local homeserver_auth_header
+    
+    if [[ -n "$HOMESERVER_SYNC_URL" ]] && [[ -n "$HOMESERVER_SYNC_APIKEY" ]]; then
+        homeserver_api_url="$HOMESERVER_SYNC_URL/rest"
+        homeserver_api_key="$HOMESERVER_SYNC_APIKEY"
+        homeserver_auth_header="X-API-Key: $homeserver_api_key"
+    elif [[ -n "$HOMESERVER_SSH" ]]; then
+        # Use SSH tunnel (port 8385 as set in configure_homeserver_via_ssh)
+        local tunnel_port=8385
+        homeserver_api_url="http://localhost:$tunnel_port"
+        
+        # Get API key via SSH
+        local config_file
+        config_file=$(ssh "$HOMESERVER_SSH" "find ~ /root /home -name 'config.xml' -path '*/syncthing/config/config.xml' 2>/dev/null | head -1" 2>/dev/null) || true
+        
+        if [[ -z "$config_file" ]]; then
+            log_warn "Could not find Syncthing config on homeserver via SSH"
+            return 1
+        fi
+        
+        homeserver_api_key=$(ssh "$HOMESERVER_SSH" "grep -oP '(?<=<apikey>)[^<]+' '$config_file'" 2>/dev/null | head -1 | tr -d '\n\r\t ' | xargs) || true
+        
+        if [[ -z "$homeserver_api_key" ]] || [[ ${#homeserver_api_key} -lt 20 ]]; then
+            log_warn "Could not get API key from homeserver"
+            return 1
+        fi
+        
+        homeserver_auth_header="X-API-Key: $homeserver_api_key"
+        
+        # Create SSH tunnel if not exists
+        if ! lsof -i :$tunnel_port > /dev/null 2>&1; then
+            log_info "Creating SSH tunnel to homeserver..."
+            ssh -f -N -o ExitOnForwardFailure=yes -L $tunnel_port:localhost:8384 "$HOMESERVER_SSH" 2>&1 || true
+            sleep 2
+        fi
+    else
+        return 1
+    fi
+    
+    # Get folder config from homeserver
+    local homeserver_config
+    homeserver_config=$(curl -s -H "$homeserver_auth_header" "$homeserver_api_url/config/folders" 2>/dev/null) || true
+    
+    if [[ -z "$homeserver_config" ]] || echo "$homeserver_config" | grep -q '"error"'; then
+        log_debug "Could not get folder config from homeserver"
+        return 1
+    fi
+    
+    # Find zen-private folder on homeserver
+    local folder_id
+    folder_id=$(echo "$homeserver_config" | python3 -c "import sys, json; folders=json.load(sys.stdin); [print(f['id']) for f in folders if f.get('label') == 'zen-private']" 2>/dev/null | head -1) || true
+    
+    if [[ -z "$folder_id" ]]; then
+        log_debug "zen-private folder not found on homeserver"
+        return 1
+    fi
+    
+    log_info "Found zen-private folder on homeserver (ID: $folder_id)"
+    
+    # Check if folder already exists on new PC
+    local local_config
+    local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
+    
+    if [[ -n "$local_config" ]] && ! echo "$local_config" | grep -q '"error"'; then
+        log_info "Folder already exists on new PC (ID: $folder_id)"
+        return 0
+    fi
+    
+    # Add folder to new PC config using the same ID and path from homeserver
+    log_info "Adding folder directly to new PC config..."
+    
+    local folder_path="$HOME/Sync/zen-private"
+    mkdir -p "$folder_path" 2>/dev/null || true
+    chmod 755 "$folder_path" 2>/dev/null || true
+    
+    # Ensure directory exists in container
+    docker_cmd exec syncthing mkdir -p "/syncthing/zen-private" 2>/dev/null || true
+    docker_cmd exec syncthing chown -R 1000:1000 "/syncthing/zen-private" 2>/dev/null || true
+    
+    local folder_json=$(cat <<EOF
+{
+    "id": "$folder_id",
+    "label": "zen-private",
+    "path": "/syncthing/zen-private",
+    "type": "receiveonly",
+    "devices": [
+        {"deviceID": "$HOMESERVER_DEVICE_ID"}
+    ],
+    "rescanIntervalS": 3600,
+    "fsWatcherEnabled": true,
+    "fsWatcherDelayS": 10
+}
+EOF
+)
+    
+    local add_response
+    add_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" -H "Content-Type: application/json" \
+        -d "$folder_json" "$api_url/config/folders" 2>&1)
+    local add_http_code
+    add_http_code=$(echo "$add_response" | tail -1)
+    local add_body
+    add_body=$(echo "$add_response" | head -n -1)
+    
+    if [[ "$add_http_code" -ge 200 && "$add_http_code" -lt 300 ]]; then
+        log_success "✅ Successfully added folder directly from homeserver!"
+        return 0
+    elif [[ "$add_http_code" -eq 400 || "$add_http_code" -eq 409 ]]; then
+        # Might already exist or conflict
+        log_info "Folder may already exist (HTTP $add_http_code)"
+        if echo "$add_body" | grep -qi "already exists\|duplicate"; then
+            log_success "Folder already exists on new PC"
+            return 0
+        fi
+    else
+        log_warn "Failed to add folder directly (HTTP $add_http_code)"
+        if [[ -n "$add_body" ]]; then
+            log_debug "Response: ${add_body:0:200}"
+        fi
+    fi
+    
+    return 1
+}
+
 # Accept pending folders and devices from homeserver
 accept_pending_folders() {
     local api_url="$1"
