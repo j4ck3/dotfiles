@@ -501,7 +501,29 @@ EOF
             fi
             # Re-check config to confirm - use the config we already have
             if echo "$config" | grep -q "$HOMESERVER_DEVICE_ID"; then
-                log_success "Homeserver device is already configured"
+                log_info "Homeserver device is already configured - enabling auto-accept..."
+                # Update the device to enable auto-accept-folders
+                local device_config
+                device_config=$(curl -s -H "$auth_header" "$api_url/config/devices/$HOMESERVER_DEVICE_ID" 2>/dev/null) || true
+                if [[ -n "$device_config" ]] && ! echo "$device_config" | grep -q '"autoAcceptFolders":\s*true'; then
+                    local updated_device_config
+                    updated_device_config=$(echo "$device_config" | python3 -c "import sys, json; d=json.load(sys.stdin); d['autoAcceptFolders']=True; print(json.dumps(d))" 2>/dev/null) || true
+                    if [[ -n "$updated_device_config" ]]; then
+                        local update_device_response
+                        update_device_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+                            -d "$updated_device_config" "$api_url/config/devices/$HOMESERVER_DEVICE_ID" 2>&1)
+                        local update_device_http_code
+                        update_device_http_code=$(echo "$update_device_response" | tail -1)
+                        if [[ "$update_device_http_code" -ge 200 && "$update_device_http_code" -lt 300 ]]; then
+                            log_success "Enabled auto-accept-folders for homeserver device"
+                            changes_made=true
+                        else
+                            log_warn "Failed to enable auto-accept-folders (HTTP $update_device_http_code)"
+                        fi
+                    fi
+                else
+                    log_success "Homeserver device already has auto-accept enabled"
+                fi
             else
                 # Try fetching config again
                 local recheck_config_response
