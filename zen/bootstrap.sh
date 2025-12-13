@@ -477,7 +477,8 @@ configure_syncthing_api() {
     "addresses": ["dynamic"],
     "compression": "metadata",
     "introducer": false,
-    "paused": false
+    "paused": false,
+    "autoAcceptFolders": true
 }
 EOF
 )
@@ -962,7 +963,7 @@ accept_pending_folders() {
     pending_folders=$(echo "$pending" | python3 -c "import sys, json; p=json.load(sys.stdin); folders=p.get('folders', []); [print(f\"{f['id']}|{f.get('label', '')}\") for f in folders]" 2>/dev/null) || true
     
     if [[ -z "$pending_folders" ]] || [[ "$pending_folders" == "" ]]; then
-        log_debug "No pending folders found in API response"
+        log_debug "No pending folders found in API response (auto-accept may have handled it, or none shared yet)"
     else
         log_info "Found pending folder(s), attempting to accept..."
         echo "$pending_folders" | while IFS='|' read -r folder_id folder_label; do
@@ -970,7 +971,7 @@ accept_pending_folders() {
                 # Accept any pending folder (the label might be empty or different)
                 log_info "Attempting to accept pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
                 
-                # Accept the folder
+                # Accept the folder using the correct Syncthing API endpoint
                 local accept_response
                 accept_response=$(curl -s -w "\n%{http_code}" -X POST -H "$auth_header" \
                     -H "Content-Type: application/json" \
@@ -981,6 +982,8 @@ accept_pending_folders() {
                 
                 local response_body
                 response_body=$(echo "$accept_response" | head -n -1)
+                
+                log_debug "Accept folder response: HTTP $accept_http_code"
                 
                 if [[ "$accept_http_code" -ge 200 && "$accept_http_code" -lt 300 ]]; then
                     log_success "✅ Accepted pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
