@@ -1009,7 +1009,8 @@ add_folder_from_homeserver() {
     local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
     
     if [[ -n "$local_config" ]] && ! echo "$local_config" | grep -q '"error"'; then
-        log_info "Folder already exists on new PC (ID: $folder_id)"
+        log_info "Folder already exists on new PC (ID: $folder_id) - ensuring receiveonly..."
+        ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
         return 0
     fi
     
