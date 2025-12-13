@@ -1825,9 +1825,17 @@ wait_for_sync() {
         # Check folder status (allow curl to fail without exiting)
         local status
         if [[ -n "$folder_id" ]]; then
-            status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>/dev/null) || true
+            status=$(curl -s -H "$auth_header" "$api_url/db/status?folder=$folder_id" 2>&1) || true
+            
+            # Debug: log what we got (first 200 chars)
+            if [[ -n "$status" ]] && [[ $attempts -eq 0 ]]; then
+                log_debug "Folder status response (first 200 chars): ${status:0:200}"
+            fi
         else
             status=""
+            if [[ $attempts -eq 0 ]]; then
+                log_warn "No folder ID available - cannot check sync status"
+            fi
         fi
         
         local state="unknown"
