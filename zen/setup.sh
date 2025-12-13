@@ -479,7 +479,24 @@ for dirname in os.listdir(src_storage):
         shutil.rmtree(dst_path)
     shutil.copytree(src_path, dst_path)
 
-print(f"  Imported {len(os.listdir(src_storage))} storage directories")
+copied_count = 0
+for d in os.listdir(src_storage):
+    if os.path.isdir(os.path.join(src_storage, d)):
+        copied_count += 1
+
+print(f"  Imported {copied_count} storage directories")
+
+# Verify uBlock Origin specifically
+if 'uBlock0@raymondhill.net' in old_uuids and 'uBlock0@raymondhill.net' in current_uuids:
+    old_uuid = old_uuids['uBlock0@raymondhill.net']
+    new_uuid = current_uuids['uBlock0@raymondhill.net']
+    ublock_old_dir = f"moz-extension+++{old_uuid}"
+    ublock_new_dir = f"moz-extension+++{new_uuid}"
+    if os.path.exists(os.path.join(src_storage, ublock_old_dir)):
+        if os.path.exists(os.path.join(dst_storage, ublock_new_dir)):
+            print(f"  ✓ uBlock Origin storage imported (UUID remapped)")
+        else:
+            print(f"  ⚠ uBlock Origin storage found but not imported correctly")
 EOF
             log_success "  Extension storage imported with UUID remapping"
         else
