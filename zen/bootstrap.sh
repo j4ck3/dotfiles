@@ -1915,19 +1915,54 @@ for f in c.get('folders', []):
             last_state="$state"
         fi
         
-        if [[ "$state" == "idle" ]]; then
-            # Check if uuid-mapping.json exists
+        # Check if sync is complete (multiple conditions)
+        local sync_complete=false
+        
+        # Condition 1: uuid-mapping.json exists (primary indicator)
+        if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+            sync_complete=true
+        fi
+        
+        # Condition 2: State is idle AND no items needed AND files match
+        if [[ "$state" == "idle" ]] && [[ "$need_items" -eq 0 ]]; then
+            if [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]]; then
+                # Local bytes match or exceed global - sync likely complete
+                sync_complete=true
+            elif [[ "$global_bytes" -eq 0 ]] && [[ "$local_bytes" -eq 0 ]]; then
+                # Both zero might mean folder is empty, but check if files exist anyway
+                if [[ -d "$HOME/Sync/zen-private" ]]; then
+                    local actual_file_count
+                    actual_file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
+                    if [[ "$actual_file_count" -gt 0 ]]; then
+                        # Files exist even if bytes don't match (might be metadata difference)
+                        sync_complete=true
+                    fi
+                fi
+            fi
+        fi
+        
+        # Condition 3: If state is unknown but we have files and bytes match
+        if [[ "$state" == "unknown" ]] && [[ -n "$status" ]]; then
             if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
-                echo ""  # New line after progress
-                log_success "zen-private folder synced!"
-                return 0
-            elif [[ "$need_items" -eq 0 ]]; then
-                # State is idle and no items needed, but file doesn't exist
-                echo ""
-                log_warn "Folder state is 'idle' but uuid-mapping.json not found"
-                log_info "This might mean the folder is empty on the homeserver"
-                log_info "Check if the homeserver has the file and has shared the folder"
-                break
+                sync_complete=true
+            elif [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]]; then
+                # Bytes match, likely synced even if state is unknown
+                sync_complete=true
+            fi
+        fi
+        
+        if [[ "$sync_complete" == true ]]; then
+            echo ""  # New line after progress
+            log_success "zen-private folder synced!"
+            return 0
+        fi
+        
+        # If state is idle but sync not complete, check what's missing
+        if [[ "$state" == "idle" ]] && [[ "$need_items" -eq 0 ]]; then
+            if [[ ! -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+                log_info "State is 'idle' but uuid-mapping.json not found"
+                log_info "Global: ${global_bytes} bytes, Local: ${local_bytes} bytes"
+                log_info "Files may still be syncing or folder might be empty on homeserver"
             fi
         fi
         
