@@ -404,17 +404,35 @@ import_private_data() {
         return 0
     fi
     
-    # Check if Syncthing folder exists
+    # Check if Syncthing folder exists (try multiple possible paths)
+    log_info "Checking for Syncthing folder at: $PRIVATE_DIR"
     if [[ ! -d "$PRIVATE_DIR" ]]; then
-        log_warn "Syncthing private folder not found: $PRIVATE_DIR"
-        log_info "Make sure Syncthing has synced the zen-private folder"
-        log_info "Then run this script again or manually copy the data"
-        return 0
+        # Try lowercase sync as fallback
+        local alt_path="$HOME/sync/zen-private"
+        log_info "Not found, trying alternative path: $alt_path"
+        if [[ -d "$alt_path" ]]; then
+            log_info "Found folder at alternative path: $alt_path"
+            PRIVATE_DIR="$alt_path"
+        else
+            log_warn "Syncthing private folder not found at: $PRIVATE_DIR"
+            log_info "Also checked: $alt_path"
+            log_info "Checking what's actually in ~/Sync and ~/sync..."
+            ls -la ~/Sync/ 2>/dev/null | head -5 || log_info "~/Sync/ does not exist"
+            ls -la ~/sync/ 2>/dev/null | head -5 || log_info "~/sync/ does not exist"
+            log_info "Make sure Syncthing has synced the zen-private folder"
+            log_info "Then run this script again or manually copy the data"
+            return 0
+        fi
+    else
+        log_info "Found folder at: $PRIVATE_DIR"
+        log_info "Contents: $(ls -1 "$PRIVATE_DIR" 2>/dev/null | head -5 | tr '\n' ' ')"
     fi
     
     # Check if data has been synced
     if [[ ! -f "$PRIVATE_DIR/last-export.txt" ]]; then
-        log_warn "No export data found in Syncthing folder"
+        log_warn "No export data found in Syncthing folder: $PRIVATE_DIR"
+        log_info "Files in folder:"
+        ls -la "$PRIVATE_DIR/" 2>/dev/null | head -10 || log_info "  (folder is empty or inaccessible)"
         log_info "Run export.sh on your main machine first"
         return 0
     fi
