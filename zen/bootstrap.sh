@@ -1048,21 +1048,71 @@ EOF
     local add_body
     add_body=$(echo "$add_response" | head -n -1)
     
-    if [[ "$add_http_code" -ge 200 && "$add_http_code" -lt 300 ]]; then
-        log_success "✅ Successfully added folder directly from homeserver!"
-        return 0
-    elif [[ "$add_http_code" -eq 400 || "$add_http_code" -eq 409 ]]; then
-        # Might already exist or conflict
-        log_info "Folder may already exist (HTTP $add_http_code)"
-        if echo "$add_body" | grep -qi "already exists\|duplicate"; then
-            log_success "Folder already exists on new PC"
-            return 0
+                if [[ "$add_http_code" -ge 200 && "$add_http_code" -lt 300 ]]; then
+                    log_success "✅ Successfully added folder directly from homeserver!"
+                    # Verify folder type is receiveonly
+                    sleep 1
+                    ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
+                    return 0
+                elif [[ "$add_http_code" -eq 400 || "$add_http_code" -eq 409 ]]; then
+                    # Might already exist or conflict - verify it's receiveonly
+                    log_info "Folder may already exist (HTTP $add_http_code)"
+                    if echo "$add_body" | grep -qi "already exists\|duplicate"; then
+                        log_info "Folder already exists - ensuring it's set to receiveonly..."
+                        ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
+                        log_success "Folder already exists on new PC (receiveonly)"
+                        return 0
+                    fi
+                else
+                    log_warn "Failed to add folder directly (HTTP $add_http_code)"
+                    if [[ -n "$add_body" ]]; then
+                        log_debug "Response: ${add_body:0:200}"
+                    fi
+                fi
+    
+    return 1
+}
+
+# Ensure folder is set to receiveonly type
+ensure_folder_is_receiveonly() {
+    local api_url="$1"
+    local auth_header="$2"
+    local folder_id="$3"
+    
+    local folder_config
+    folder_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
+    
+    if [[ -z "$folder_config" ]] || echo "$folder_config" | grep -q '"error"'; then
+        log_debug "Could not get folder config to verify receiveonly type"
+        return 1
+    fi
+    
+    local folder_type
+    folder_type=$(echo "$folder_config" | python3 -c "import sys, json; f=json.load(sys.stdin); print(f.get('type', 'sendreceive'))" 2>/dev/null) || folder_type="sendreceive"
+    
+    if [[ "$folder_type" != "receiveonly" ]]; then
+        log_info "Updating folder type from '$folder_type' to 'receiveonly'..."
+        local updated_config
+        updated_config=$(echo "$folder_config" | python3 -c "import sys, json; f=json.load(sys.stdin); f['type']='receiveonly'; print(json.dumps(f))" 2>/dev/null)
+        
+        if [[ -n "$updated_config" ]]; then
+            local update_response
+            update_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+                -d "$updated_config" "$api_url/config/folders/$folder_id" 2>&1)
+            local update_http_code
+            update_http_code=$(echo "$update_response" | tail -1)
+            
+            if [[ "$update_http_code" -ge 200 && "$update_http_code" -lt 300 ]]; then
+                log_success "✅ Updated folder to 'receiveonly' (won't share back to tower)"
+                return 0
+            else
+                log_warn "Failed to update folder type (HTTP $update_http_code)"
+                return 1
+            fi
         fi
     else
-        log_warn "Failed to add folder directly (HTTP $add_http_code)"
-        if [[ -n "$add_body" ]]; then
-            log_debug "Response: ${add_body:0:200}"
-        fi
+        log_debug "Folder is already set to 'receiveonly'"
+        return 0
     fi
     
     return 1
@@ -1153,6 +1203,9 @@ accept_pending_folders() {
                 
                 if [[ "$accept_http_code" -ge 200 && "$accept_http_code" -lt 300 ]]; then
                     log_success "✅ Accepted pending folder: ${folder_label:-unnamed} (ID: $folder_id)"
+                    # Immediately set folder to receiveonly so it doesn't share back
+                    sleep 1
+                    ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
                 else
                     log_warn "❌ Failed to accept folder ${folder_label:-unnamed} (HTTP $accept_http_code)"
                     if [[ -n "$response_body" ]] && [[ "$response_body" != "null" ]] && [[ "$response_body" != "" ]]; then
