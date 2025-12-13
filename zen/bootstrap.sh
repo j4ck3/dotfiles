@@ -1009,8 +1009,38 @@ add_folder_from_homeserver() {
     local_config=$(curl -s -H "$auth_header" "$api_url/config/folders/$folder_id" 2>/dev/null) || true
     
     if [[ -n "$local_config" ]] && ! echo "$local_config" | grep -q '"error"'; then
-        log_info "Folder already exists on new PC (ID: $folder_id) - ensuring receiveonly..."
+        log_info "Folder already exists on new PC (ID: $folder_id) - verifying configuration..."
+        
+        # Check if homeserver device is in the folder's device list
+        local has_device
+        has_device=$(echo "$local_config" | python3 -c "import sys, json; f=json.load(sys.stdin); devices=[d.get('deviceID') for d in f.get('devices', [])]; print('yes' if '$HOMESERVER_DEVICE_ID' in devices else 'no')" 2>/dev/null) || has_device="no"
+        
+        if [[ "$has_device" != "yes" ]]; then
+            log_info "Homeserver device not in folder - adding it..."
+            local updated_config
+            updated_config=$(echo "$local_config" | python3 -c "import sys, json; f=json.load(sys.stdin); devices=[d.get('deviceID') for d in f.get('devices', [])]; f.setdefault('devices', []); f['devices'].append({'deviceID': '$HOMESERVER_DEVICE_ID'}) if '$HOMESERVER_DEVICE_ID' not in devices else None; f['type']='receiveonly'; print(json.dumps(f))" 2>/dev/null)
+            
+            if [[ -n "$updated_config" ]]; then
+                local update_response
+                update_response=$(curl -s -w "\n%{http_code}" -X PUT -H "$auth_header" -H "Content-Type: application/json" \
+                    -d "$updated_config" "$api_url/config/folders/$folder_id" 2>&1)
+                local update_http_code
+                update_http_code=$(echo "$update_response" | tail -1)
+                
+                if [[ "$update_http_code" -ge 200 && "$update_http_code" -lt 300 ]]; then
+                    log_success "✅ Updated folder to include homeserver device and set to receiveonly"
+                else
+                    log_warn "Failed to update folder config (HTTP $update_http_code)"
+                fi
+            fi
+        else
+            log_info "Homeserver device is already in folder"
+        fi
+        
+        # Ensure folder is receiveonly
         ensure_folder_is_receiveonly "$api_url" "$auth_header" "$folder_id"
+        
+        log_success "✅ Folder is properly configured and ready to sync"
         return 0
     fi
     
