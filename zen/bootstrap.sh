@@ -617,6 +617,17 @@ EOF
         local existing_folder_id
         existing_folder_id=$(echo "$config" | python3 -c "import sys, json; c=json.load(sys.stdin); folders=c.get('folders', []); [print(f['id']) for f in folders if f.get('label') == '$folder_id']" 2>/dev/null | head -1) || true
         
+        # Also check by ID in case it was manually set
+        if [[ -z "$existing_folder_id" ]] && echo "$config" | grep -q "\"id\":\"$folder_id\""; then
+            existing_folder_id="$folder_id"
+        fi
+        
+        # If folder was already added by add_folder_from_homeserver, skip adding it again
+        if [[ -n "$ACTUAL_FOLDER_ID" ]] && [[ "$existing_folder_id" == "$ACTUAL_FOLDER_ID" ]]; then
+            log_info "Folder '$folder_id' already added from homeserver (ID: $existing_folder_id) - skipping duplicate creation"
+            continue
+        fi
+        
         if [[ -n "$existing_folder_id" ]]; then
             log_info "Folder '$folder_id' already exists (ID: $existing_folder_id) - checking type..."
             
@@ -658,12 +669,6 @@ EOF
                     log_info "Folder type is already 'receiveonly'"
                 fi
             fi
-            continue
-        fi
-        
-        # Also check by ID in case it was manually set
-        if echo "$config" | grep -q "\"id\":\"$folder_id\""; then
-            log_info "Folder '$folder_id' already configured (by ID) - ensuring permissions are correct"
             continue
         fi
         
@@ -1915,45 +1920,52 @@ for f in c.get('folders', []):
             last_state="$state"
         fi
         
-        # Check if sync is complete (multiple conditions)
+        # Check if sync is complete (REQUIRE ACTUAL FILES, not just bytes)
         local sync_complete=false
         
-        # Condition 1: uuid-mapping.json exists (primary indicator)
-        if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
-            sync_complete=true
+        # Always check for actual files in the folder (most reliable indicator)
+        local actual_file_count=0
+        if [[ -d "$HOME/Sync/zen-private" ]]; then
+            actual_file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
         fi
         
-        # Condition 2: State is idle AND no items needed AND files match
-        if [[ "$state" == "idle" ]] && [[ "$need_items" -eq 0 ]]; then
-            if [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]]; then
-                # Local bytes match or exceed global - sync likely complete
-                sync_complete=true
-            elif [[ "$global_bytes" -eq 0 ]] && [[ "$local_bytes" -eq 0 ]]; then
-                # Both zero might mean folder is empty, but check if files exist anyway
-                if [[ -d "$HOME/Sync/zen-private" ]]; then
-                    local actual_file_count
-                    actual_file_count=$(find "$HOME/Sync/zen-private" -type f 2>/dev/null | wc -l || echo "0")
-                    if [[ "$actual_file_count" -gt 0 ]]; then
-                        # Files exist even if bytes don't match (might be metadata difference)
-                        sync_complete=true
+        # Condition 1: uuid-mapping.json exists (primary indicator - this file MUST exist)
+        if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
+            sync_complete=true
+            log_info "Found uuid-mapping.json - sync complete!"
+        # Condition 2: State is idle AND no items needed AND we have actual files
+        elif [[ "$state" == "idle" ]] && [[ "$need_items" -eq 0 ]]; then
+            if [[ "$actual_file_count" -gt 0 ]]; then
+                # We have files, check if bytes match (but files are more important)
+                if [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]]; then
+                    sync_complete=true
+                    log_info "State idle, files present ($actual_file_count files), bytes match - sync complete!"
+                elif [[ "$global_bytes" -eq 0 ]] && [[ "$actual_file_count" -gt 0 ]]; then
+                    # Files exist but global_bytes is 0 (might be metadata issue, but files are there)
+                    sync_complete=true
+                    log_info "Files present ($actual_file_count files) - sync complete!"
+                fi
+            elif [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]] && [[ "$actual_file_count" -eq 0 ]]; then
+                # Bytes match but NO FILES - this is wrong! Files might be in wrong location
+                log_warn "Bytes match but no files found in ~/Sync/zen-private/"
+                log_warn "This might indicate a folder path mismatch - checking container path..."
+                
+                # Check if files are in the container path instead
+                local container_file_count=0
+                if docker_cmd exec syncthing test -d "/syncthing/zen-private" 2>/dev/null; then
+                    container_file_count=$(docker_cmd exec syncthing find /syncthing/zen-private -type f 2>/dev/null | wc -l || echo "0")
+                    if [[ "$container_file_count" -gt 0 ]]; then
+                        log_warn "Found $container_file_count files in container path /syncthing/zen-private"
+                        log_warn "But 0 files in host path ~/Sync/zen-private"
+                        log_warn "This suggests a volume mount issue - files are syncing to container but not mounted to host"
                     fi
                 fi
             fi
         fi
         
-        # Condition 3: If state is unknown but we have files and bytes match
-        if [[ "$state" == "unknown" ]] && [[ -n "$status" ]]; then
-            if [[ -f "$HOME/Sync/zen-private/uuid-mapping.json" ]]; then
-                sync_complete=true
-            elif [[ "$global_bytes" -gt 0 ]] && [[ "$local_bytes" -ge "$global_bytes" ]]; then
-                # Bytes match, likely synced even if state is unknown
-                sync_complete=true
-            fi
-        fi
-        
         if [[ "$sync_complete" == true ]]; then
             echo ""  # New line after progress
-            log_success "zen-private folder synced!"
+            log_success "zen-private folder synced! ($actual_file_count files)"
             return 0
         fi
         
