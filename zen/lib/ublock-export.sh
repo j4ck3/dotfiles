@@ -227,23 +227,45 @@ export_ublock_filters() {
         fi
     done
     
-    # If found, copy it
+    # If found, copy it and extract filters
     if [[ -n "$found_backup" ]]; then
         cp "$found_backup" "$output_file"
         log_success "Copied existing uBlock backup to: $output_file"
         
-        # Also extract static filters if present
-        if grep -q '"staticFilterList"' "$output_file"; then
-            python3 -c "
+        # Extract static and custom filters
+        python3 << 'PYEXTRACT'
 import json
-with open('$output_file', 'r') as f:
-    data = json.load(f)
-    if 'staticFilterList' in data and data['staticFilterList']:
-        with open('$static_filters_file', 'w') as out:
-            out.write(data['staticFilterList'])
-            print('Static filters extracted')
-" 2>/dev/null && log_success "Static filters extracted to: $static_filters_file"
-        fi
+import sys
+
+backup_file = sys.argv[1]
+static_file = sys.argv[2]
+custom_file = sys.argv[3]
+
+try:
+    with open(backup_file, 'r') as f:
+        data = json.load(f)
+    
+    # Extract static filters
+    static_filters = data.get('staticFilterList', '')
+    if static_filters:
+        with open(static_file, 'w') as f:
+            f.write(static_filters)
+        print(f"Static filters extracted to: {static_file}")
+    
+    # Extract custom filters
+    custom_filters = data.get('customFilters', '')
+    if custom_filters:
+        with open(custom_file, 'w') as f:
+            f.write(custom_filters)
+        print(f"Custom filters extracted to: {custom_file}")
+except Exception as e:
+    print(f"Warning: Could not extract filters: {e}", file=sys.stderr)
+PYEXTRACT
+        "$output_file" "$static_filters_file" "${output_file%.json}-custom-filters.txt" 2>&1 | while IFS= read -r line; do
+            if [[ "$line" == *"extracted to:"* ]]; then
+                log_success "$line"
+            fi
+        done
         return 0
     fi
     
