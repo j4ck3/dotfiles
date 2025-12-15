@@ -1,5 +1,5 @@
 // Zen Browser User Preferences
-// Auto-exported by export.sh on Mon Dec 15 07:51:22 PM CET 2025
+// Auto-exported by export.sh on Mon Dec 15 07:59:51 PM CET 2025
 // Do not edit directly - make changes in browser then run export.sh
 
 user_pref("accessibility.typeaheadfind.flashBar", 0);

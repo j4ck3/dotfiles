@@ -23,20 +23,20 @@ NC='\033[0m'
 if [[ "${BASH_SOURCE[0]}" == "-" ]] || [[ -z "${BASH_SOURCE[0]}" ]] || [[ ! -f "${BASH_SOURCE[0]}" ]]; then
     # Running via pipe - need to clone repo first
     GITHUB_USER="${GITHUB_USER:-j4ck3}"
-    DOTFILES_REPO="https://github.com/$GITHUB_USER/dotfiles"
+DOTFILES_REPO="https://github.com/$GITHUB_USER/dotfiles"
     DOTFILES_DIR="$HOME/dotfiles"
     
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║          Zen Browser Bootstrap (via curl)                   ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
+            echo ""
     
     # Clone dotfiles if needed
     if [[ ! -d "$DOTFILES_DIR/.git" ]]; then
         echo -e "${BLUE}[INFO]${NC} Cloning dotfiles repository..."
         git clone "$DOTFILES_REPO" "$DOTFILES_DIR" || {
             echo -e "${RED}[ERROR]${NC} Failed to clone dotfiles repository"
-            exit 1
+                exit 1
         }
         echo -e "${GREEN}[OK]${NC} Dotfiles repository cloned"
     else
@@ -46,7 +46,7 @@ if [[ "${BASH_SOURCE[0]}" == "-" ]] || [[ -z "${BASH_SOURCE[0]}" ]] || [[ ! -f "
     fi
     
     # Run bootstrap from cloned location
-    echo ""
+        echo ""
     echo -e "${BLUE}[INFO]${NC} Running bootstrap from cloned repository..."
     exec bash "$DOTFILES_DIR/zen/bootstrap.sh"
     exit 0
@@ -67,12 +67,12 @@ clone_dotfiles_if_needed
 
 # Install Zen Browser
 install_zen_browser
-
-echo ""
+    
+    echo ""
 log_success "Bootstrap complete!"
-echo ""
+    echo ""
 echo "Next steps:"
 echo "  1. Run: ~/dotfiles/zen/setup.sh"
 echo "  2. Launch Zen Browser"
 echo "  3. Extensions will auto-install on first launch"
-echo ""
+            echo ""
