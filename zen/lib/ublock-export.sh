@@ -50,22 +50,22 @@ extract_ublock_from_indexeddb() {
     fi
     
     # Use Python to extract uBlock data from IndexedDB
-    python3 << EOF
+    # Write Python script to temp file to avoid heredoc escaping issues
+    local python_script
+    python_script=$(mktemp)
+    
+    cat > "$python_script" << 'PYTHON_SCRIPT'
 import json
 import sqlite3
 import os
-import struct
+import sys
 
-idb_file = '$idb_file'
-output_file = '$output_file'
+idb_file = sys.argv[1]
+output_file = sys.argv[2]
 
 try:
     conn = sqlite3.connect(idb_file)
     cursor = conn.cursor()
-    
-    # Get all object stores
-    cursor.execute("SELECT name FROM object_store")
-    stores = cursor.fetchall()
     
     backup_data = {
         "version": 1,
@@ -77,74 +77,58 @@ try:
     }
     
     # uBlock stores data in object_data table
-    # The keys are base64-encoded, and values are in file_data blob
     cursor.execute("SELECT key, file_data FROM object_data")
     rows = cursor.fetchall()
     
-    # Try to find uBlock's storage keys
-    # uBlock uses keys like: "0dbdif0dpnqjmfe0qmpxf.1" for different data types
+    found_data = False
     for key, file_data in rows:
         if not file_data:
             continue
         
-        # Try to decode as JSON (uBlock stores JSON data)
         try:
-            # The file_data might be prefixed with length or other metadata
-            # Try to extract JSON from it
-            data_str = file_data.decode('utf-8', errors='ignore')
+            # Try to decode as UTF-8
+            if isinstance(file_data, bytes):
+                data_str = file_data.decode('utf-8', errors='ignore')
+            else:
+                data_str = str(file_data)
             
-            # Look for JSON-like content
-            if '{' in data_str or '[' in data_str:
-                # Try to find JSON object
+            # Look for JSON content
+            if '{' in data_str:
                 start = data_str.find('{')
-                if start == -1:
-                    start = data_str.find('[')
+                json_candidate = data_str[start:]
                 
-                if start != -1:
-                    json_str = data_str[start:]
-                    # Try to find the end
+                # Try to parse as JSON
+                try:
+                    data = json.loads(json_candidate)
+                    if isinstance(data, dict):
+                        # Check if this looks like uBlock backup data
+                        if any(k in data for k in ['filterLists', 'customFilters', 'userSettings', 'staticFilterList', 'whitelist']):
+                            backup_data.update(data)
+                            found_data = True
+                            break
+                except json.JSONDecodeError:
+                    # Try to find valid JSON substring
                     brace_count = 0
-                    bracket_count = 0
-                    end = start
-                    in_string = False
-                    escape = False
-                    
-                    for i, char in enumerate(json_str):
-                        if escape:
-                            escape = False
-                            continue
-                        if char == '\\':
-                            escape = True
-                            continue
-                        if char == '"' and not escape:
-                            in_string = not in_string
-                            continue
-                        if in_string:
-                            continue
+                    end_pos = 0
+                    for i, char in enumerate(json_candidate):
                         if char == '{':
                             brace_count += 1
                         elif char == '}':
                             brace_count -= 1
-                        elif char == '[':
-                            bracket_count += 1
-                        elif char == ']':
-                            bracket_count -= 1
-                        
-                        if brace_count == 0 and bracket_count == 0 and (char == '}' or char == ']'):
-                            end = i + 1
-                            break
+                            if brace_count == 0:
+                                end_pos = i + 1
+                                break
                     
-                    if end > start:
+                    if end_pos > 0:
                         try:
-                            data = json.loads(json_str[:end])
-                            # Check if this looks like uBlock data
-                            if isinstance(data, dict):
-                                if 'filterLists' in data or 'customFilters' in data or 'userSettings' in data:
-                                    backup_data.update(data)
-                                    break
+                            data = json.loads(json_candidate[:end_pos])
+                            if isinstance(data, dict) and any(k in data for k in ['filterLists', 'customFilters', 'userSettings']):
+                                backup_data.update(data)
+                                found_data = True
+                                break
                         except:
                             pass
-        except:
+        except Exception:
             pass
     
     conn.close()
@@ -153,26 +137,39 @@ try:
     with open(output_file, 'w') as f:
         json.dump(backup_data, f, indent=2)
     
-    # Also try to extract static filters as plain text
+    # Extract static filters as plain text if present
     static_filters_file = output_file.replace('.json', '-my-static-filters.txt')
-    if 'staticFilterList' in backup_data and backup_data['staticFilterList']:
+    if backup_data.get('staticFilterList'):
         with open(static_filters_file, 'w') as f:
             f.write(backup_data['staticFilterList'])
         print(f"Static filters exported to: {static_filters_file}")
     
-    if 'customFilters' in backup_data and backup_data['customFilters']:
+    # Extract custom filters as plain text if present
+    if backup_data.get('customFilters'):
         custom_filters_file = output_file.replace('.json', '-custom-filters.txt')
         with open(custom_filters_file, 'w') as f:
             f.write(backup_data['customFilters'])
         print(f"Custom filters exported to: {custom_filters_file}")
     
-    print(f"Backup data exported to: {output_file}")
-    
+    if found_data:
+        print(f"Backup data exported to: {output_file}")
+        sys.exit(0)
+    else:
+        sys.exit(1)
+        
 except Exception as e:
-    print(f"Error extracting uBlock data: {e}", file=sys.stderr)
-    import sys
+    print(f"Error: {e}", file=sys.stderr)
     sys.exit(1)
-EOF
+PYTHON_SCRIPT
+    
+    # Run Python script
+    if python3 "$python_script" "$idb_file" "$output_file" 2>&1; then
+        rm -f "$python_script"
+        return 0
+    else
+        rm -f "$python_script"
+        return 1
+    fi
 }
 
 # Export uBlock Origin filters to JSON backup format
