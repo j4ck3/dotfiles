@@ -211,24 +211,38 @@ export_ublock_filters() {
     fi
     
     # Fallback: Check if user has already manually created a backup file
+    # Check for both JSON backup format and plain text static filters
     local possible_backups=(
         "$HOME/Downloads/ublock-backup.txt"
         "$HOME/Downloads/ublock-origin-backup.txt"
+        "$HOME/Downloads/uBlock-Origin-backup.txt"
         "$HOME/ublock-backup.txt"
         "$HOME/.ublock-backup.txt"
     )
     
     local found_backup=""
+    local backup_is_json=false
+    
     for backup in "${possible_backups[@]}"; do
-        if [[ -f "$backup" ]] && grep -q '"version"' "$backup" 2>/dev/null; then
-            found_backup="$backup"
-            log_info "Found existing uBlock backup file: $backup"
-            break
+        if [[ -f "$backup" ]]; then
+            # Check if it's JSON format
+            if grep -q '"version"' "$backup" 2>/dev/null; then
+                found_backup="$backup"
+                backup_is_json=true
+                log_info "Found existing uBlock JSON backup file: $backup"
+                break
+            # Check if it's plain text static filters (starts with ! or contains filter rules)
+            elif grep -qE '^!|^[a-zA-Z0-9.*#|$]' "$backup" 2>/dev/null; then
+                found_backup="$backup"
+                backup_is_json=false
+                log_info "Found existing uBlock static filters file: $backup"
+                break
+            fi
         fi
     done
     
-    # If found, copy it and extract filters
-    if [[ -n "$found_backup" ]]; then
+    # If found JSON backup, copy it and extract filters
+    if [[ -n "$found_backup" ]] && [[ "$backup_is_json" == true ]]; then
         cp "$found_backup" "$output_file"
         log_success "Copied existing uBlock backup to: $output_file"
         
@@ -266,6 +280,60 @@ PYEXTRACT
                 log_success "$line"
             fi
         done
+        return 0
+    fi
+    
+    # If found plain text static filters, convert to JSON backup format
+    if [[ -n "$found_backup" ]] && [[ "$backup_is_json" == false ]]; then
+        log_info "Converting plain text static filters to JSON backup format..."
+        
+        # Read the static filters
+        local static_filters_content
+        static_filters_content=$(cat "$found_backup")
+        
+        # Create JSON backup structure with the static filters
+        # Use a temp file to avoid heredoc escaping issues with special characters
+        local python_script
+        python_script=$(mktemp)
+        
+        cat > "$python_script" << 'PYEXTRACT'
+import json
+import sys
+
+# Read static filters from stdin to avoid shell escaping issues
+static_filters = sys.stdin.read()
+output_file = sys.argv[1]
+static_file = sys.argv[2]
+
+backup_data = {
+    "version": 1,
+    "filterLists": {},
+    "customFilters": "",
+    "userSettings": {},
+    "whitelist": "",
+    "staticFilterList": static_filters
+}
+
+# Write JSON backup
+with open(output_file, 'w') as f:
+    json.dump(backup_data, f, indent=2)
+
+# Also write plain text file
+with open(static_file, 'w') as f:
+    f.write(static_filters)
+
+print(f"Static filters saved to: {static_file}")
+print(f"JSON backup created at: {output_file}")
+PYEXTRACT
+        
+        # Pipe the static filters content to Python
+        cat "$found_backup" | python3 "$python_script" "$output_file" "$static_filters_file" 2>&1 | while IFS= read -r line; do
+            if [[ "$line" == *"saved to:"* ]] || [[ "$line" == *"created at:"* ]]; then
+                log_success "$line"
+            fi
+        done
+        
+        rm -f "$python_script"
         return 0
     fi
     
