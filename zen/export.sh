@@ -7,18 +7,11 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Configuration
-DOTFILES_ZEN_DIR="$HOME/dotfiles/zen"
-CONFIG_DIR="$DOTFILES_ZEN_DIR/config"
-ZEN_DIR="$HOME/.zen"
-PRIVATE_DIR="$HOME/Sync/zen-private"  # Syncthing-synced private storage
+# Get script directory and source modules
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/zen-profile.sh"
+source "$SCRIPT_DIR/lib/ublock-export.sh"
 
 # Extension ID to AMO slug mapping (for policies.json generation)
 declare -A EXTENSION_SLUGS=(
@@ -71,47 +64,6 @@ EXCLUDE_PREFS=(
     "zen.updates.last-build-id"
     "zen.workspaces.active"
 )
-
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[OK]${NC} $1"
-}
-
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Find the default Zen profile directory
-find_zen_profile() {
-    local profiles_ini="$ZEN_DIR/profiles.ini"
-    
-    if [[ ! -f "$profiles_ini" ]]; then
-        log_error "profiles.ini not found at $profiles_ini"
-        exit 1
-    fi
-    
-    # Find the default profile path using a more robust method
-    local profile_path=""
-    profile_path=$(awk -F= '
-        /^\[Install/ { in_install=1 }
-        /^\[/ && !/^\[Install/ { in_install=0 }
-        in_install && /^Default=/ { print $2; exit }
-    ' "$profiles_ini")
-    
-    if [[ -z "$profile_path" ]]; then
-        log_error "Could not find default profile in profiles.ini"
-        exit 1
-    fi
-    
-    echo "$ZEN_DIR/$profile_path"
-}
 
 # Generate policies.json from current extensions
 generate_policies() {
@@ -248,67 +200,6 @@ export_extension_data() {
     fi
 }
 
-# Export private/sensitive data to Syncthing folder
-export_private_data() {
-    local profile_dir="$1"
-    
-    log_info "Exporting private data to Syncthing folder..."
-    
-    # Check if Syncthing folder exists
-    if [[ ! -d "$HOME/Sync" ]]; then
-        log_warn "Syncthing folder ~/Sync not found"
-        log_info "Create it and set up Syncthing sync, then re-run export"
-        return 0
-    fi
-    
-    # Create private directory structure
-    mkdir -p "$PRIVATE_DIR"
-    
-    # Export extension UUID mapping (needed for storage restore)
-    log_info "  Extracting extension UUID mapping..."
-    local prefs_file="$profile_dir/prefs.js"
-    if [[ -f "$prefs_file" ]]; then
-        # Extract the UUID mapping from prefs.js
-        grep 'extensions.webextensions.uuids' "$prefs_file" | \
-            sed 's/user_pref("extensions.webextensions.uuids", "\(.*\)");/\1/' | \
-            sed 's/\\"/"/g' | \
-            python3 -m json.tool > "$PRIVATE_DIR/uuid-mapping.json" 2>/dev/null || true
-        
-        if [[ -f "$PRIVATE_DIR/uuid-mapping.json" ]]; then
-            log_success "  Saved UUID mapping to uuid-mapping.json"
-        fi
-    fi
-    
-    # Copy browser-extension-data (contains extension local storage)
-    if [[ -d "$profile_dir/browser-extension-data" ]]; then
-        rm -rf "$PRIVATE_DIR/browser-extension-data"
-        cp -r "$profile_dir/browser-extension-data" "$PRIVATE_DIR/"
-        log_success "  Copied browser-extension-data/"
-    fi
-    
-    # Copy extension storage (IndexedDB data)
-    if [[ -d "$profile_dir/storage/default" ]]; then
-        rm -rf "$PRIVATE_DIR/storage"
-        mkdir -p "$PRIVATE_DIR/storage"
-        
-        # Only copy extension-related storage (moz-extension:// URLs)
-        for dir in "$profile_dir/storage/default/moz-extension"*; do
-            if [[ -d "$dir" ]]; then
-                cp -r "$dir" "$PRIVATE_DIR/storage/"
-            fi
-        done
-        
-        local ext_count=$(ls -d "$PRIVATE_DIR/storage/moz-extension"* 2>/dev/null | wc -l)
-        log_success "  Copied storage data for $ext_count extensions"
-    fi
-    
-    # Save export timestamp
-    echo "$(date -Iseconds)" > "$PRIVATE_DIR/last-export.txt"
-    
-    log_success "Private data exported to: $PRIVATE_DIR"
-    log_info "  This folder should be synced via Syncthing to your other machines"
-}
-
 # Copy Zen-specific theme files
 export_zen_themes() {
     local profile_dir="$1"
@@ -327,7 +218,7 @@ export_zen_themes() {
 
 # Git auto-commit
 git_commit() {
-    if [[ ! -d "$DOTFILES_ZEN_DIR/.git" ]] && [[ ! -d "$HOME/.dotfiles/.git" ]]; then
+    if [[ ! -d "$DOTFILES_ZEN_DIR/.git" ]] && [[ ! -d "$HOME/dotfiles/.git" ]]; then
         log_warn "No git repository found, skipping auto-commit"
         return 0
     fi
@@ -367,6 +258,13 @@ main() {
     # Find the profile
     local profile_dir
     profile_dir=$(find_zen_profile)
+    
+    if [[ -z "$profile_dir" ]] || [[ ! -d "$profile_dir" ]]; then
+        log_error "Zen Browser profile not found"
+        log_error "Make sure Zen Browser has been launched at least once"
+        exit 1
+    fi
+    
     log_info "Found profile: $profile_dir"
     
     # Check if browser is running
@@ -392,12 +290,10 @@ main() {
     echo ""
     export_zen_themes "$profile_dir"
     echo ""
-    
-    # Export private data to Syncthing
-    export_private_data "$profile_dir"
+    export_ublock_filters "$profile_dir"
     echo ""
     
-    # Git commit (public dotfiles only)
+    # Git commit
     git_commit
     
     echo ""
@@ -405,20 +301,23 @@ main() {
     echo -e "${GREEN}║           Export Complete!               ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
     echo ""
-    echo "Public config exported to:  $CONFIG_DIR"
-    echo "Private data exported to:   $PRIVATE_DIR"
+    echo "Config exported to: $CONFIG_DIR"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  What was exported:${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo "  Public (git):     policies.json, user.js, keybindings, themes"
-    echo "  Private (Sync):   Extension storage (uBlock, Vimium, MetaMask, etc.)"
+    echo "  ✓ policies.json (extension list)"
+    echo "  ✓ user.js (browser preferences)"
+    echo "  ✓ zen-keyboard-shortcuts.json"
+    echo "  ✓ extension-preferences.json"
+    echo "  ✓ extension-settings.json"
+    echo "  ✓ zen-themes.json"
+    echo "  ✓ chrome/ (custom CSS)"
+    echo "  ✓ ublock-filters-backup.json (uBlock Origin filters)"
     echo ""
-    echo "  Syncthing will automatically sync private data to your other machines."
-    echo "  On a new machine, run setup.sh after Syncthing has synced."
+    echo "  All files are git-controlled and can be shared via GitHub."
     echo ""
 }
 
 main "$@"
-
