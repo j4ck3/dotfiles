@@ -77,7 +77,8 @@ try:
     }
     
     # uBlock stores data in object_data table
-    cursor.execute("SELECT key, file_data FROM object_data")
+    # Column is 'data', not 'file_data'
+    cursor.execute("SELECT key, data FROM object_data")
     rows = cursor.fetchall()
     
     found_data = False
