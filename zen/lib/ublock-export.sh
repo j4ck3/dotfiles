@@ -42,7 +42,7 @@ export_ublock_filters() {
     
     log_info "Exporting uBlock Origin filter lists..."
     
-    # Find uBlock storage
+    # Check if uBlock is installed
     local ublock_storage
     if ! ublock_storage=$(find_ublock_storage "$profile_dir"); then
         log_warn "uBlock Origin storage not found - extension may not be installed or configured"
@@ -52,104 +52,60 @@ export_ublock_filters() {
     
     log_info "Found uBlock storage at: $ublock_storage"
     
-    # uBlock Origin stores its configuration in IndexedDB
-    # We need to extract it using Python
-    python3 << EOF
-import json
-import os
-import sqlite3
-from pathlib import Path
-
-profile_dir = '$profile_dir'
-ublock_storage = '$ublock_storage'
-output_file = '$output_file'
-
-# uBlock Origin stores its backup data in IndexedDB
-# The structure is: storage/default/moz-extension+++UUID/idb/
-# We need to find the IndexedDB database
-
-backup_data = {
-    "version": 1,
-    "filterLists": {},
-    "customFilters": "",
-    "userSettings": {},
-    "whitelist": "",
-    "staticFilterList": ""
+    # Check if user has already manually created a backup file
+    # Look for common backup file names in Downloads or home directory
+    local possible_backups=(
+        "$HOME/Downloads/ublock-backup.txt"
+        "$HOME/Downloads/ublock-origin-backup.txt"
+        "$HOME/ublock-backup.txt"
+        "$HOME/.ublock-backup.txt"
+    )
+    
+    local found_backup=""
+    for backup in "${possible_backups[@]}"; do
+        if [[ -f "$backup" ]] && grep -q '"version"' "$backup" 2>/dev/null; then
+            found_backup="$backup"
+            log_info "Found existing uBlock backup file: $backup"
+            break
+        fi
+    done
+    
+    # If found, copy it
+    if [[ -n "$found_backup" ]]; then
+        cp "$found_backup" "$output_file"
+        log_success "Copied existing uBlock backup to: $output_file"
+        return 0
+    fi
+    
+    # Otherwise, create instructions file and placeholder
+    log_warn "No existing uBlock backup found. Creating placeholder with instructions..."
+    
+    cat > "$output_file" << 'EOF'
+{
+  "version": 1,
+  "filterLists": {},
+  "customFilters": "",
+  "userSettings": {},
+  "whitelist": "",
+  "staticFilterList": "",
+  "_instructions": "This is a placeholder. To create a real backup: 1) Open uBlock Origin settings, 2) Go to Settings → About → Backup to file, 3) Save the file, 4) Copy it to this location: ~/dotfiles/zen/config/ublock-filters-backup.json"
 }
-
-# Try to find IndexedDB database
-idb_path = os.path.join(ublock_storage, "idb")
-if os.path.exists(idb_path):
-    # Look for SQLite databases (IndexedDB uses SQLite in Firefox)
-    for root, dirs, files in os.walk(idb_path):
-        for file in files:
-            if file.endswith('.sqlite') or file.endswith('.sqlite-wal'):
-                db_path = os.path.join(root, file)
-                try:
-                    conn = sqlite3.connect(db_path)
-                    cursor = conn.cursor()
-                    # Try to read uBlock data
-                    # Note: IndexedDB structure is complex, this is a simplified approach
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                    tables = cursor.fetchall()
-                    conn.close()
-                except:
-                    pass
-
-# Try to read from localStorage backup if available
-local_storage_path = os.path.join(profile_dir, "browser-extension-data")
-if os.path.exists(local_storage_path):
-    ublock_id = "uBlock0@raymondhill.net"
-    uuid = None
-    
-    # Try to get UUID from prefs.js
-    prefs_file = os.path.join(profile_dir, "prefs.js")
-    if os.path.exists(prefs_file):
-        import re
-        with open(prefs_file, 'r') as f:
-            for line in f:
-                if 'extensions.webextensions.uuids' in line:
-                    match = re.search(r'uBlock0@raymondhill\.net.*?([a-f0-9-]{36})', line)
-                    if match:
-                        uuid = match.group(1)
-                        break
-    
-    if uuid:
-        ext_data_path = os.path.join(local_storage_path, uuid)
-        if os.path.exists(ext_data_path):
-            # Look for storage.js or similar files
-            storage_js = os.path.join(ext_data_path, "storage.js")
-            if os.path.exists(storage_js):
-                try:
-                    with open(storage_js, 'r') as f:
-                        content = f.read()
-                        # Try to extract JSON data
-                        # This is a simplified approach - actual uBlock storage is more complex
-                except:
-                    pass
-
-# For now, create a minimal backup structure
-# The user can manually export from uBlock Origin UI: Settings → About → Backup to file
-# This function provides a placeholder that can be enhanced later
-
-backup_data["note"] = "This is a placeholder backup. For full backup, use uBlock Origin UI: Settings → About → Backup to file"
-
-# Write backup file
-with open(output_file, 'w') as f:
-    json.dump(backup_data, f, indent=2)
-
-print("Created backup file structure at:", output_file)
-print("Note: For complete backup, use uBlock Origin UI: Settings → About → Backup to file")
 EOF
 
-    if [[ -f "$output_file" ]]; then
-        log_success "Exported uBlock filter backup to: $output_file"
-        log_warn "Note: This is a basic backup. For complete backup with all filters, use uBlock Origin UI:"
-        log_info "  Settings → About → Backup to file"
-        log_info "  Then copy that file to: $output_file"
-    else
-        log_error "Failed to create uBlock backup file"
-        return 1
-    fi
+    log_success "Created placeholder backup file at: $output_file"
+    echo ""
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "  To create a real uBlock backup:"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    log_info "1. Open Zen Browser"
+    log_info "2. Click the uBlock Origin icon → ⚙️ Settings"
+    log_info "3. Go to: Settings → About → Backup to file"
+    log_info "4. Save the backup file"
+    log_info "5. Copy it to: $output_file"
+    echo ""
+    log_info "Or run this command after creating the backup:"
+    log_info "  cp ~/Downloads/ublock-backup.txt $output_file"
+    echo ""
 }
 
