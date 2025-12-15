@@ -4,5 +4,6 @@
   "customFilters": "",
   "userSettings": {},
   "whitelist": "",
-  "staticFilterList": "! Nov 9, 2025 https://www.youtube.com\n\nwww.youtube.com##ytd-rich-section-renderer.ytd-rich-grid-renderer.style-scope:nth-of-type(1)\n\nwww.youtube.com##ytd-rich-section-renderer.ytd-rich-grid-renderer.style-scope:nth-of-type(2)\n\n\n\n! Nov 26, 2025 https://www.youtube.com\n\n||www.gstatic.com/youtube/img/promos/391ad51d4f6c9d806ff6bc5ca0698f2a991b3180444760433a6ed89c01a8bf00_3504x828.jpeg$image\n\n||www.gstatic.com/youtube/img/promos/391ad51d4f6c9d806ff6bc5ca0698f2a991b3180444760433a6ed89c01a8bf00_3504x828.jpeg$image\n"
+  "staticFilterList": "",
+  "_instructions": "This is a placeholder. To create a real backup: 1) Open uBlock Origin settings, 2) Go to Settings → About → Backup to file, 3) Save the file, 4) Copy it to this location: ~/dotfiles/zen/config/ublock-filters-backup.json"
 }
