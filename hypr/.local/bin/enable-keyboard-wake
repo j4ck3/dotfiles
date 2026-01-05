@@ -1,0 +1,25 @@
+#!/bin/bash
+# Enable wake on keyboard devices so they can wake the system from sleep
+
+for f in $(find /sys/class/input -name "name" 2>/dev/null | xargs grep -l "Keychron.*Keyboard\|ZSA.*Keyboard" 2>/dev/null); do
+    dev=$(dirname "$f")
+    wake="$dev/power/wakeup"
+    if [ -f "$wake" ]; then
+        if [ -w "$wake" ]; then
+            echo "enabled" > "$wake" 2>/dev/null && echo "Enabled wake for $(cat "$f")" || echo "Failed to enable wake for $(cat "$f")"
+        else
+            # Try with pkexec if available
+            pkexec sh -c "echo enabled > $wake" 2>/dev/null && echo "Enabled wake for $(cat "$f") (with pkexec)" || echo "Note: Wake for $(cat "$f") may need manual setup"
+        fi
+    fi
+done
+
+# Set deep sleep as default (requires root)
+if [ -w /sys/power/mem_sleep ]; then
+    echo "deep" > /sys/power/mem_sleep 2>/dev/null && echo "Set deep sleep as default"
+elif command -v pkexec >/dev/null 2>&1; then
+    pkexec sh -c 'echo deep > /sys/power/mem_sleep' 2>/dev/null && echo "Set deep sleep as default (with pkexec)" || echo "Note: Deep sleep setup may need manual configuration"
+else
+    echo "Note: Setting deep sleep requires root. Consider adding 'mem_sleep_default=deep' to kernel parameters"
+fi
+

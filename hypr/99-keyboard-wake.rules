@@ -1,0 +1,9 @@
+# Enable wake on keyboard devices
+# Place this file in /etc/udev/rules.d/99-keyboard-wake.rules
+
+# Keychron keyboards
+ACTION=="add", SUBSYSTEM=="input", ATTRS{name}=="*Keychron*Keyboard*", RUN+="/bin/sh -c 'echo enabled > /sys$devpath/../power/wakeup'"
+
+# ZSA keyboards  
+ACTION=="add", SUBSYSTEM=="input", ATTRS{name}=="*ZSA*Keyboard*", RUN+="/bin/sh -c 'echo enabled > /sys$devpath/../power/wakeup'"
+
