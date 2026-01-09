@@ -1,0 +1,30 @@
+#!/bin/bash
+# Monocle mode for workspace 2 - maximize all windows, stacked on top of each other
+
+maximize_workspace2() {
+    hyprctl clients -j | jq -r '.[] | select(.workspace.id == 2) | .address' | while read -r addr; do
+        FULLSCREEN=$(hyprctl clients -j | jq -r ".[] | select(.address == \"$addr\") | .fullscreen")
+        if [ "$FULLSCREEN" = "0" ]; then
+            hyprctl dispatch focuswindow "address:$addr"
+            hyprctl dispatch fullscreen 1
+        fi
+    done
+}
+
+# Listen to Hyprland events
+socat -U - UNIX-CONNECT:$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock | while read -r line; do
+    # Workspace switch to 2, window moved to 2, or new window opened
+    if echo "$line" | grep -qE "^workspace>>2$|^movewindow>>.*,2$"; then
+        maximize_workspace2
+    # New window opened - check if it's on workspace 2
+    elif echo "$line" | grep -qE "^openwindow>>"; then
+        # Extract window address from event (format: openwindow>>ADDRESS,WORKSPACE,CLASS,TITLE)
+        WORKSPACE=$(echo "$line" | cut -d',' -f2)
+        if [ "$WORKSPACE" = "2" ]; then
+            sleep 0.1  # Small delay to let window initialize
+            maximize_workspace2
+        fi
+    fi
+done
+
+

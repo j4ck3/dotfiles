@@ -1,0 +1,69 @@
+#!/bin/bash
+#
+# Text-to-Speech: Read clipboard text aloud using Piper TTS
+#
+
+set -euo pipefail
+
+# --- Configuration ---
+readonly VENV_PATH="$HOME/.local/share/stt/.venv"
+readonly PIPER="$VENV_PATH/bin/piper"
+readonly AUDIO_FILE="/tmp/tts_output.wav"
+readonly LOG_FILE="/tmp/tts.log"
+
+# Voice model - downloaded to ~/.local/share/piper-voices/
+# Available voices: https://rhasspy.github.io/piper-samples/
+readonly VOICE="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx"
+
+# Playback speed (1.0 = normal, 1.5 = faster)
+readonly SPEED="1.3"
+
+# --- Functions ---
+log() {
+    echo "[$(date '+%T')] $1" | tee -a "$LOG_FILE" >&2
+}
+
+cleanup() {
+    rm -f "$AUDIO_FILE"
+}
+trap cleanup EXIT
+
+# --- Validation ---
+[[ -x "$PIPER" ]] || { notify-send -u critical "TTS Error" "Piper not found. Run setup."; exit 1; }
+command -v mpv >/dev/null 2>&1 || { notify-send -u critical "TTS Error" "mpv not found"; exit 1; }
+command -v wl-paste >/dev/null 2>&1 || { notify-send -u critical "TTS Error" "wl-paste not found"; exit 1; }
+
+: > "$LOG_FILE"
+
+# --- Get text from clipboard ---
+TEXT=$(wl-paste --no-newline 2>/dev/null) || TEXT=""
+
+if [[ -z "$TEXT" ]]; then
+    notify-send -t 2000 "TTS" "Clipboard is empty"
+    log "Clipboard empty"
+    exit 0
+fi
+
+# Truncate for notification (show what we're reading)
+PREVIEW="${TEXT:0:50}"
+[[ ${#TEXT} -gt 50 ]] && PREVIEW="${PREVIEW}..."
+
+log "Speaking: $TEXT"
+notify-send -t 2000 "Speaking..." "$PREVIEW"
+
+# --- Generate and play speech ---
+# Piper downloads the model on first use
+echo "$TEXT" | "$PIPER" --model "$VOICE" --output_file "$AUDIO_FILE" 2>>"$LOG_FILE"
+
+if [[ ! -s "$AUDIO_FILE" ]]; then
+    notify-send -u critical "TTS Error" "Failed to generate audio"
+    log "Audio generation failed"
+    exit 1
+fi
+
+# Play with speed adjustment
+mpv --no-terminal --speed="$SPEED" "$AUDIO_FILE" 2>>"$LOG_FILE"
+
+log "Playback complete"
+exit 0
+

@@ -20,3 +20,4 @@ esac
 export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$PATH:/home/jacke/.dotnet/tools"
+export PATH="$HOME/.bun/bin:$PATH"

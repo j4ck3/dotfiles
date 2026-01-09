@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# Speech-to-Text: Record voice and transcribe to clipboard
+# Uses Faster Whisper for transcription
+#
+
+set -euo pipefail
+
+# --- Configuration ---
+readonly VENV_PYTHON="$HOME/.local/share/stt/.venv/bin/python3"
+readonly PYTHON_SCRIPT="$HOME/.local/share/stt/transcribe.py"
+readonly AUDIO_DIR="/tmp/stt"
+readonly LOG_FILE="/tmp/stt.log"
+
+# --- Functions ---
+log() {
+    echo "[$(date '+%T')] $1" | tee -a "$LOG_FILE" >&2
+}
+
+cleanup() {
+    local code=$?
+    if [[ -n "${REC_PID:-}" ]] && kill -0 "$REC_PID" 2>/dev/null; then
+        kill "$REC_PID" 2>/dev/null || true
+        wait "$REC_PID" 2>/dev/null || true
+    fi
+    if [[ $code -ne 0 ]]; then
+        notify-send -u critical "STT Error" "Transcription failed. Check $LOG_FILE"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+fatal() {
+    log "FATAL: $1"
+    notify-send -u critical "STT Error" "$1"
+    exit 1
+}
+
+# --- Validation ---
+[[ -x "$VENV_PYTHON" ]] || fatal "Python venv not found. Run setup first."
+[[ -f "$PYTHON_SCRIPT" ]] || fatal "Transcribe script not found."
+command -v ffmpeg >/dev/null 2>&1 || fatal "ffmpeg not found."
+command -v yad >/dev/null 2>&1 || fatal "yad not found."
+
+# --- Setup ---
+mkdir -p "$AUDIO_DIR"
+: > "$LOG_FILE"
+
+# Determine audio file name
+readonly AUDIO_FILE="${AUDIO_DIR}/rec_$(date +%Y%m%d_%H%M%S).wav"
+log "Recording to: $AUDIO_FILE"
+
+# Get default audio source
+DEFAULT_SOURCE=$(pactl get-default-source 2>/dev/null) || fatal "Could not get audio source"
+log "Using source: $DEFAULT_SOURCE"
+
+# --- Record ---
+ffmpeg -y -f pulse -i "$DEFAULT_SOURCE" \
+    -ar 16000 -ac 1 \
+    -loglevel error \
+    "$AUDIO_FILE" &
+REC_PID=$!
+
+sleep 0.3
+if ! kill -0 "$REC_PID" 2>/dev/null; then
+    fatal "Recording failed to start"
+fi
+
+# Show recording dialog
+yad --title="Voice Recording" \
+    --text='<span size="large"><b>🎙️ Recording...</b></span>\n\nClick Stop when done speaking.' \
+    --width=300 --height=120 \
+    --button="Stop:0" \
+    --fixed --center --on-top
+
+# Stop recording
+if [[ -n "$REC_PID" ]] && kill -0 "$REC_PID" 2>/dev/null; then
+    kill -SIGINT "$REC_PID" 2>/dev/null || true
+    sleep 0.2
+    wait "$REC_PID" 2>/dev/null || true
+fi
+REC_PID=""
+
+# Validate recording
+[[ -s "$AUDIO_FILE" ]] || fatal "Recording is empty"
+log "Recording complete: $(stat -c%s "$AUDIO_FILE") bytes"
+
+# --- Transcribe ---
+notify-send -t 2000 "Transcribing..." "Processing audio with Whisper..."
+log "Starting transcription..."
+
+TRANSCRIPTION=$("$VENV_PYTHON" "$PYTHON_SCRIPT" "$AUDIO_FILE" 2>>"$LOG_FILE") || fatal "Transcription failed"
+
+# --- Output ---
+if [[ -n "$TRANSCRIPTION" ]]; then
+    echo -n "$TRANSCRIPTION" | wl-copy
+    notify-send -t 3000 "Transcription Ready" "Copied to clipboard"
+    log "Success: $TRANSCRIPTION"
+else
+    notify-send -u low "No Speech Detected" "Try speaking louder or closer to mic"
+    log "Empty transcription"
+fi
+
+# Cleanup old recordings (keep last 10)
+cd "$AUDIO_DIR" && ls -t *.wav 2>/dev/null | tail -n +11 | xargs -r rm --
+
+exit 0
+

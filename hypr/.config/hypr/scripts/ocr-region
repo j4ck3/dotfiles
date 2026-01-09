@@ -1,0 +1,54 @@
+#!/bin/bash
+#
+# OCR: Select screen region and extract text to clipboard
+# Uses grim + slurp for capture, tesseract for OCR
+#
+
+set -euo pipefail
+
+readonly TEMP_IMG="/tmp/ocr_capture.png"
+readonly LOG_FILE="/tmp/ocr.log"
+
+log() {
+    echo "[$(date '+%T')] $1" | tee -a "$LOG_FILE" >&2
+}
+
+cleanup() {
+    rm -f "$TEMP_IMG"
+}
+trap cleanup EXIT
+
+# Validation
+command -v grim >/dev/null 2>&1 || { notify-send -u critical "OCR Error" "grim not found"; exit 1; }
+command -v slurp >/dev/null 2>&1 || { notify-send -u critical "OCR Error" "slurp not found"; exit 1; }
+command -v tesseract >/dev/null 2>&1 || { notify-send -u critical "OCR Error" "tesseract not found"; exit 1; }
+
+: > "$LOG_FILE"
+
+# Select region and capture
+log "Waiting for region selection..."
+GEOMETRY=$(slurp 2>>"$LOG_FILE") || { log "Selection cancelled"; exit 0; }
+
+log "Capturing region: $GEOMETRY"
+grim -g "$GEOMETRY" "$TEMP_IMG" 2>>"$LOG_FILE" || { notify-send -u critical "OCR Error" "Screenshot failed"; exit 1; }
+
+# OCR
+log "Running OCR..."
+# Use eng+swe for English and Swedish support
+TEXT=$(tesseract "$TEMP_IMG" - -l eng+swe 2>>"$LOG_FILE") || { notify-send -u critical "OCR Error" "Tesseract failed"; exit 1; }
+
+# Output
+if [[ -n "$TEXT" ]]; then
+    echo -n "$TEXT" | wl-copy
+    # Show preview of extracted text (first 100 chars)
+    PREVIEW="${TEXT:0:100}"
+    [[ ${#TEXT} -gt 100 ]] && PREVIEW="${PREVIEW}..."
+    notify-send -t 3000 "OCR Complete" "$PREVIEW"
+    log "Success: extracted ${#TEXT} characters"
+else
+    notify-send -u low "OCR" "No text detected in selection"
+    log "No text detected"
+fi
+
+exit 0
+

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Cycle windows while maintaining fullscreen state (no animations)
+# Usage: hypr-cycle-window [prev]
+
+FULLSCREEN=$(hyprctl activewindow -j | jq -r ".fullscreen")
+
+# Disable animations temporarily
+hyprctl keyword animations:enabled false
+
+if [[ "$1" == "prev" ]]; then
+    hyprctl dispatch cyclenext prev
+else
+    hyprctl dispatch cyclenext
+fi
+
+# If we were in fullscreen, apply it to the newly focused window
+[[ "$FULLSCREEN" != "0" ]] && hyprctl dispatch fullscreen "$FULLSCREEN"
+
+# Re-enable animations
+hyprctl keyword animations:enabled true
+
