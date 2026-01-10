@@ -15,5 +15,3 @@ if [ "$CPU_USAGE" -gt 3 ]; then
 else
     echo "CPU: ${CPU_USAGE}%"
 fi
-
-Ekalmen""22
