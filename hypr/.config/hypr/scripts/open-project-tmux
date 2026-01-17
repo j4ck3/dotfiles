@@ -1,0 +1,71 @@
+#!/bin/bash
+# Open a project in tmux with nvim, opencode, lazydocker, and lazygit in separate windows
+# Usage: open-project-tmux
+
+# Default starting directory - prefer ~/Work if it exists, otherwise ~
+if [ -d "$HOME/Work" ]; then
+    START_DIR="$HOME/Work"
+else
+    START_DIR="$HOME"
+fi
+
+# Get terminal command - use the same as hyprland bindings
+TERMINAL="uwsm-app -- xdg-terminal-exec"
+
+# Launch a terminal with fzf for directory selection
+# After selection, continue with tmux setup
+$TERMINAL -e bash -c "
+    # Fast project directory finder - only show direct children (fastest)
+    # Using ls or fd with max-depth 1 for maximum speed
+    PROJECT_DIRS=\$(fd --type d --max-depth 1 . '$START_DIR' 2>/dev/null | \
+        grep -vE '^\\.|/\\.' | \
+        sort)
+    
+    # Use fzf to select (preview disabled by default for faster loading)
+    SELECTED_DIR=\$(echo \"\$PROJECT_DIRS\" | \
+        fzf --height 40% --border \
+            --prompt='Select project: ' \
+            --header='Choose a project directory' \
+            --bind='ctrl-d:preview:ls -la {} | head -20')
+    
+    # Exit if no directory was selected
+    if [ -z \"\$SELECTED_DIR\" ]; then
+        exit 0
+    fi
+    
+    # Sanitize directory name for tmux session (replace / with - and remove leading dashes)
+    SESSION_NAME=\$(echo \"\$SELECTED_DIR\" | sed 's|/|-|g' | sed 's|^-||' | sed 's|~|home|')
+    
+    # Limit session name length (tmux has limits)
+    if [ \${#SESSION_NAME} -gt 40 ]; then
+        SESSION_NAME=\"\${SESSION_NAME: -40}\"
+    fi
+    
+    # Check if tmux session already exists
+    if tmux has-session -t \"\$SESSION_NAME\" 2>/dev/null; then
+        # Session exists - ensure all windows exist, create missing ones
+        cd \"\$SELECTED_DIR\"
+        tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^nvim$' || \
+            tmux new-window -t \"\$SESSION_NAME\" -n 'nvim' -c \"\$SELECTED_DIR\" 'nvim'
+        tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^opencode$' || \
+            tmux new-window -t \"\$SESSION_NAME\" -n 'opencode' -c \"\$SELECTED_DIR\" 'opencode'
+        tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^lazydocker$' || \
+            tmux new-window -t \"\$SESSION_NAME\" -n 'lazydocker' -c \"\$SELECTED_DIR\" 'lazydocker'
+        tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^lazygit$' || \
+            tmux new-window -t \"\$SESSION_NAME\" -n 'lazygit' -c \"\$SELECTED_DIR\" 'lazygit'
+        exec tmux attach-session -t \"\$SESSION_NAME\"
+    else
+        # Create new session with first window for nvim
+        cd \"\$SELECTED_DIR\"
+        tmux new-session -d -s \"\$SESSION_NAME\" -n 'nvim' 'nvim'
+        # Create second window for opencode
+        tmux new-window -t \"\$SESSION_NAME\" -n 'opencode' -c \"\$SELECTED_DIR\" 'opencode'
+        # Create third window for lazydocker
+        tmux new-window -t \"\$SESSION_NAME\" -n 'lazydocker' -c \"\$SELECTED_DIR\" 'lazydocker'
+        # Create fourth window for lazygit
+        tmux new-window -t \"\$SESSION_NAME\" -n 'lazygit' -c \"\$SELECTED_DIR\" 'lazygit'
+        # Select the first window (nvim) when attaching
+        tmux select-window -t \"\$SESSION_NAME:nvim\"
+        exec tmux attach-session -t \"\$SESSION_NAME\"
+    fi
+"

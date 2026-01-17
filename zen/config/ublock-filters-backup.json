@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "filterLists": {},
-  "customFilters": "",
-  "userSettings": {},
-  "whitelist": "",
-  "staticFilterList": "",
-  "_instructions": "This is a placeholder. To create a real backup: 1) Open uBlock Origin settings, 2) Go to Settings → About → Backup to file, 3) Save the file, 4) Copy it to this location: ~/dotfiles/zen/config/ublock-filters-backup.json"
-}
