@@ -14,4 +14,4 @@ if [ "$CPU_USAGE" -gt 3 ]; then
     fi
 else
     echo "CPU: ${CPU_USAGE}%"
-fiq
+fi

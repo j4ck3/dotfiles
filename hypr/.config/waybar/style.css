@@ -1,85 +1,79 @@
-@import "../omarchy/current/theme/waybar.css";
+/* macOS-style menu bar */
+@define-color background rgba(0, 0, 0, 0.25);
+@define-color foreground rgba(255, 255, 255, 0.9);
+@define-color foreground-dim rgba(255, 255, 255, 0.5);
+@define-color accent #ffffff;
 
 * {
-  background-color: @background;
+  background-color: transparent;
   color: @foreground;
-
   border: none;
   border-radius: 0;
   min-height: 0;
-  font-family: "CaskaydiaMono Nerd Font";
-  font-size: 12px;
+  font-family:
+    "SF Pro Text", "SF Pro", "-apple-system", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+window#waybar {
+  background-color: @background;
 }
 
 .modules-left {
-  margin-left: 8px;
+  margin-left: 12px;
 }
 
 .modules-right {
-  margin-right: 8px;
+  margin-right: 12px;
 }
 
 #workspaces button {
-  padding: 0 6px;
-  margin: 0 1.5px;
-  min-width: 9px;
+  padding: 0 4px;
+  margin: 0 1px;
+  min-width: 8px;
   background: transparent;
   border: none;
-}
-
-#workspaces button.empty {
-  opacity: 0.5;
+  font-size: 8px;
+  color: @foreground-dim;
 }
 
 #workspaces button.active {
-  color: @accent;
+  color: @foreground;
+}
+
+#workspaces button.empty {
+  opacity: 0.3;
 }
 
 #cpu,
 #custom-cpu,
 #battery,
 #pulseaudio,
-#custom-omarchy,
-#custom-screenrecording-indicator,
-#custom-update {
-  min-width: 12px;
-  margin: 0 7.5px;
+#bluetooth,
+#network {
+  margin: 0 10px;
 }
 
 #tray {
-  margin-right: 16px;
+  margin-right: 8px;
 }
 
-#bluetooth {
-  margin-right: 17px;
-}
-
-#network {
-  margin-right: 13px;
+#tray > .passive {
+  -gtk-icon-effect: dim;
 }
 
 tooltip {
-  padding: 2px;
-}
-
-#custom-update {
-  font-size: 10px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  padding: 4px 8px;
 }
 
 #clock {
-  margin-left: 8.75px;
+  margin-left: 12px;
+  font-weight: 500;
 }
 
 .hidden {
   opacity: 0;
-}
-
-#custom-screenrecording-indicator {
-  min-width: 12px;
-  margin-left: 8.75px;
-  font-size: 10px;
-}
-
-#custom-screenrecording-indicator.active {
-  color: #a55555;
 }

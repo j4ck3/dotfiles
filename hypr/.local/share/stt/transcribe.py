@@ -1,32 +1,25 @@
 #!/usr/bin/env python3
 """
-Speech-to-Text transcription using Faster Whisper.
+Speech-to-Text transcription using OpenAI Whisper.
 Optimized for CPU with the small model.
 """
 
 import sys
-from faster_whisper import WhisperModel
+import whisper
 
 def transcribe(audio_file: str) -> str:
     """Transcribe audio file to text using Whisper."""
-    # Use small model for good balance of speed/accuracy on CPU
-    # You can change to "tiny" for faster but less accurate, 
-    # or "medium" for more accurate but slower
-    model = WhisperModel("small", device="cpu", compute_type="int8")
+    # Use tiny model for fast CPU transcription
+    # Options: tiny (~1s), base (~2s), small (~5s), medium (~15s)
+    model = whisper.load_model("tiny")
     
-    segments, info = model.transcribe(
+    result = model.transcribe(
         audio_file,
-        beam_size=5,
         language="en",  # Set to None for auto-detect, or "sv" for Swedish
-        vad_filter=True,  # Filter out silence
+        fp16=False,     # Disable fp16 for CPU (avoids warnings)
     )
     
-    # Collect all transcribed text
-    text_parts = []
-    for segment in segments:
-        text_parts.append(segment.text.strip())
-    
-    return " ".join(text_parts)
+    return result["text"].strip()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -36,4 +29,3 @@ if __name__ == "__main__":
     audio_path = sys.argv[1]
     result = transcribe(audio_path)
     print(result)
-
