@@ -48,7 +48,7 @@
     "on-click": "xdg-terminal-exec btop"
   },
   "clock": {
-    "format": "{:L%A %d %B W%V %H:%M}",
+    "format": "{:%a %d %b W%V %H:%M}",
     "tooltip": false
   },
   "network": {
