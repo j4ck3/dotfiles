@@ -1,0 +1,19 @@
+#!/bin/bash
+# Switch to workspace and launch app if not already there
+# Usage: workspace-app <workspace> <app_class> <launch_command>
+
+WORKSPACE="$1"
+APP_CLASS="$2"
+shift 2
+LAUNCH_CMD="$@"
+
+# Check if app is already on the target workspace
+WINDOWS=$(hyprctl clients -j | jq "[.[] | select(.workspace.name == \"$WORKSPACE\" and .class == \"$APP_CLASS\")] | length")
+
+# Always switch to the workspace
+hyprctl dispatch workspace "$WORKSPACE"
+
+# Launch the app if not already there
+if [ "$WINDOWS" -eq 0 ]; then
+    exec $LAUNCH_CMD
+fi

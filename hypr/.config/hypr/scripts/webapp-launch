@@ -1,0 +1,32 @@
+#!/bin/bash
+# Launch app only if not already on the target workspace
+# Usage: webapp-launch <workspace> <app_class> <launch_command...>
+
+WORKSPACE="$1"
+APP_CLASS="$2"
+shift 2
+
+# Check if app is already on the target workspace
+WINDOWS=$(hyprctl clients -j | jq "[.[] | select(.workspace.name == \"$WORKSPACE\" and .class == \"$APP_CLASS\")] | length")
+
+# Only launch if not already there
+if [ "$WINDOWS" -eq 0 ]; then
+    # Get current window count for this class
+    BEFORE=$(hyprctl clients -j | jq "[.[] | select(.class == \"$APP_CLASS\")] | length")
+    
+    # Launch the app in background
+    "$@" &
+    
+    # Wait for new window to appear (up to 4 seconds)
+    for i in {1..20}; do
+        sleep 0.2
+        AFTER=$(hyprctl clients -j | jq "[.[] | select(.class == \"$APP_CLASS\")] | length")
+        if [ "$AFTER" -gt "$BEFORE" ]; then
+            # New window appeared, move it to our workspace and switch there
+            sleep 0.1
+            hyprctl dispatch movetoworkspacesilent "$WORKSPACE"
+            hyprctl dispatch workspace "$WORKSPACE"
+            exit 0
+        fi
+    done
+fi

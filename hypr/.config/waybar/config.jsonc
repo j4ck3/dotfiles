@@ -4,8 +4,8 @@
   "position": "top",
   "spacing": 0,
   "height": 32,
-  "modules-left": ["hyprland/workspaces"],
-  "modules-center": [],
+  "modules-left": [],
+  "modules-center": ["hyprland/workspaces"],
   "modules-right": [
     "tray",
     "bluetooth",
