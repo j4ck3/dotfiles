@@ -1,51 +1,107 @@
 {
+  "reload_style_on_change": true,
   "layer": "top",
   "position": "top",
-  "height": 28,
   "spacing": 0,
-  "margin-top": 0,
-  "margin-left": 0,
-  "margin-right": 0,
-  "modules-left": ["hyprland/workspaces"],
-  "modules-center": [],
-  "modules-right": ["custom/bt-status", "network", "pulseaudio", "clock"],
-
+  "height": 32,
+  "modules-left": [],
+  "modules-center": ["hyprland/workspaces"],
+  "modules-right": [
+    "tray",
+    "bluetooth",
+    "network",
+    "pulseaudio",
+    "custom/cpu",
+    "battery",
+    "clock"
+  ],
   "hyprland/workspaces": {
+    "on-click": "activate",
     "format": "{icon}",
     "format-icons": {
-      "1": "1",
-      "2": "2",
-      "3": "3",
-      "4": "4",
-      "default": "●"
+      "default": "•",
+      "1": "j",
+      "2": "k",
+      "3": "l",
+      "4": "ö",
+      "5": "5",
+      "6": "6",
+      "7": "7",
+      "8": "8",
+      "9": "9",
+      "active": "■"
     },
-    "on-click": "activate"
+    "persistent-workspaces": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "5": [],
+      "11": [],
+      "12": [],
+      "13": []
+    }
   },
-
-  "custom/bt-status": {
-    "exec": "~/.config/waybar/scripts/bt-status.sh",
-    "return-type": "json",
-    "interval": 5,
-    "tooltip": true,
-    "on-click": "overskride"
+  "custom/cpu": {
+    "exec": "~/.config/hypr/scripts/waybar-cpu.sh",
+    "interval": 3,
+    "on-click": "xdg-terminal-exec btop"
   },
-
-  "network": {
-    "format-wifi": "Wi-Fi",
-    "format-ethernet": "Ethernet",
-    "format-disconnected": "Offline",
-    "tooltip-format": "{ifname}: {ipaddr}"
-  },
-
-  "pulseaudio": {
-    "format": "Vol {volume}%",
-    "format-muted": "Muted",
-    "on-click": "pavucontrol",
-    "scroll-step": 5
-  },
-
   "clock": {
-    "format": "{:%a %d %b  %H:%M}",
-    "tooltip-format": "{:%Y-%m-%d %H:%M:%S}"
+    "format": "{:%a %d %b W%V %H:%M}",
+    "tooltip": false
+  },
+  "network": {
+    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+    "format-wifi": "{icon}",
+    "format-ethernet": "󰀂",
+    "format-disconnected": "󰤮",
+    "tooltip-format-wifi": "{essid} ({frequency} GHz)\n⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "tooltip-format-ethernet": "⇣{bandwidthDownBytes}  ⇡{bandwidthUpBytes}",
+    "tooltip-format-disconnected": "Disconnected",
+    "interval": 3,
+    "spacing": 1,
+    "on-click": "nm-connection-editor"
+  },
+  "battery": {
+    "format": "{capacity}% {icon}",
+    "format-discharging": "{capacity}% {icon}",
+    "format-charging": "{capacity}% {icon}",
+    "format-plugged": "",
+    "format-icons": {
+      "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
+      "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+    },
+    "format-full": "󰂅",
+    "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
+    "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
+    "interval": 5,
+    "on-click": "systemctl poweroff",
+    "states": {
+      "warning": 20,
+      "critical": 10
+    }
+  },
+  "bluetooth": {
+    "format": "",
+    "format-disabled": "󰂲",
+    "format-connected": "",
+    "tooltip-format": "Devices connected: {num_connections}",
+    "on-click": "blueberry"
+  },
+  "pulseaudio": {
+    "format": "{volume}% {icon}",
+    "on-click": "pavucontrol",
+    "on-click-right": "pamixer -t",
+    "tooltip-format": "Playing at {volume}%",
+    "scroll-step": 5,
+    "format-muted": "",
+    "format-icons": {
+      "default": ["", "", ""]
+    }
+  },
+  "tray": {
+    "icon-size": 12,
+    "spacing": 17
   }
 }

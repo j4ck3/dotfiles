@@ -1,96 +1,79 @@
-/* macOS Menu Bar Style */
+/* macOS-style menu bar */
+@define-color background rgba(0, 0, 0, 0.25);
+@define-color foreground rgba(255, 255, 255, 0.9);
+@define-color foreground-dim rgba(255, 255, 255, 0.5);
+@define-color accent #ffffff;
+
 * {
-  font-family: "SF Pro Display", "SF Pro", "Inter", system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  min-height: 0;
+  background-color: transparent;
+  color: @foreground;
   border: none;
   border-radius: 0;
+  min-height: 0;
+  font-family:
+    "SF Pro Text", "SF Pro", "-apple-system", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 window#waybar {
-  background: rgba(30, 30, 30, 0.85);
-  color: #ffffff;
+  background-color: @background;
 }
 
-/* Remove all padding/margins from the bar itself */
-window#waybar > box {
-  margin: 0;
-  padding: 0;
+.modules-left {
+  margin-left: 12px;
 }
 
-/* Workspaces - left side like macOS spaces indicator */
-#workspaces {
-  padding: 0 12px;
+.modules-right {
+  margin-right: 12px;
 }
 
 #workspaces button {
-  padding: 0 8px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.6);
+  padding: 0 4px;
+  margin: 0 1px;
+  min-width: 8px;
   background: transparent;
   border: none;
-  border-radius: 0;
-}
-
-#workspaces button:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  font-size: 8px;
+  color: @foreground-dim;
 }
 
 #workspaces button.active {
-  color: #ffffff;
-  font-weight: 600;
+  color: @foreground;
 }
 
-/* Right side modules */
-#custom-bt-status,
-#network,
+#workspaces button.empty {
+  opacity: 0.3;
+}
+
+#cpu,
+#custom-cpu,
+#battery,
 #pulseaudio,
-#clock {
-  padding: 0 12px;
-  color: #ffffff;
-}
-
-#custom-bt-status {
-  color: rgba(255, 255, 255, 0.9);
-}
-
+#bluetooth,
 #network {
-  color: rgba(255, 255, 255, 0.9);
+  margin: 0 10px;
 }
 
-#pulseaudio {
-  color: rgba(255, 255, 255, 0.9);
+#tray {
+  margin-right: 8px;
 }
 
-/* Clock - rightmost, slightly bolder like macOS */
-#clock {
-  font-weight: 500;
-  padding-right: 16px;
+#tray > .passive {
+  -gtk-icon-effect: dim;
 }
 
-/* Hover effects */
-#custom-bt-status:hover,
-#network:hover,
-#pulseaudio:hover,
-#clock:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* Tooltip styling */
 tooltip {
-  background: rgba(30, 30, 30, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(0, 0, 0, 0.7);
   border-radius: 6px;
+  padding: 4px 8px;
 }
 
-tooltip label {
-  color: #ffffff;
-  padding: 6px 10px;
+#clock {
+  margin-left: 12px;
+  font-weight: 500;
 }
 
-/* Bluetooth disconnected warning state */
-#custom-bt-status.disconnected {
-  color: #ffaa00;
+.hidden {
+  opacity: 0;
 }
