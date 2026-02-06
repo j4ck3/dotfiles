@@ -1,0 +1,96 @@
+/* macOS Menu Bar Style */
+* {
+  font-family: "SF Pro Display", "SF Pro", "Inter", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+window#waybar {
+  background: rgba(30, 30, 30, 0.85);
+  color: #ffffff;
+}
+
+/* Remove all padding/margins from the bar itself */
+window#waybar > box {
+  margin: 0;
+  padding: 0;
+}
+
+/* Workspaces - left side like macOS spaces indicator */
+#workspaces {
+  padding: 0 12px;
+}
+
+#workspaces button {
+  padding: 0 8px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+#workspaces button:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#workspaces button.active {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Right side modules */
+#custom-bt-status,
+#network,
+#pulseaudio,
+#clock {
+  padding: 0 12px;
+  color: #ffffff;
+}
+
+#custom-bt-status {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#network {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+#pulseaudio {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Clock - rightmost, slightly bolder like macOS */
+#clock {
+  font-weight: 500;
+  padding-right: 16px;
+}
+
+/* Hover effects */
+#custom-bt-status:hover,
+#network:hover,
+#pulseaudio:hover,
+#clock:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Tooltip styling */
+tooltip {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+tooltip label {
+  color: #ffffff;
+  padding: 6px 10px;
+}
+
+/* Bluetooth disconnected warning state */
+#custom-bt-status.disconnected {
+  color: #ffaa00;
+}
