@@ -1,0 +1,33 @@
+#!/bin/bash
+# Adjust Spotify volume
+# Usage: spotify-volume up|down
+# Writes state to file so spotify-volume-guard knows the user's intended volume.
+
+MAX_VOLUME=100  # percent
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
+
+DIRECTION="$1"
+ID=$(pactl list sink-inputs | grep -B20 'application.name = "spotify"' | grep 'Sink Input' | awk '{print $3}' | tr -d '#' | head -1)
+
+if [ -n "$ID" ]; then
+    # Get current volume percentage
+    CURRENT=$(pactl list sink-inputs | grep -A20 "Sink Input #$ID" | grep 'Volume:' | head -1 | grep -o '[0-9]*%' | head -1 | tr -d '%')
+
+    if [ "$DIRECTION" = "up" ]; then
+        if [ "$CURRENT" -lt "$MAX_VOLUME" ]; then
+            NEW=$((CURRENT + 5))
+            if [ "$NEW" -gt "$MAX_VOLUME" ]; then
+                NEW=$MAX_VOLUME
+            fi
+            pactl set-sink-input-volume "$ID" "${NEW}%"
+            echo "$NEW" > "$STATE_FILE"
+        fi
+    else
+        NEW=$((CURRENT - 5))
+        if [ "$NEW" -lt 0 ]; then
+            NEW=0
+        fi
+        pactl set-sink-input-volume "$ID" "${NEW}%"
+        echo "$NEW" > "$STATE_FILE"
+    fi
+fi

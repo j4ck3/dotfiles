@@ -112,3 +112,13 @@ if command -v pacman &> /dev/null; then
     alias premove='sudo pacman -Rns'
     alias search='pacman -Ss'
 fi
+
+# ============================================================================
+# Codex Desktop
+# ============================================================================
+alias codex-desktop="~/codex-desktop-linux/codex-app/start.sh"
+
+# ============================================================================
+# Starship Prompt
+# ============================================================================
+eval "$(starship init bash)"

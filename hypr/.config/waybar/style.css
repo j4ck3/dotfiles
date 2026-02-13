@@ -10,8 +10,8 @@
   border: none;
   border-radius: 0;
   min-height: 0;
-  font-family:
-    "SF Pro Text", "SF Pro", "-apple-system", "Helvetica Neue", sans-serif;
+  font-family: "SF Pro Text", "SF Pro", "-apple-system", "Helvetica Neue",
+    sans-serif;
   font-size: 13px;
   font-weight: 400;
 }
@@ -46,6 +46,31 @@ window#waybar {
   opacity: 0.3;
 }
 
+#custom-linux {
+  margin: 0 10px;
+  font-size: 16px;
+}
+
+#custom-docker-gluetun {
+  margin: 0 10px;
+}
+
+#custom-docker-gluetun.healthy {
+  color: @foreground;
+}
+
+#custom-docker-gluetun.unhealthy {
+  color: @foreground;
+}
+
+#custom-docker-gluetun.starting {
+  color: @foreground;
+}
+
+#custom-docker-gluetun.unknown {
+  color: @foreground-dim;
+}
+
 #cpu,
 #custom-cpu,
 #battery,
@@ -53,6 +78,10 @@ window#waybar {
 #bluetooth,
 #network {
   margin: 0 10px;
+}
+
+#custom-spotify {
+  margin: 0 20px;
 }
 
 #tray {
@@ -63,7 +92,7 @@ window#waybar {
   -gtk-icon-effect: dim;
 }
 
-tooltip {
+tooltip {§
   background-color: rgba(0, 0, 0, 0.7);
   border-radius: 6px;
   padding: 4px 8px;

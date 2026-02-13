@@ -1,0 +1,62 @@
+#!/bin/bash
+# spotify-volume-guard: Prevents Spotify from resetting volume to 100% on new tracks
+# Spotify on Linux resets its PipeWire/PulseAudio stream volume to 100% every time
+# a new track starts. This daemon monitors sink-input events and reverts the reset.
+#
+# Coordinates with spotify-volume script via a shared state file.
+
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
+
+get_spotify_id() {
+    pactl list sink-inputs 2>/dev/null \
+        | grep -B20 'application.name = "spotify"' \
+        | grep 'Sink Input' \
+        | awk '{print $3}' \
+        | tr -d '#' \
+        | head -1
+}
+
+get_volume() {
+    local id="$1"
+    pactl list sink-inputs 2>/dev/null \
+        | grep -A20 "Sink Input #${id}" \
+        | grep 'Volume:' \
+        | head -1 \
+        | grep -o '[0-9]*%' \
+        | head -1 \
+        | tr -d '%'
+}
+
+# Seed the state file from current Spotify volume if it doesn't exist
+if [[ ! -f "$STATE_FILE" ]]; then
+    id=$(get_spotify_id)
+    if [[ -n "$id" ]]; then
+        vol=$(get_volume "$id")
+        [[ -n "$vol" ]] && echo "$vol" > "$STATE_FILE"
+    fi
+fi
+
+pactl subscribe 2>/dev/null | grep --line-buffered "sink-input" | while read -r _; do
+    id=$(get_spotify_id)
+    [[ -z "$id" ]] && continue
+
+    vol=$(get_volume "$id")
+    [[ -z "$vol" ]] && continue
+
+    saved_vol=""
+    [[ -f "$STATE_FILE" ]] && saved_vol=$(cat "$STATE_FILE")
+
+    if [[ -z "$saved_vol" ]]; then
+        echo "$vol" > "$STATE_FILE"
+        continue
+    fi
+
+    if (( vol == 100 && saved_vol != 100 )); then
+        # Spotify reset volume to 100% on new track — revert to saved
+        pactl set-sink-input-volume "$id" "${saved_vol}%"
+    elif (( vol != 100 )); then
+        # User-initiated change — save new volume
+        echo "$vol" > "$STATE_FILE"
+    fi
+    # vol==100 && saved_vol==100: user intentionally at 100%, do nothing
+done

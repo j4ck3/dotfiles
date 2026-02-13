@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# When 16:9 mode is active on a workspace (SUPER+T), new windows on that workspace
+# are automatically floated and resized to the same small 16:9 size.
+# Listens to Hyprland socket2 for openwindow events (uses Python; no socat needed).
+
+MODE_FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-ws-mode"
+LOG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-listener.log"
+
+# Find socket: exec-once may run before socket exists or HYPRLAND_INSTANCE_SIGNATURE is set
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+SOCKET=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+	for s in "$RUNTIME"/hypr/*/.socket2.sock; do
+		[[ -S "$s" ]] && SOCKET="$s" && break 2
+	done
+	sleep 0.2
+done
+[[ -z "$SOCKET" ]] && exit 0
+echo "$(date +%T) listener started socket=$SOCKET" >> "$LOG" 2>/dev/null
+
+# So hyprctl works when started by exec-once (and in any child)
+export XDG_RUNTIME_DIR="$RUNTIME"
+export HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$SOCKET")")
+
+apply_16_9() {
+	local addr="$1"
+	# Find window as soon as it appears (no initial sleep; short retries)
+	local WIN_JSON
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
+		WIN_JSON=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a)')
+		[[ -n "$WIN_JSON" ]] && break
+		sleep 0.01
+	done
+	[[ -z "$WIN_JSON" ]] && return
+	# Only apply if this window's workspace is the one in 16:9 mode
+	local WS_ID
+	WS_ID=$(jq -r '.workspace.id' <<< "$WIN_JSON")
+	[[ "$(cat "$MODE_FLAG" 2>/dev/null)" != "$WS_ID" ]] && return
+	local MON_ID
+	MON_ID=$(jq -r '.monitor' <<< "$WIN_JSON")
+	[[ -z "$MON_ID" || "$MON_ID" == "null" ]] && return
+
+	local MON_JSON
+	MON_JSON=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$MON_ID" '.[] | select(.id == $id)')
+	[[ -z "$MON_JSON" ]] && return
+
+	local MON_X MON_Y MON_W MON_H TOP BOTTOM
+	MON_X=$(jq -r '.x' <<< "$MON_JSON")
+	MON_Y=$(jq -r '.y' <<< "$MON_JSON")
+	MON_W=$(jq -r '.width' <<< "$MON_JSON")
+	MON_H=$(jq -r '.height' <<< "$MON_JSON")
+	TOP=$(jq -r '.reserved[1]' <<< "$MON_JSON")
+	BOTTOM=$(jq -r '.reserved[3]' <<< "$MON_JSON")
+
+	local GAPS_STR GAPS_L GAPS_T GAPS_R GAPS_B
+	GAPS_STR=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
+	GAPS_L=0; GAPS_T=0; GAPS_R=0; GAPS_B=0
+	[[ -n "$GAPS_STR" ]] && read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
+
+	local WORK_LEFT WORK_TOP WORK_W WORK_H
+	WORK_LEFT=$((MON_X + GAPS_L))
+	WORK_TOP=$((MON_Y + TOP + GAPS_T))
+	WORK_W=$((MON_W - GAPS_L - GAPS_R))
+	WORK_H=$((MON_H - TOP - BOTTOM - GAPS_T - GAPS_B))
+
+	# Same formula as shrink-16-9
+	local USE_H USE_W WIN_LEFT WIN_TOP
+	USE_H=$WORK_H
+	USE_W=$((USE_H * 16 * 108 / 9 / 100))
+	WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
+	WIN_TOP=$WORK_TOP
+
+	echo "$(date +%T) dispatch float+resize $addr ${USE_W}x${USE_H}" >> "$LOG" 2>/dev/null
+	# Batch all dispatches so resize/move happen in one round-trip (no animation flash)
+	hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+}
+
+# Python reads socket and prints window address per line for each openwindow event.
+# Bash reads those and runs apply_16_9 in this process (so the function is available).
+while IFS= read -r addr; do
+	[[ -z "$addr" ]] && continue
+	# Hyprland event sends address without 0x; hyprctl JSON uses 0x — normalize
+	[[ "$addr" != 0x* ]] && addr="0x$addr"
+	[[ ! -f "$MODE_FLAG" ]] && continue
+	echo "$(date +%T) openwindow addr=$addr applying" >> "$LOG" 2>/dev/null
+	# Disable animations before we touch the window so open/resize don't animate
+	hyprctl keyword animations:enabled false
+	apply_16_9 "$addr"
+	hyprctl keyword animations:enabled true
+	echo "$(date +%T) openwindow addr=$addr done" >> "$LOG" 2>/dev/null
+done < <(python3 - "$SOCKET" << 'PY'
+import sys, socket
+
+sock_path = sys.argv[1]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock_path)
+buf = b""
+while True:
+    data = s.recv(4096)
+    if not data:
+        break
+    buf += data
+    while b"\n" in buf:
+        line, buf = buf.split(b"\n", 1)
+        line = line.decode("utf-8", errors="replace").strip()
+        if not line.startswith("openwindow>>"):
+            continue
+        data = line[len("openwindow>>"):]
+        idx = data.find(",")
+        addr = (data[:idx] if idx >= 0 else data).strip()
+        if addr:
+            print(addr, flush=True)
+PY
+)

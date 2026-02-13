@@ -1,21 +1,44 @@
-#!/bin/bash
-# Cycle windows while maintaining fullscreen state (no animations)
+#!/usr/bin/env bash
+# Cycle to next/prev window on current workspace by focuswindow (works with floating stacked 16:9).
 # Usage: hypr-cycle-window [prev]
 
-FULLSCREEN=$(hyprctl activewindow -j | jq -r ".fullscreen")
+CURRENT=$(hyprctl activewindow -j 2>/dev/null) || exit 0
+[[ -z "$CURRENT" ]] && exit 0
 
-# Disable animations temporarily
-hyprctl keyword animations:enabled false
+WORKSPACE_ID=$(jq -r '.workspace.id' <<< "$CURRENT")
+CURRENT_ADDR=$(jq -r '.address' <<< "$CURRENT")
 
+# List window addresses on this workspace, ordered by focusHistoryID for stable cycle order
+MAPFILE=()
+while IFS= read -r line; do
+	[[ -n "$line" ]] && MAPFILE+=( "$line" )
+done < <(hyprctl clients -j 2>/dev/null | jq -r --argjson ws "$WORKSPACE_ID" '
+	[.[] | select(.workspace.id == $ws)] | sort_by(.focusHistoryID) | .[].address
+')
+
+N=${#MAPFILE[@]}
+[[ $N -eq 0 ]] && exit 0
+[[ $N -eq 1 ]] && exit 0
+
+# Find current index
+CURR_IDX=-1
+for i in "${!MAPFILE[@]}"; do
+	if [[ "${MAPFILE[$i]}" == "$CURRENT_ADDR" ]]; then
+		CURR_IDX=$i
+		break
+	fi
+done
+[[ $CURR_IDX -lt 0 ]] && CURR_IDX=0
+
+# Next or prev
 if [[ "$1" == "prev" ]]; then
-    hyprctl dispatch cyclenext prev
+	NEXT_IDX=$(( (CURR_IDX + N - 1) % N ))
 else
-    hyprctl dispatch cyclenext
+	NEXT_IDX=$(( (CURR_IDX + 1) % N ))
 fi
 
-# If we were in fullscreen, apply it to the newly focused window
-[[ "$FULLSCREEN" != "0" ]] && hyprctl dispatch fullscreen "$FULLSCREEN"
-
-# Re-enable animations
+NEXT_ADDR="${MAPFILE[$NEXT_IDX]}"
+hyprctl keyword animations:enabled false
+hyprctl dispatch focuswindow "address:$NEXT_ADDR"
+hyprctl dispatch alterzorder top
 hyprctl keyword animations:enabled true
-
