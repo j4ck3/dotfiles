@@ -8,12 +8,13 @@ CURRENT=$(hyprctl activewindow -j 2>/dev/null) || exit 0
 WORKSPACE_ID=$(jq -r '.workspace.id' <<< "$CURRENT")
 CURRENT_ADDR=$(jq -r '.address' <<< "$CURRENT")
 
-# List window addresses on this workspace, ordered by focusHistoryID for stable cycle order
+# List mapped window addresses on this workspace, ordered by focusHistoryID for stable cycle order
+# Only .mapped == true so we cycle visible windows (excludes hidden/grouped that shouldn't be in cycle)
 MAPFILE=()
 while IFS= read -r line; do
 	[[ -n "$line" ]] && MAPFILE+=( "$line" )
 done < <(hyprctl clients -j 2>/dev/null | jq -r --argjson ws "$WORKSPACE_ID" '
-	[.[] | select(.workspace.id == $ws)] | sort_by(.focusHistoryID) | .[].address
+	[.[] | select(.workspace.id == $ws and (.mapped == true))] | sort_by(.focusHistoryID // 0) | .[].address
 ')
 
 N=${#MAPFILE[@]}

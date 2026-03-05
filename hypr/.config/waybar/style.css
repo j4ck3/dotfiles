@@ -1,7 +1,7 @@
 /* macOS-style menu bar */
 @define-color background rgba(0, 0, 0, 0.25);
 @define-color foreground rgba(255, 255, 255, 0.9);
-@define-color foreground-dim rgba(255, 255, 255, 0.5);
+@define-color foreground-dim rgba(255, 255, 255, 0.55);
 @define-color accent #ffffff;
 
 * {
@@ -13,7 +13,7 @@
   font-family: "SF Pro Text", "SF Pro", "-apple-system", "Helvetica Neue",
     sans-serif;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 window#waybar {
@@ -29,21 +29,49 @@ window#waybar {
 }
 
 #workspaces button {
-  padding: 0 4px;
+  padding: 0 8px;
   margin: 0 1px;
-  min-width: 8px;
+  min-width: 24px;
+  min-height: 20px;
   background: transparent;
   border: none;
-  font-size: 8px;
-  color: @foreground-dim;
-}
-
-#workspaces button.active {
+  font-size: 13px;
+  font-weight: 500;
   color: @foreground;
 }
 
-#workspaces button.empty {
-  opacity: 0.3;
+/* Active workspace: clear pill + bright text */
+#workspaces button.active,
+#workspaces button.active * {
+  opacity: 1;
+  color: @accent;
+  font-weight: 600;
+}
+#workspaces button.active {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+}
+
+/* Inactive: readable but clearly secondary */
+#workspaces button:not(.active),
+#workspaces button:not(.active) * {
+  opacity: 0.85;
+  color: @foreground;
+}
+
+#workspaces button.empty,
+#workspaces button.empty * {
+  opacity: 0.6;
+  color: @foreground-dim;
+}
+
+#custom-linux,
+#custom-docker-gluetun,
+#custom-docker-gluetun.healthy,
+#custom-docker-gluetun.unhealthy,
+#custom-docker-gluetun.starting,
+#custom-docker-gluetun.unknown {
+  color: @foreground;
 }
 
 #custom-linux {
@@ -55,22 +83,6 @@ window#waybar {
   margin: 0 10px;
 }
 
-#custom-docker-gluetun.healthy {
-  color: @foreground;
-}
-
-#custom-docker-gluetun.unhealthy {
-  color: @foreground;
-}
-
-#custom-docker-gluetun.starting {
-  color: @foreground;
-}
-
-#custom-docker-gluetun.unknown {
-  color: @foreground-dim;
-}
-
 #cpu,
 #custom-cpu,
 #battery,
@@ -80,7 +92,7 @@ window#waybar {
   margin: 0 10px;
 }
 
-#custom-spotify {
+#custom-media {
   margin: 0 20px;
 }
 
@@ -92,7 +104,7 @@ window#waybar {
   -gtk-icon-effect: dim;
 }
 
-tooltip {§
+tooltip {
   background-color: rgba(0, 0, 0, 0.7);
   border-radius: 6px;
   padding: 4px 8px;

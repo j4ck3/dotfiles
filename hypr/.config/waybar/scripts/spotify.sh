@@ -1,6 +1,7 @@
 #!/bin/bash
 # Waybar custom module for Spotify: song title, play/pause icon, volume
 # Uses event-based monitoring for instant updates
+trap 'exit 0' PIPE
 
 output() {
     STATUS=$(playerctl --player=spotify status 2>/dev/null)

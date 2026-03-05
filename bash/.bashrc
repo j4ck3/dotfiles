@@ -9,14 +9,15 @@
 # pnpm
 export PNPM_HOME="/home/jacke/.local/share/pnpm"
 case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
+*":$PNPM_HOME:"*) ;;
+*) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
 export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$HOME/.bun/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # ============================================================================
 # Custom Aliases
@@ -24,6 +25,7 @@ export PATH="$HOME/.bun/bin:$PATH"
 
 # OpenCode alias - run with fast model
 alias ask='opencode run -m google/antigravity-gemini-3-flash'
+alias j='just'
 
 # Navigation aliases
 alias ..='cd ..'
@@ -37,7 +39,7 @@ alias ll='ls -alhF'
 alias la='ls -A'
 alias l='ls -CF'
 alias ls='ls --color=auto'
-alias lsd='ls -d */'  # List only directories
+alias lsd='ls -d */' # List only directories
 
 # Grep aliases
 alias grep='grep --color=auto'
@@ -51,8 +53,8 @@ alias mv='mv -i'
 
 # Remove function - moves files to ~/deleted instead of deleting
 remove() {
-    mkdir -p ~/deleted
-    command mv "$@" ~/deleted/
+  mkdir -p ~/deleted
+  command mv "$@" ~/deleted/
 }
 
 # Quick edit aliases
@@ -67,15 +69,15 @@ alias ps='ps auxf'
 alias psgrep='ps aux | grep -v grep | grep -i -e VSZ -e'
 
 # Git aliases (if git is installed)
-if command -v git &> /dev/null; then
-    alias gs='git status'
-    alias ga='git add'
-    alias gc='git commit'
-    alias gp='git push'
-    alias gl='git log --oneline --graph --decorate'
-    alias gd='git diff'
-    alias gb='git branch'
-    alias gco='git checkout'
+if command -v git &>/dev/null; then
+  alias gs='git status'
+  alias ga='git add'
+  alias gc='git commit'
+  alias gp='git push'
+  alias gl='git log --oneline --graph --decorate'
+  alias gd='git diff'
+  alias gb='git branch'
+  alias gco='git checkout'
 fi
 
 # Network aliases
@@ -106,11 +108,11 @@ alias targz='tar -czvf'
 alias tarbz2='tar -cjvf'
 
 # System update (Arch Linux)
-if command -v pacman &> /dev/null; then
-    alias update='sudo pacman -Syu'
-    alias install='sudo pacman -S'
-    alias premove='sudo pacman -Rns'
-    alias search='pacman -Ss'
+if command -v pacman &>/dev/null; then
+  alias update='sudo pacman -Syu'
+  alias install='sudo pacman -S'
+  alias premove='sudo pacman -Rns'
+  alias search='pacman -Ss'
 fi
 
 # ============================================================================
