@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+export LIBVA_DRIVER_NAME=nvidia
+export NVD_BACKEND=direct
+exec /usr/bin/helium-browser "$@"
