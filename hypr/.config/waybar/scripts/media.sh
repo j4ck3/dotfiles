@@ -18,14 +18,6 @@ output() {
         ARTIST=$(playerctl $PLAYER_ARG metadata --format '{{ artist }}' 2>/dev/null)
         TITLE=$(playerctl $PLAYER_ARG metadata --format '{{ title }}' 2>/dev/null)
         PLAYER=$(playerctl $PLAYER_ARG metadata --format '{{ playerName }}' 2>/dev/null)
-        VOL=$(playerctl $PLAYER_ARG volume 2>/dev/null)
-        # volume is 0.0–1.0; show as percentage
-        if [ -n "$VOL" ]; then
-            VOL_PCT=$(echo "$VOL" | awk '{printf "%.0f", $1*100}')
-            [ -z "$VOL_PCT" ] && VOL_PCT=""
-        else
-            VOL_PCT=""
-        fi
 
         if [ "$STATUS" = "Playing" ]; then
             ICON="󰏤"
@@ -33,15 +25,9 @@ output() {
             ICON="󰐊"
         fi
 
-        if [ -n "$VOL_PCT" ]; then
-            TEXT="$ICON $ARTIST - $TITLE ${VOL_PCT}%"
-            TOOLTIP="$ARTIST - $TITLE
-$PLAYER · ${VOL_PCT}%"
-        else
-            TEXT="$ICON $ARTIST - $TITLE"
-            TOOLTIP="$ARTIST - $TITLE
+        TEXT="$ICON $ARTIST - $TITLE"
+        TOOLTIP="$ARTIST - $TITLE
 $PLAYER"
-        fi
 
         # Escape for JSON
         TEXT_ESC=$(printf '%s' "$TEXT" | sed 's/\\/\\\\/g; s/"/\\"/g')

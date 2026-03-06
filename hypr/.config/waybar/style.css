@@ -29,18 +29,20 @@ window#waybar {
 }
 
 #workspaces button {
-  padding: 0 8px;
+  padding: 0 10px;
   margin: 0 1px;
-  min-width: 24px;
+  min-width: 28px;
   min-height: 20px;
   background: transparent;
   border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   font-size: 13px;
   font-weight: 500;
   color: @foreground;
 }
 
-/* Active workspace: clear pill + bright text */
+/* Active workspace: bright letter with a subtle underline */
 #workspaces button.active,
 #workspaces button.active * {
   opacity: 1;
@@ -48,20 +50,19 @@ window#waybar {
   font-weight: 600;
 }
 #workspaces button.active {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.8);
 }
 
 /* Inactive: readable but clearly secondary */
 #workspaces button:not(.active),
 #workspaces button:not(.active) * {
-  opacity: 0.85;
-  color: @foreground;
+  opacity: 0.7;
+  color: @foreground-dim;
 }
 
 #workspaces button.empty,
 #workspaces button.empty * {
-  opacity: 0.6;
+  opacity: 0.45;
   color: @foreground-dim;
 }
 
@@ -83,12 +84,53 @@ window#waybar {
   margin: 0 10px;
 }
 
-#cpu,
-#custom-cpu,
 #battery,
-#pulseaudio,
 #bluetooth,
 #network {
+  margin: 0 10px;
+}
+
+#group-system-stats {
+  margin: 0 10px;
+  padding: 0;
+}
+
+#custom-network-usage {
+  margin: 0 10px 0 0;
+  padding: 0;
+  min-width: 72px;
+  font-family: "SF Mono", "SF Pro Text", monospace;
+  font-size: 10px;
+}
+
+#custom-network-usage.hidden {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+#cpu,
+#memory,
+#disk {
+  margin: 0;
+  padding: 0 6px;
+}
+
+#cpu.high,
+#memory.high,
+#disk.high {
+  color: #ff4d4d;
+}
+
+#cpu {
+  padding-left: 0;
+}
+
+#disk {
+  padding-right: 0;
+}
+
+#pulseaudio {
   margin: 0 10px;
 }
 

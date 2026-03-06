@@ -9,9 +9,9 @@
   "modules-right": [
     "custom/media",
     "bluetooth",
-    "network",
     "pulseaudio",
-    "custom/cpu",
+    "group/system-stats",
+    "custom/network-usage",
     "battery",
     "clock",
   ],
@@ -27,7 +27,6 @@
       "11": "u",
       "12": "y",
       "default": " ",
-      "active": " ",
     },
     "persistent-workspaces": {
       "1": [],
@@ -59,10 +58,43 @@
     "on-scroll-up": "playerctl --player=spotify volume 0.02+",
     "on-scroll-down": "playerctl --player=spotify volume 0.02-",
   },
-  "custom/cpu": {
-    "exec": "~/.config/hypr/scripts/waybar-cpu.sh",
+  "group/system-stats": {
+    "orientation": "horizontal",
+    "modules": ["cpu", "memory", "disk"],
+  },
+  "cpu": {
+    "format": "<span size=\"x-small\">CPU</span>\n{usage}%",
     "interval": 3,
+    "states": {
+      "high": 70
+    },
+    "tooltip-format": "CPU usage: {usage}%",
     "on-click": "xdg-terminal-exec btop",
+  },
+  "memory": {
+    "format": "<span size=\"x-small\">RAM</span>\n{}%",
+    "interval": 5,
+    "states": {
+      "high": 70
+    },
+    "tooltip-format": "{used:0.1f}G / {total:0.1f}G used",
+  },
+  "disk": {
+    "path": "/",
+    "format": "<span size=\"x-small\">SSD</span>\n{percentage_used}%",
+    "interval": 30,
+    "states": {
+      "high": 70
+    },
+    "tooltip-format": "{used} / {total} used on {path}",
+  },
+  "custom/network-usage": {
+    "exec": "/home/jacke/.config/waybar/scripts/network-usage.sh",
+    "return-type": "json",
+    "format": "{}",
+    "tooltip": true,
+    "restart-interval": 5,
+    "on-click": "nm-connection-editor",
   },
   "clock": { "format": "{:%a %d %b W%V %H:%M}", "tooltip": false },
   "network": {
@@ -102,8 +134,9 @@
   },
   "pulseaudio": {
     "format": "{volume}% {icon}",
-    "on-click": "pavucontrol",
-    "tooltip-format": "Playing at {volume}%",
+    "on-click": "~/.config/waybar/scripts/volume-popup-toggle.sh",
+    "on-click-right": "pavucontrol",
+    "tooltip-format": "Output at {volume}%",
     "scroll-step": 5,
     "format-muted": "󰝟",
     "format-icons": { "default": ["", "", ""] },
