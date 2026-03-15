@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Toggle: put ALL windows on current workspace into 16:9 stacking mode, or revert to tiled.
-# Uses gaps (margins), positions by address so focus/cursor are never changed.
+# Toggle: put ALL tiled windows on current workspace into 16:9 stacking mode, or revert.
+# Skips already-floating windows (dialogs/popups) so they render on top correctly.
+# Tracks which addresses were floated so revert only tiles those back.
 
 MODE_FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-ws-mode"
 
@@ -19,14 +20,10 @@ MON_H=$(jq -r '.height' <<< "$MON_JSON")
 TOP=$(jq -r '.reserved[1]' <<< "$MON_JSON")
 BOTTOM=$(jq -r '.reserved[3]' <<< "$MON_JSON")
 
-# Gaps (margins): general:gaps_out is "left top right bottom"
 GAPS_STR=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
 GAPS_L=0; GAPS_T=0; GAPS_R=0; GAPS_B=0
-if [[ -n "$GAPS_STR" ]]; then
-	read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
-fi
+[[ -n "$GAPS_STR" ]] && read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
 
-# Usable area inside margins and reserved (waybar)
 WORK_LEFT=$((MON_X + GAPS_L))
 WORK_TOP=$((MON_Y + TOP + GAPS_T))
 WORK_W=$((MON_W - GAPS_L - GAPS_R))
@@ -34,36 +31,34 @@ WORK_H=$((MON_H - TOP - BOTTOM - GAPS_T - GAPS_B))
 
 USE_H=$WORK_H
 USE_W=$((USE_H * 16 * 108 / 9 / 100))
-
-# Center of usable area (window top-left)
 WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
 WIN_TOP=$WORK_TOP
 
-# Get all window addresses on this workspace
-ADDRESSES=()
-while IFS= read -r addr; do
-	[[ -n "$addr" ]] && ADDRESSES+=( "$addr" )
-done < <(hyprctl clients -j 2>/dev/null | jq -r --argjson ws "$WORKSPACE_ID" '.[] | select(.workspace.id == $ws) | .address')
-
-[[ ${#ADDRESSES[@]} -eq 0 ]] && exit 0
-
-# Revert: tile all (by address, no focus — cursor stays put)
-if [[ -f "$MODE_FLAG" ]] && [[ "$(cat "$MODE_FLAG" 2>/dev/null)" == "$WORKSPACE_ID" ]]; then
+# Revert: only tile windows we previously floated (leaves dialogs/popups alone)
+if [[ -f "$MODE_FLAG" ]] && [[ "$(head -1 "$MODE_FLAG" 2>/dev/null)" == "$WORKSPACE_ID" ]]; then
 	hyprctl keyword animations:enabled false
-	for addr in "${ADDRESSES[@]}"; do
-		hyprctl dispatch settiled "address:$addr"
-	done
+	while IFS= read -r addr; do
+		[[ -n "$addr" ]] && hyprctl dispatch settiled "address:$addr"
+	done < <(tail -n +2 "$MODE_FLAG")
 	hyprctl keyword animations:enabled true
 	rm -f "$MODE_FLAG"
 	exit 0
 fi
 
-# Enter stacking: float, resize, move to centered position (by address — no focus, cursor stays put)
+# Enter stacking: only float tiled windows (skip dialogs/popups that are already floating)
+ALL_CLIENTS=$(hyprctl clients -j 2>/dev/null)
+ADDRESSES=()
+while IFS= read -r addr; do
+	[[ -n "$addr" ]] && ADDRESSES+=( "$addr" )
+done < <(echo "$ALL_CLIENTS" | jq -r --argjson ws "$WORKSPACE_ID" \
+	'.[] | select(.workspace.id == $ws and .mapped == true and .floating == false) | .address')
+
+[[ ${#ADDRESSES[@]} -eq 0 ]] && exit 0
+
 hyprctl keyword animations:enabled false
 for addr in "${ADDRESSES[@]}"; do
-	hyprctl dispatch setfloating "address:$addr"
-	hyprctl dispatch resizewindowpixel "exact ${USE_W} ${USE_H},address:${addr}"
-	hyprctl dispatch movewindowpixel "exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+	hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
 done
 hyprctl keyword animations:enabled true
-echo "$WORKSPACE_ID" > "$MODE_FLAG"
+
+printf '%s\n' "$WORKSPACE_ID" "${ADDRESSES[@]}" > "$MODE_FLAG"

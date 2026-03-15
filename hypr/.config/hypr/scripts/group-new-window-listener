@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# When 16:9 group mode is active on a workspace, new tiled windows auto-join the group.
+# Floating windows (dialogs/popups) are left alone so they render on top correctly.
+
+MODE_FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-ws-mode"
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+SOCKET=""
+for _ in $(seq 15); do
+    for s in "$RUNTIME"/hypr/*/.socket2.sock; do
+        [[ -S "$s" ]] && SOCKET="$s" && break 2
+    done
+    sleep 0.2
+done
+[[ -z "$SOCKET" ]] && exit 0
+
+export XDG_RUNTIME_DIR="$RUNTIME"
+export HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$SOCKET")")
+
+join_group_16_9() {
+    local addr="$1"
+
+    local WIN_JSON
+    for _ in $(seq 25); do
+        WIN_JSON=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a)')
+        [[ -n "$WIN_JSON" ]] && break
+        sleep 0.02
+    done
+    [[ -z "$WIN_JSON" ]] && return
+
+    # Skip dialogs/popups (already floating)
+    local IS_FLOAT
+    IS_FLOAT=$(jq -r '.floating' <<< "$WIN_JSON")
+    [[ "$IS_FLOAT" == "true" ]] && return
+
+    local WS_ID
+    WS_ID=$(jq -r '.workspace.id' <<< "$WIN_JSON")
+    [[ "$(head -1 "$MODE_FLAG" 2>/dev/null)" != "$WS_ID" ]] && return
+
+    # Find any grouped window on this workspace to get the group address
+    local GROUP_ADDR
+    GROUP_ADDR=$(hyprctl clients -j 2>/dev/null \
+        | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
+    [[ -z "$GROUP_ADDR" ]] && return
+
+    hyprctl keyword animations:enabled false
+
+    # Temporarily tile the group so direction-based moveintogroup works
+    hyprctl dispatch settiled "address:$GROUP_ADDR"
+
+    # Move new window into the group
+    hyprctl dispatch focuswindow "address:$addr"
+    hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
+
+    # Re-float the group at 16:9 size
+    local MON_ID MON_JSON
+    MON_ID=$(jq -r '.monitor' <<< "$WIN_JSON")
+    MON_JSON=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$MON_ID" '.[] | select(.id == $id)')
+    [[ -z "$MON_JSON" ]] && { hyprctl keyword animations:enabled true; return; }
+
+    local MON_X MON_Y MON_W MON_H TOP BOTTOM
+    MON_X=$(jq -r '.x' <<< "$MON_JSON")
+    MON_Y=$(jq -r '.y' <<< "$MON_JSON")
+    MON_W=$(jq -r '.width' <<< "$MON_JSON")
+    MON_H=$(jq -r '.height' <<< "$MON_JSON")
+    TOP=$(jq -r '.reserved[1]' <<< "$MON_JSON")
+    BOTTOM=$(jq -r '.reserved[3]' <<< "$MON_JSON")
+
+    local GAPS_STR GAPS_L GAPS_T GAPS_R GAPS_B
+    GAPS_STR=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
+    GAPS_L=0; GAPS_T=0; GAPS_R=0; GAPS_B=0
+    [[ -n "$GAPS_STR" ]] && read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
+
+    local WORK_LEFT WORK_TOP WORK_W WORK_H USE_H USE_W WIN_LEFT WIN_TOP
+    WORK_LEFT=$((MON_X + GAPS_L))
+    WORK_TOP=$((MON_Y + TOP + GAPS_T))
+    WORK_W=$((MON_W - GAPS_L - GAPS_R))
+    WORK_H=$((MON_H - TOP - BOTTOM - GAPS_T - GAPS_B))
+    USE_H=$WORK_H
+    USE_W=$((USE_H * 16 * 108 / 9 / 100))
+    WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
+    WIN_TOP=$WORK_TOP
+
+    # Float and position (addr is now inside the group, so target the group member)
+    hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+
+    hyprctl keyword animations:enabled true
+}
+
+while IFS= read -r addr; do
+    [[ -z "$addr" ]] && continue
+    [[ "$addr" != 0x* ]] && addr="0x$addr"
+    [[ ! -f "$MODE_FLAG" ]] && continue
+    join_group_16_9 "$addr" &
+done < <(python3 - "$SOCKET" << 'PY'
+import sys, socket
+
+sock_path = sys.argv[1]
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect(sock_path)
+buf = b""
+while True:
+    data = s.recv(4096)
+    if not data:
+        break
+    buf += data
+    while b"\n" in buf:
+        line, buf = buf.split(b"\n", 1)
+        line = line.decode("utf-8", errors="replace").strip()
+        if not line.startswith("openwindow>>"):
+            continue
+        payload = line[len("openwindow>>"):]
+        idx = payload.find(",")
+        addr = (payload[:idx] if idx >= 0 else payload).strip()
+        if addr:
+            print(addr, flush=True)
+PY
+)

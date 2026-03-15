@@ -157,6 +157,16 @@ tooltip {
   font-weight: 500;
 }
 
+#custom-power {
+  margin: 0 10px;
+  font-size: 15px;
+  color: @foreground-dim;
+}
+
+#custom-power:hover {
+  color: @foreground;
+}
+
 .hidden {
   opacity: 0;
 }

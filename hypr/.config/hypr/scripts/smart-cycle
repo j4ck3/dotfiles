@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Smart ALT+TAB: cycle group tabs when in a group, otherwise cycle windows normally.
+# Usage: smart-cycle [prev]
+
+GROUPED_LEN=$(hyprctl activewindow -j 2>/dev/null | jq -r '.grouped | length // 0')
+
+if [[ "$GROUPED_LEN" -gt 0 ]]; then
+    if [[ "$1" == "prev" ]]; then
+        hyprctl dispatch changegroupactive b
+    else
+        hyprctl dispatch changegroupactive f
+    fi
+else
+    if [[ "$1" == "prev" ]]; then
+        hyprctl --batch "dispatch cyclenext prev ; dispatch alterzorder top"
+    else
+        hyprctl --batch "dispatch cyclenext ; dispatch alterzorder top"
+    fi
+fi

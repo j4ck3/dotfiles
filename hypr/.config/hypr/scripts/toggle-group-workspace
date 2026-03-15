@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Toggle: group ALL tiled windows on current workspace into a native Hyprland group,
+# then float at 16:9 centered. Dissolve back to tiled on second press.
+# Groups handle cycling (changegroupactive), popups stay on top, groupbar is hidden.
+
+MODE_FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-ws-mode"
+
+ACTIVE_JSON=$(hyprctl activewindow -j 2>/dev/null) || exit 0
+[[ -z "$ACTIVE_JSON" || "$ACTIVE_JSON" == "{}" || "$ACTIVE_JSON" == "null" ]] && exit 0
+
+ACTIVE_ADDR=$(jq -r '.address' <<< "$ACTIVE_JSON")
+WS_ID=$(jq -r '.workspace.id' <<< "$ACTIVE_JSON")
+MON_ID=$(jq -r '.monitor' <<< "$ACTIVE_JSON")
+GROUPED_LEN=$(jq -r '.grouped | length' <<< "$ACTIVE_JSON")
+
+# --- Monitor geometry & 16:9 size calculation ---
+MON_JSON=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$MON_ID" '.[] | select(.id == $id)')
+[[ -z "$MON_JSON" ]] && exit 0
+
+MON_X=$(jq -r '.x' <<< "$MON_JSON")
+MON_Y=$(jq -r '.y' <<< "$MON_JSON")
+MON_W=$(jq -r '.width' <<< "$MON_JSON")
+MON_H=$(jq -r '.height' <<< "$MON_JSON")
+TOP=$(jq -r '.reserved[1]' <<< "$MON_JSON")
+BOTTOM=$(jq -r '.reserved[3]' <<< "$MON_JSON")
+
+GAPS_STR=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
+GAPS_L=0; GAPS_T=0; GAPS_R=0; GAPS_B=0
+[[ -n "$GAPS_STR" ]] && read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
+
+WORK_LEFT=$((MON_X + GAPS_L))
+WORK_TOP=$((MON_Y + TOP + GAPS_T))
+WORK_W=$((MON_W - GAPS_L - GAPS_R))
+WORK_H=$((MON_H - TOP - BOTTOM - GAPS_T - GAPS_B))
+
+USE_H=$WORK_H
+USE_W=$((USE_H * 16 * 108 / 9 / 100))
+WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
+WIN_TOP=$WORK_TOP
+
+# --- Dissolve: tile the group, then break it apart ---
+if [[ "$GROUPED_LEN" -gt 0 ]]; then
+    hyprctl keyword animations:enabled false
+    hyprctl dispatch settiled "address:$ACTIVE_ADDR"
+    hyprctl dispatch togglegroup
+    hyprctl keyword animations:enabled true
+    rm -f "$MODE_FLAG"
+    exit 0
+fi
+
+# --- Enter: create group while tiled, then float at 16:9 ---
+ALL_ADDRS=$(hyprctl clients -j 2>/dev/null \
+    | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and .mapped == true and .floating == false)] | .[].address')
+
+COUNT=$(echo "$ALL_ADDRS" | grep -c .)
+[[ "$COUNT" -le 0 ]] && exit 0
+
+hyprctl keyword animations:enabled false
+
+# Step 1: Build group while windows are tiled (so direction-based moveintogroup works)
+hyprctl dispatch togglegroup
+if [[ "$COUNT" -gt 1 ]]; then
+    for addr in $ALL_ADDRS; do
+        [[ "$addr" == "$ACTIVE_ADDR" ]] && continue
+        hyprctl dispatch focuswindow "address:$addr"
+        hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
+    done
+    hyprctl dispatch focuswindow "address:$ACTIVE_ADDR"
+fi
+
+# Step 2: Float the group and resize to 16:9
+hyprctl --batch "dispatch setfloating address:$ACTIVE_ADDR ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${ACTIVE_ADDR} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${ACTIVE_ADDR}"
+
+hyprctl keyword animations:enabled true
+echo "$WS_ID" > "$MODE_FLAG"

@@ -32,10 +32,14 @@ apply_16_9() {
 		sleep 0.01
 	done
 	[[ -z "$WIN_JSON" ]] && return
+	# Skip already-floating windows (dialogs/popups) so they stay on top
+	local IS_FLOAT
+	IS_FLOAT=$(jq -r '.floating' <<< "$WIN_JSON")
+	[[ "$IS_FLOAT" == "true" ]] && return
 	# Only apply if this window's workspace is the one in 16:9 mode
 	local WS_ID
 	WS_ID=$(jq -r '.workspace.id' <<< "$WIN_JSON")
-	[[ "$(cat "$MODE_FLAG" 2>/dev/null)" != "$WS_ID" ]] && return
+	[[ "$(head -1 "$MODE_FLAG" 2>/dev/null)" != "$WS_ID" ]] && return
 	local MON_ID
 	MON_ID=$(jq -r '.monitor' <<< "$WIN_JSON")
 	[[ -z "$MON_ID" || "$MON_ID" == "null" ]] && return
