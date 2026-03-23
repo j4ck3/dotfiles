@@ -35,28 +35,15 @@ join_group_16_9() {
 
     local WS_ID
     WS_ID=$(jq -r '.workspace.id' <<< "$WIN_JSON")
-    [[ "$(head -1 "$MODE_FLAG" 2>/dev/null)" != "$WS_ID" ]] && return
+    local MODE
+    MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
+    [[ "$MODE" != "all" && "$MODE" != "$WS_ID" ]] && return
 
-    # Find any grouped window on this workspace to get the group address
-    local GROUP_ADDR
-    GROUP_ADDR=$(hyprctl clients -j 2>/dev/null \
-        | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
-    [[ -z "$GROUP_ADDR" ]] && return
-
-    hyprctl keyword animations:enabled false
-
-    # Temporarily tile the group so direction-based moveintogroup works
-    hyprctl dispatch settiled "address:$GROUP_ADDR"
-
-    # Move new window into the group
-    hyprctl dispatch focuswindow "address:$addr"
-    hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
-
-    # Re-float the group at 16:9 size
+    # --- Monitor geometry & 16:9 size calculation ---
     local MON_ID MON_JSON
     MON_ID=$(jq -r '.monitor' <<< "$WIN_JSON")
     MON_JSON=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$MON_ID" '.[] | select(.id == $id)')
-    [[ -z "$MON_JSON" ]] && { hyprctl keyword animations:enabled true; return; }
+    [[ -z "$MON_JSON" ]] && return
 
     local MON_X MON_Y MON_W MON_H TOP BOTTOM
     MON_X=$(jq -r '.x' <<< "$MON_JSON")
@@ -81,8 +68,25 @@ join_group_16_9() {
     WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
     WIN_TOP=$WORK_TOP
 
-    # Float and position (addr is now inside the group, so target the group member)
-    hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+    # Find any grouped window on this workspace
+    local GROUP_ADDR
+    GROUP_ADDR=$(hyprctl clients -j 2>/dev/null \
+        | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
+
+    hyprctl keyword animations:enabled false
+
+    if [[ -z "$GROUP_ADDR" ]]; then
+        # First tiled window on this workspace — create a new group
+        hyprctl dispatch focuswindow "address:$addr"
+        hyprctl dispatch togglegroup
+        hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+    else
+        # Existing group — tile it temporarily, join, then re-float
+        hyprctl dispatch settiled "address:$GROUP_ADDR"
+        hyprctl dispatch focuswindow "address:$addr"
+        hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
+        hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
+    fi
 
     hyprctl keyword animations:enabled true
 }

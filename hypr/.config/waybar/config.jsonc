@@ -9,7 +9,6 @@
   "modules-right": [
     "custom/media",
     "bluetooth",
-    "pulseaudio",
     "group/system-stats",
     "custom/network-usage",
     "battery",
@@ -54,14 +53,14 @@
     "exec": "/home/jacke/.config/waybar/scripts/media.sh",
     "return-type": "json",
     "restart-interval": 5,
-    "on-click": "playerctl --player=spotify play-pause",
-    "on-click-right": "playerctl --player=spotify next",
+    "on-click": "~/.config/waybar/scripts/media-player-toggle.sh",
+    "on-click-right": "playerctl --player=spotify play-pause",
     "on-scroll-up": "playerctl --player=spotify volume 0.02+",
     "on-scroll-down": "playerctl --player=spotify volume 0.02-",
   },
   "group/system-stats": {
     "orientation": "horizontal",
-    "modules": ["cpu", "memory", "disk"],
+    "modules": ["pulseaudio", "cpu", "memory", "disk"],
   },
   "cpu": {
     "format": "<span size=\"x-small\">CPU</span>\n{usage}%",
@@ -134,13 +133,12 @@
     "on-click": "blueberry",
   },
   "pulseaudio": {
-    "format": "{volume}% {icon}",
+    "format": "<span size=\"x-small\">VOL</span>\n{volume}%",
+    "format-muted": "<span size=\"x-small\">VOL</span>\nMUT",
     "on-click": "~/.config/waybar/scripts/volume-popup-toggle.sh",
     "on-click-right": "pavucontrol",
     "tooltip-format": "Output at {volume}%",
     "scroll-step": 5,
-    "format-muted": "󰝟",
-    "format-icons": { "default": ["", "", ""] },
   },
   "custom/power": {
     "format": "󰐥",

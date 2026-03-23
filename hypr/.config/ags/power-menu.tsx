@@ -1,3 +1,4 @@
+import { createState } from "ags"
 import app from "ags/gtk4/app"
 import { Astal } from "ags/gtk4"
 import GLib from "gi://GLib"
@@ -33,20 +34,55 @@ function PowerButton(props: {
 }
 
 function PowerMenu() {
-  const anchor = Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT
+  const anchor =
+    Astal.WindowAnchor.TOP |
+    Astal.WindowAnchor.RIGHT |
+    Astal.WindowAnchor.BOTTOM |
+    Astal.WindowAnchor.LEFT
+
+  let dismissReady = false
+  GLib.idle_add(GLib.PRIORITY_LOW, () => {
+    dismissReady = true
+    return GLib.SOURCE_REMOVE
+  })
+
+  const [opacity, setOpacity] = createState(0)
+  GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+    setOpacity(1)
+    return GLib.SOURCE_REMOVE
+  })
 
   return (
     <window
       visible
+      opacity={opacity}
       class="PowerMenuWindow"
       namespace="power-menu"
       monitor={monitor}
       anchor={anchor}
-      keymode={Astal.Keymode.NONE}
+      keymode={Astal.Keymode.ON_DEMAND}
     >
-      <box class="PowerMenuRoot">
-        <box class="PowerMenuPanel" orientation={Gtk.Orientation.VERTICAL}>
-          <box class="panel-titlebar">
+      <box hexpand vexpand>
+        <Gtk.GestureClick
+          onPressed={(_: unknown, _n: number, x: number, y: number) => {
+            if (!dismissReady) return
+            const w = (_ as Gtk.GestureClick).get_widget() as Gtk.Widget
+            const panel = w?.get_first_child()
+            const picked = w?.pick(x, y, Gtk.PickFlags.DEFAULT)
+            const onPanel =
+              panel &&
+              picked !== null &&
+              (picked === panel || picked.is_ancestor(panel))
+            if (!onPanel) app.quit()
+          }}
+        />
+        <box
+          class="PowerMenuRoot"
+          halign={Gtk.Align.END}
+          valign={Gtk.Align.START}
+        >
+          <box class="PowerMenuPanel" orientation={Gtk.Orientation.VERTICAL}>
+            <box class="panel-titlebar">
             <label class="panel-title" xalign={0} hexpand label="Power" />
             <button class="close-button" onClicked={() => app.quit()}>
               <label label="Close" />
@@ -80,6 +116,7 @@ function PowerMenu() {
               label="Log Out"
               action={() => powerAction("hyprctl dispatch exit")}
             />
+          </box>
           </box>
         </box>
       </box>

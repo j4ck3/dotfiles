@@ -1,119 +1,131 @@
-.VolumePopupWindow {
+.VolumeWindow {
   background: transparent;
 }
 
-.VolumePopupRoot {
+.vol-root {
   padding: 38px 12px 0 0;
-  min-width: 360px;
+  min-width: 340px;
 }
 
-.VolumePopupPanel {
-  padding: 14px;
+.vol-panel {
+  padding: 18px;
   background: linear-gradient(
     180deg,
-    rgba(34, 38, 64, 0.52) 0%,
-    rgba(18, 21, 36, 0.44) 100%
+    rgba(44, 48, 72, 0.78) 0%,
+    rgba(24, 27, 44, 0.70) 100%
   );
   color: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.30);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 22px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
 }
 
-.panel-titlebar {
-  margin-bottom: 10px;
+.vol-titlebar {
+  margin-bottom: 12px;
 }
 
-.panel-title {
-  font-size: 14px;
+.vol-title {
+  font-size: 15px;
   font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.close-button,
-.full-mixer-button,
-.mute-button {
+.close-btn {
   background: rgba(255, 255, 255, 0.10);
-  color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  border: none;
+  border-radius: 999px;
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 13px;
 }
 
-.close-button {
-  padding: 4px 8px;
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.full-mixer-button {
-  margin-top: 12px;
-  padding: 8px 10px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.14) 0%,
-    rgba(255, 255, 255, 0.08) 100%
-  );
+.vol-section {
+  margin: 6px 0;
 }
 
-.mute-button {
-  min-width: 30px;
-  min-height: 30px;
-  margin-right: 8px;
-}
-
-.section-title {
-  margin: 10px 0 6px;
-  color: rgba(255, 255, 255, 0.62);
+.section-label {
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.45);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
 .slider-row {
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
 .slider-header {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+.mute-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  border-radius: 10px;
+  min-width: 32px;
+  min-height: 32px;
+  margin-right: 8px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.mute-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .slider-label {
   font-size: 13px;
+  font-weight: 500;
 }
 
 .slider-value {
-  min-width: 42px;
-  color: rgba(255, 255, 255, 0.82);
+  min-width: 44px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
 }
 
-.empty-state {
-  margin: 4px 0 8px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-scale.volume-slider {
+scale.vol-slider {
   min-width: 260px;
 }
 
-scale.volume-slider trough {
-  min-height: 6px;
-  background: rgba(255, 255, 255, 0.18);
+scale.vol-slider trough {
+  min-height: 8px;
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
 }
 
-scale.volume-slider highlight {
-  min-height: 6px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(212, 220, 255, 0.94) 100%
-  );
+scale.vol-slider highlight {
+  min-height: 8px;
+  background: white;
   border-radius: 999px;
 }
 
-scale.volume-slider slider {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(230, 234, 248, 0.94) 100%
-  );
+scale.vol-slider slider {
+  min-width: 22px;
+  min-height: 22px;
+  background: white;
   border-radius: 999px;
-  box-shadow: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  margin: -7px 0;
+}
+
+.mixer-btn {
+  margin-top: 14px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mixer-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
 }

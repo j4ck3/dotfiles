@@ -44,7 +44,10 @@ if [[ "$GROUPED_LEN" -gt 0 ]]; then
     hyprctl dispatch settiled "address:$ACTIVE_ADDR"
     hyprctl dispatch togglegroup
     hyprctl keyword animations:enabled true
-    rm -f "$MODE_FLAG"
+    # Only clear flag if it was set to this specific workspace (preserve "all" default)
+    local CURRENT_MODE
+    CURRENT_MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
+    [[ "$CURRENT_MODE" != "all" ]] && rm -f "$MODE_FLAG"
     exit 0
 fi
 
@@ -72,4 +75,6 @@ fi
 hyprctl --batch "dispatch setfloating address:$ACTIVE_ADDR ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${ACTIVE_ADDR} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${ACTIVE_ADDR}"
 
 hyprctl keyword animations:enabled true
-echo "$WS_ID" > "$MODE_FLAG"
+# Only write workspace-specific flag if not already in "all" mode
+CURRENT_MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
+[[ "$CURRENT_MODE" != "all" ]] && echo "$WS_ID" > "$MODE_FLAG"
