@@ -1,0 +1,17 @@
+# Flatpak application IDs (Flathub). Spotify’s official Linux distribution is
+# Flatpak; it works with playerctl and MPRIS like a native build. If you use an
+# AUR/native Spotify instead, you can skip this.
+#
+# Prerequisite: install the `flatpak` package (see packages.txt) so the flatpak
+# command exists; then add the Flathub remote if needed:
+#   flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+#
+# Install (from this repo directory):
+#   grep -v '^#' flatpak-packages.txt | grep -v '^$' | xargs -r flatpak install -y --or-update flathub
+#
+# -y            Non-interactive (no prompts).
+# --or-update   Install if missing, upgrade if already installed.
+
+com.spotify.Client
+
+com.discordapp.Discord

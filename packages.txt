@@ -1,0 +1,100 @@
+# Pacman: official Arch repositories (core/extra/community).
+#
+# Install (from this repo directory):
+#   grep -v '^#' packages.txt | grep -v '^$' | xargs -r sudo pacman -S --needed --noconfirm --
+#
+# Then install aur-packages.txt and flatpak-packages.txt (commands in each file header).
+#
+# --needed     Skip packages that are already installed and up to date.
+# --noconfirm  Non-interactive (required when using grep|xargs; no TTY for [Y/n]).
+# xargs -r     Do nothing if there are no package lines (GNU xargs).
+#
+# Omarchy: hypridle.conf and hyprlock.conf reference omarchy-lock-screen and
+# paths under ~/.config/omarchy/. Those come from the Omarchy setup, not this
+# repo—install or adjust if you use stock Hyprland without Omarchy.
+#
+# CachyOS: enable the cachyos repo. walker / helium-browser-bin: see aur-packages.txt.
+#
+#
+#
+# cd ~/dotfiles
+# stow -v -R -t "$HOME" bash nvim hypr
+
+paru
+
+flatpak
+
+stow
+
+hyprland
+hypridle
+hyprlock
+hyprpicker
+waybar
+uwsm
+
+grim
+slurp
+wl-clipboard
+satty
+
+pipewire
+pipewire-pulse
+wireplumber
+pavucontrol
+
+networkmanager
+network-manager-applet
+bluez
+bluez-utils
+
+brightnessctl
+polkit
+
+jq
+ripgrep
+docker
+
+playerctl
+
+ffmpeg
+yad
+
+tesseract
+tesseract-data-eng
+tesseract-data-swe
+
+mpv
+
+libnotify
+
+nautilus
+
+tmux
+
+neovim
+git
+gcc
+
+fzf
+fd
+
+lazydocker
+lazygit
+opencode
+btop
+
+starship
+just
+
+gum
+
+ttf-cascadia-mono-nerd
+
+python
+
+openssh
+
+freecad
+
+tailscale
