@@ -1,18 +1,6 @@
-# AUR packages (install with paru; ensure `paru` is installed from packages.txt first).
-#
-# Install (from this repo directory):
-#   grep -v '^#' aur-packages.txt | grep -v '^$' | xargs -r paru -S --needed --noconfirm --
-#
-# --noconfirm avoids a broken [Y/n] prompt when stdin is a pipe (grep|xargs).
-#
-# Plain Arch: use walker-bin if you do not use the CachyOS repo package walker.
-# helium-browser-bin is listed below (paru: CachyOS repo or AUR).
-#
-# xdg-terminal-exec: not in official Arch repos (install via paru from AUR).
-# blueberry: optional; paru may take it from extra if your mirror has it, else AUR.
-#   Waybar uses it for bluetooth on-click (hypr/.config/waybar/config.jsonc).
+# Install command: 
+#  grep -v '^#' aur-packages.txt | grep -v '^$' | xargs -r paru -S --needed --noconfirm --
 
-# --- Default terminal for UWSM / bindings (xdg-terminal-exec) ---
 xdg-terminal-exec
 
 blueberry
@@ -32,5 +20,3 @@ t3code-bin
 betterbird-bin
 
 netbird-bin
-
-# sunshine
