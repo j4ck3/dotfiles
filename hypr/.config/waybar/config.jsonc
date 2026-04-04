@@ -4,7 +4,7 @@
   "position": "top",
   "spacing": 0,
   "height": 32,
-  "modules-left": ["custom/linux", "custom/docker-gluetun"],
+  "modules-left": ["custom/linux"],
   "modules-center": ["hyprland/workspaces"],
   "modules-right": [
     "custom/media",
@@ -43,11 +43,6 @@
     "exec": "/home/jacke/.config/waybar/scripts/linux-kernel.sh",
     "interval": "once",
     "tooltip": true,
-  },
-  "custom/docker-gluetun": {
-    "exec": "/home/jacke/.config/waybar/scripts/docker-gluetun.sh",
-    "interval": 10,
-    "return-type": "json",
   },
   "custom/media": {
     "exec": "/home/jacke/.config/waybar/scripts/media.sh",

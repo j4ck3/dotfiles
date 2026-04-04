@@ -3,15 +3,32 @@
 # Usage: spotify-volume up|down
 # Writes state to file so spotify-volume-guard knows the user's intended volume.
 
+set -euo pipefail
+
 MAX_VOLUME=100  # percent
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
 
 DIRECTION="$1"
-ID=$(pactl list sink-inputs | grep -B20 'application.name = "spotify"' | grep 'Sink Input' | awk '{print $3}' | tr -d '#' | head -1)
+
+get_spotify_id() {
+    pactl --format=json list sink-inputs 2>/dev/null \
+        | jq -r '.[] | select(.properties["application.name"] == "spotify") | .index' \
+        | head -1
+}
+
+get_volume() {
+    local id="$1"
+    pactl --format=json list sink-inputs 2>/dev/null \
+        | jq -r --argjson id "$id" '.[] | select(.index == $id) | .volume["front-left"].value_percent // empty' \
+        | tr -d '%' \
+        | head -1
+}
+
+ID=$(get_spotify_id)
 
 if [ -n "$ID" ]; then
     # Get current volume percentage
-    CURRENT=$(pactl list sink-inputs | grep -A20 "Sink Input #$ID" | grep 'Volume:' | head -1 | grep -o '[0-9]*%' | head -1 | tr -d '%')
+    CURRENT=$(get_volume "$ID")
 
     if [ "$DIRECTION" = "up" ]; then
         if [ "$CURRENT" -lt "$MAX_VOLUME" ]; then

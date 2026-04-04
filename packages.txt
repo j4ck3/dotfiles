@@ -9,10 +9,6 @@
 # --noconfirm  Non-interactive (required when using grep|xargs; no TTY for [Y/n]).
 # xargs -r     Do nothing if there are no package lines (GNU xargs).
 #
-# Omarchy: hypridle.conf and hyprlock.conf reference omarchy-lock-screen and
-# paths under ~/.config/omarchy/. Those come from the Omarchy setup, not this
-# repo—install or adjust if you use stock Hyprland without Omarchy.
-#
 # CachyOS: enable the cachyos repo. walker / helium-browser-bin: see aur-packages.txt.
 #
 #
@@ -21,7 +17,6 @@
 # stow -v -R -t "$HOME" bash nvim hypr
 
 paru
-
 flatpak
 
 stow
@@ -32,6 +27,7 @@ hyprlock
 hyprpicker
 waybar
 uwsm
+walker
 
 grim
 slurp

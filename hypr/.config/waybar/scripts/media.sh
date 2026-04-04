@@ -6,11 +6,15 @@ trap 'exit 0' PIPE
 
 PLAYER_ARG="--player=spotify"
 
+emit_json() {
+    /usr/bin/printf '%s\n' "$1" || exit 0
+}
+
 output() {
     STATUS=$(playerctl $PLAYER_ARG status 2>/dev/null)
     exit=$?
     if [ $exit -ne 0 ] || [ -z "$STATUS" ]; then
-        echo '{"text":"","tooltip":"","class":"stopped"}'
+        emit_json '{"text":"","tooltip":"","class":"stopped"}'
         return
     fi
 
@@ -33,9 +37,9 @@ $PLAYER"
         TEXT_ESC=$(printf '%s' "$TEXT" | sed 's/\\/\\\\/g; s/"/\\"/g')
         TOOLTIP_ESC=$(printf '%s' "$TOOLTIP" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk '{printf "%s%s", (NR>1?"\\n":""), $0}')
 
-        echo "{\"text\": \"$TEXT_ESC\", \"tooltip\": \"$TOOLTIP_ESC\", \"class\": \"$STATUS\"}"
+        emit_json "{\"text\": \"$TEXT_ESC\", \"tooltip\": \"$TOOLTIP_ESC\", \"class\": \"$STATUS\"}"
     else
-        echo '{"text":"","tooltip":"","class":"stopped"}'
+        emit_json '{"text":"","tooltip":"","class":"stopped"}'
     fi
 }
 

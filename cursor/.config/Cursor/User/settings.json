@@ -1,0 +1,36 @@
+{
+  "remote.SSH.remotePlatform": {
+    "web": "linux",
+    "tower": "linux"
+  },
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorCustomizations": {
+    "activityBar.background": "#000000",
+    "activityBarBadge.background": "#0078d4",
+    "breadcrumb.background": "#000000",
+    "commandCenter.background": "#000000",
+    "debugToolBar.background": "#000000",
+    "dropdown.background": "#000000",
+    "editor.background": "#000000",
+    "editorGroupHeader.tabsBackground": "#000000",
+    "editorStickyScroll.background": "#000000",
+    "input.background": "#050505",
+    "menu.background": "#000000",
+    "notifications.background": "#000000",
+    "panel.background": "#000000",
+    "peekViewEditor.background": "#000000",
+    "peekViewResult.background": "#000000",
+    "peekViewTitle.background": "#000000",
+    "quickInput.background": "#000000",
+    "sideBar.background": "#000000",
+    "statusBar.background": "#000000",
+    "statusBar.noFolderBackground": "#000000",
+    "tab.activeBackground": "#000000",
+    "tab.inactiveBackground": "#000000",
+    "tab.unfocusedActiveBackground": "#000000",
+    "tab.unfocusedInactiveBackground": "#000000",
+    "terminal.background": "#000000",
+    "titleBar.activeBackground": "#000000",
+    "titleBar.inactiveBackground": "#000000"
+  }
+}

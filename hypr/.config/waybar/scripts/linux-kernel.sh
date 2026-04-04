@@ -1,2 +1,2 @@
 #!/bin/bash
-printf '\uf17c  %s' "$(uname -r)"
+printf '󰌽  <span size="small">%s</span>' "$(uname -r)"

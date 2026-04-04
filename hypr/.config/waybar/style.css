@@ -66,22 +66,15 @@ window#waybar {
   color: @foreground-dim;
 }
 
-#custom-linux,
-#custom-docker-gluetun,
-#custom-docker-gluetun.healthy,
-#custom-docker-gluetun.unhealthy,
-#custom-docker-gluetun.starting,
-#custom-docker-gluetun.unknown {
-  color: @foreground;
+#custom-linux {
+  color: @accent;
 }
 
 #custom-linux {
   margin: 0 10px;
   font-size: 16px;
-}
-
-#custom-docker-gluetun {
-  margin: 0 10px;
+  font-family: "Symbols Nerd Font Mono", "Symbols Nerd Font", "SF Pro Text",
+    sans-serif;
 }
 
 #battery,
