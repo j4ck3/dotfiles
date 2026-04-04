@@ -79,6 +79,7 @@ lazydocker
 lazygit
 opencode
 btop
+docker-compose
 
 starship
 just
