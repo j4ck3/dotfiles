@@ -16,6 +16,4 @@ ghostty
 cursor-bin
 t3code-bin
 
-betterbird-bin
-mailspring-bin
 netbird-bin
