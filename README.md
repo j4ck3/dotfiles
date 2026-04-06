@@ -6,7 +6,7 @@
 
 Personal configs for **CachyOS** (Arch-based).
 
-**Desktop:** Hyprland, Waybar, UWSM, Walker + Elephant, Helium Browser, AGS (volume/media/power popups). Optional **hypr_htpc** profile for HTPC.
+**Desktop:** Hyprland, Waybar, UWSM, Walker + Elephant, Helium Browser, AGS (volume/media/power popups). Optional **hypr_htpc** profile for HTPC. Helium optional flags and notes on omnibox vs page fonts live in [`hypr/.config/helium-browser-flags.conf`](hypr/.config/helium-browser-flags.conf).
 
 **Shell & prompt:** Fish, Starship.
 

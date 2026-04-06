@@ -5,3 +5,4 @@ com.spotify.Client
 
 com.discordapp.Discord
 org.telegram.desktop
+com.getmailspring.Mailspring
