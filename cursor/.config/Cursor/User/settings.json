@@ -32,5 +32,8 @@
     "terminal.background": "#000000",
     "titleBar.activeBackground": "#000000",
     "titleBar.inactiveBackground": "#000000"
-  }
+  },
+  "terminal.integrated.fontFamily": "monospace",
+  "terminal.integrated.fontWeight": "normal",
+  "terminal.integrated.fontWeightBold": "bold"
 }

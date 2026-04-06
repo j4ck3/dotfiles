@@ -1,0 +1,8 @@
+# VS Code Dark Modern-like colors with a true black background.
+background = #000000
+foreground = #CCCCCC
+selection-background = #264F78
+
+# Use the platform monospace default, similar to VS Code's default behavior.
+font-family = monospace
+font-size = 11
