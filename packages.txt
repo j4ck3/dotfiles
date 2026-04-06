@@ -71,6 +71,7 @@ docker-compose
 
 starship
 just
+bun
 
 gum
 
