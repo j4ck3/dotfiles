@@ -1,0 +1,11 @@
+{
+  "RestoreOnStartup": 4,
+  "RestoreOnStartupURLs": [
+    "https://www.startpage.com/"
+  ],
+  "DefaultSearchProviderEnabled": true,
+  "DefaultSearchProviderName": "Startpage",
+  "DefaultSearchProviderKeyword": "startpage.com",
+  "DefaultSearchProviderSearchURL": "https://www.startpage.com/sp/search?query={searchTerms}",
+  "DefaultSearchProviderSuggestURL": "https://www.startpage.com/suggestions?q={searchTerms}"
+}
