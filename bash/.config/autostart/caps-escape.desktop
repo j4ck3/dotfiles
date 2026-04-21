@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Caps Lock to Escape
+Comment=Re-apply XKB remap after desktop startup
+Exec=/bin/sh -c 'sleep 2; /usr/bin/setxkbmap -option caps:escape'
+OnlyShowIn=XFCE;
+X-GNOME-Autostart-enabled=true
+NoDisplay=false

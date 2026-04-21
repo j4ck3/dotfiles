@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Re-apply CapsLock -> Escape at user session startup.
+# Some desktop environments (e.g. XFCE) can override XKB defaults from /etc.
+if command -v setxkbmap >/dev/null 2>&1; then
+  setxkbmap -option caps:escape
+fi
