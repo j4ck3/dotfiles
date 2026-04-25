@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-confirm-close.log"
+
+log() {
+    printf '[%s] %s\n' "$(date -Is 2>/dev/null || date)" "$*" >>"$LOG_FILE"
+}
+
+notify() {
+    command -v hyprctl >/dev/null 2>&1 || return 0
+    hyprctl notify -1 2500 "0" "$*" >/dev/null 2>&1 || true
+}
+
+escape_markup() {
+    local value=${1//$'\n'/ }
+    value=${value//&/&amp;}
+    value=${value//</&lt;}
+    value=${value//>/&gt;}
+    printf '%s' "$value"
+}
+
+close_window() {
+    local address=$1
+
+    if hyprctl clients -j 2>>"$LOG_FILE" | jq -e --arg address "$address" 'any(.[]; .address == $address)' >/dev/null; then
+        hyprctl dispatch closewindow "address:$address" >/dev/null 2>>"$LOG_FILE" \
+            || hyprctl --batch "dispatch focuswindow address:$address ; dispatch killactive" >/dev/null 2>>"$LOG_FILE" \
+            || notify "Close confirmation: failed to close window"
+    else
+        log "target disappeared before close"
+    fi
+}
+
+log "triggered"
+
+if ! command -v hyprctl >/dev/null 2>&1; then
+    log "hyprctl not found"
+    exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    log "jq not found"
+    notify "Close confirmation: jq not found"
+    exit 1
+fi
+
+ACTIVE_JSON=$(hyprctl activewindow -j 2>>"$LOG_FILE" || true)
+ADDRESS=$(jq -r '.address // empty' <<<"$ACTIVE_JSON" 2>>"$LOG_FILE" || true)
+
+if [[ -z "$ADDRESS" || "$ADDRESS" == "null" ]]; then
+    log "no active window"
+    exit 0
+fi
+
+TITLE=$(jq -r '.title // .initialTitle // "Untitled window"' <<<"$ACTIVE_JSON" 2>>"$LOG_FILE" || printf 'Untitled window')
+CLASS=$(jq -r '.class // .initialClass // "unknown app"' <<<"$ACTIVE_JSON" 2>>"$LOG_FILE" || printf 'unknown app')
+WORKSPACE_ID=$(jq -r '.workspace.id // empty' <<<"$ACTIVE_JSON" 2>>"$LOG_FILE" || true)
+WORKSPACE_NAME=$(jq -r '.workspace.name // empty' <<<"$ACTIVE_JSON" 2>>"$LOG_FILE" || true)
+
+if [[ "$CLASS" != "helium" || ( "$WORKSPACE_ID" != "1" && "$WORKSPACE_NAME" != "1" ) ]]; then
+    log "closing without confirmation $ADDRESS ($CLASS on workspace ${WORKSPACE_NAME:-$WORKSPACE_ID}: $TITLE)"
+    close_window "$ADDRESS"
+    exit 0
+fi
+
+if ! command -v yad >/dev/null 2>&1; then
+    log "yad not found"
+    notify "Close confirmation: yad not found"
+    exit 1
+fi
+
+TEXT="<b>Close this window?</b>\n\n$(escape_markup "$TITLE")\n<span foreground='gray'>$(escape_markup "$CLASS")</span>"
+
+if yad \
+    --title="Close window?" \
+    --text="$TEXT" \
+    --width=420 \
+    --height=150 \
+    --fixed \
+    --center \
+    --on-top \
+    --buttons-layout=center \
+    --button="Cancel:1" \
+    --button="Close:0"; then
+    log "confirmed close $ADDRESS ($CLASS: $TITLE)"
+    close_window "$ADDRESS"
+else
+    log "cancelled close $ADDRESS"
+fi
