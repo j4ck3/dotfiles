@@ -1,0 +1,34 @@
+#!/bin/bash
+set -u
+
+has_instance() {
+  ags list 2>/dev/null | rg -qx "$1"
+}
+
+preload_widget() {
+  local instance=$1
+  local app_path=$2
+
+  command -v ags >/dev/null 2>&1 || return 0
+  [[ -f "$app_path" ]] || return 0
+  has_instance "$instance" && return 0
+
+  ags run "$app_path" --log-file "/tmp/ags-${instance}.log" >/dev/null 2>&1 &
+}
+
+widgets_ready() {
+  has_instance volume-popup &&
+    has_instance media-player &&
+    has_instance power-menu
+}
+
+preload_widget volume-popup "${HOME}/.config/ags/app.tsx"
+preload_widget media-player "${HOME}/.config/ags/media-player.tsx"
+preload_widget power-menu "${HOME}/.config/ags/power-menu.tsx"
+
+deadline=$((SECONDS + 2))
+until widgets_ready || (( SECONDS >= deadline )); do
+  sleep 0.05
+done
+
+exec waybar "$@"

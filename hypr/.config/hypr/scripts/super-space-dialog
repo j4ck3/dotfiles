@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_FILE="${XDG_RUNTIME_DIR:-/tmp}/hypr-super-space.log"
+
+log() {
+  printf '[%s] %s\n' "$(date -Is 2>/dev/null || date)" "$*" >>"$LOG_FILE"
+}
+
+notify() {
+  # best-effort; don't crash if hyprctl isn't available in PATH
+  command -v hyprctl >/dev/null 2>&1 || return 0
+  hyprctl notify -1 2500 "0" "$*" >/dev/null 2>&1 || true
+}
+
+log "triggered"
+
+if command -v walker >/dev/null 2>&1; then
+  log "exec walker"
+  exec walker --width 644 --maxheight 300 --minheight 300
+fi
+
+log "walker not found in PATH"
+notify "SUPER+SPACE: walker not found (see $LOG_FILE)"

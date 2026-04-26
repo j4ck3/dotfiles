@@ -11,6 +11,11 @@ const PLAYER = "spotify"
 const monitor =
   Number.parseInt(GLib.getenv("AGS_MEDIA_MONITOR") || "0", 10) || 0
 
+function hideWindow() {
+  const win = app.get_window("media-player")
+  if (win) win.visible = false
+}
+
 function run(cmd: string): string {
   try {
     const [ok, out, , status] = GLib.spawn_command_line_sync(cmd)
@@ -27,6 +32,10 @@ function runAsync(cmd: string) {
   } catch {}
 }
 
+function sh(v: string) {
+  return `'${v.replace(/'/g, `'\\''`)}'`
+}
+
 function fmt(secs: number): string {
   const s = Math.max(0, Math.floor(secs))
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`
@@ -39,13 +48,27 @@ function hashUrl(s: string): number {
   return Math.abs(h)
 }
 
-function downloadArt(url: string): string {
+const artDownloads = new Set<string>()
+
+function cachePath(url: string): string {
+  return `/tmp/ags-media-art-${hashUrl(url)}.jpg`
+}
+
+function ensureArt(url: string): string {
   if (!url) return ""
   if (url.startsWith("file://")) return url.slice(7)
-  const dest = `/tmp/ags-media-art-${hashUrl(url)}.jpg`
+  const dest = cachePath(url)
   if (!GLib.file_test(dest, GLib.FileTest.EXISTS)) {
-    run(`curl -sL -o '${dest}' '${url}'`)
+    if (!artDownloads.has(dest)) {
+      const tmp = `${dest}.tmp`
+      artDownloads.add(dest)
+      runAsync(
+        `sh -c ${sh(`curl -sL -o ${sh(tmp)} ${sh(url)} && mv ${sh(tmp)} ${sh(dest)}`)}`,
+      )
+    }
+    return ""
   }
+  artDownloads.delete(dest)
   return dest
 }
 
@@ -84,7 +107,7 @@ function MediaPlayer() {
   const [playing, setPlaying] = createState(false)
   const [mediaVol, setMediaVol] = createState(50)
 
-  let lastArtUrl = ""
+  let lastArtPath = ""
   let currentLen = 1
   let seeking = false
   let seekTimer = 0
@@ -99,6 +122,10 @@ function MediaPlayer() {
     if (!active) {
       setTitle("Nothing Playing")
       setArtist("")
+      if (lastArtPath) {
+        lastArtPath = ""
+        updateArtCss("")
+      }
       return
     }
 
@@ -113,13 +140,12 @@ function MediaPlayer() {
       ) || "Unknown Artist",
     )
 
-    const artUrl = run(
-      `playerctl --player=${PLAYER} metadata --format '{{ mpris:artUrl }}'`,
+    const artPath = ensureArt(
+      run(`playerctl --player=${PLAYER} metadata --format '{{ mpris:artUrl }}'`),
     )
-    if (artUrl && artUrl !== lastArtUrl) {
-      lastArtUrl = artUrl
-      const path = downloadArt(artUrl)
-      updateArtCss(path)
+    if (artPath && artPath !== lastArtPath) {
+      lastArtPath = artPath
+      updateArtCss(artPath)
     }
 
     const us = parseInt(
@@ -142,7 +168,10 @@ function MediaPlayer() {
     setMediaVol(Math.round(vol * 100))
   }
 
-  poll()
+  GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+    poll()
+    return GLib.SOURCE_REMOVE
+  })
   GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
     poll()
     return GLib.SOURCE_CONTINUE
@@ -188,16 +217,11 @@ function MediaPlayer() {
     return GLib.SOURCE_REMOVE
   })
 
-  const [opacity, setOpacity] = createState(0)
-  GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
-    setOpacity(1)
-    return GLib.SOURCE_REMOVE
-  })
-
   return (
     <window
-      visible
-      opacity={opacity}
+      name="media-player"
+      application={app}
+      visible={false}
       class="MediaWindow"
       namespace="media-player"
       monitor={monitor}
@@ -215,7 +239,7 @@ function MediaPlayer() {
               panel &&
               picked !== null &&
               (picked === panel || picked.is_ancestor(panel))
-            if (!onPanel) app.quit()
+            if (!onPanel) hideWindow()
           }}
         />
         <box

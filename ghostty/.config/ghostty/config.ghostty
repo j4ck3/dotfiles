@@ -6,3 +6,4 @@ selection-background = #264F78
 # Use the platform monospace default, similar to VS Code's default behavior.
 font-family = monospace
 font-size = 11
+confirm-close-surface = false

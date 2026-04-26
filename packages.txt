@@ -38,6 +38,11 @@ polkit
 jq
 ripgrep
 docker
+virt-manager
+qemu-full
+libvirt
+dnsmasq
+openbsd-netcat
 
 playerctl
 
@@ -55,6 +60,7 @@ libnotify
 nautilus
 
 tmux
+nnn
 
 neovim
 git
@@ -67,6 +73,7 @@ lazydocker
 lazygit
 opencode
 btop
+rocm-smi-lib
 docker-compose
 
 starship

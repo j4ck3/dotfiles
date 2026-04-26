@@ -1,4 +1,4 @@
-import { createState } from "ags"
+import { For, createState } from "ags"
 import app from "ags/gtk4/app"
 import { Astal } from "ags/gtk4"
 import GLib from "gi://GLib"
@@ -26,6 +26,11 @@ const dataScript = `${HOME}/.config/waybar/scripts/volume-popup-data.sh`
 const controlScript = `${HOME}/.config/waybar/scripts/volume-popup-control.sh`
 const monitor =
   Number.parseInt(GLib.getenv("AGS_VOLUME_MONITOR") || "0", 10) || 0
+
+function hideWindow() {
+  const win = app.get_window("volume-popup")
+  if (win) win.visible = false
+}
 
 function sq(v: string) {
   return `'${v.replace(/'/g, `'\\''`)}'`
@@ -64,8 +69,11 @@ function toggleMute(target: string, id: string) {
   runAsync(`${sq(controlScript)} toggle-mute ${target} ${sq(id)}`)
 }
 
-function dismiss() {
-  app.quit()
+function streamLabel(stream: AudioNode) {
+  if (stream.title && stream.title !== stream.name) {
+    return `${stream.name || "App"} - ${stream.title}`
+  }
+  return stream.name || stream.title || "App"
 }
 
 function MixerWindow() {
@@ -79,17 +87,12 @@ function MixerWindow() {
   const [srcDesc, setSrcDesc] = createState("Microphone")
   const [hasSrc, setHasSrc] = createState(false)
 
-  const [appVol, setAppVol] = createState(0)
-  const [appMuted, setAppMuted] = createState(false)
-  const [appName, setAppName] = createState("")
-  const [hasApp, setHasApp] = createState(false)
+  const [streams, setStreams] = createState<AudioNode[]>([])
 
   let sinkId = ""
   let srcId = ""
-  let appId = ""
   let sinkMutedVal = false
   let srcMutedVal = false
-  let appMutedVal = false
 
   let drag: string | null = null
   let dragTimer = 0
@@ -140,28 +143,25 @@ function MixerWindow() {
       setHasSrc(false)
     }
 
-    const st =
-      s.streams.find((x) => x.name?.toLowerCase() === "spotify") ||
-      s.streams[0]
-    if (st) {
-      appId = st.id
-      setHasApp(true)
-      setAppName(
-        st.title && st.title !== st.name
-          ? `${st.name} — ${st.title}`
-          : st.name || "App",
+    if (drag?.startsWith("stream:")) {
+      const dragId = drag.slice("stream:".length)
+      const current = streams()
+      setStreams(
+        s.streams.map((stream) =>
+          stream.id === dragId
+            ? current.find((x) => x.id === stream.id) || stream
+            : stream,
+        ),
       )
-      if (drag !== "stream") {
-        setAppVol(st.percent)
-        appMutedVal = st.muted
-        setAppMuted(st.muted)
-      }
     } else {
-      setHasApp(false)
+      setStreams(s.streams)
     }
   }
 
-  poll()
+  GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+    poll()
+    return GLib.SOURCE_REMOVE
+  })
   GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
     poll()
     return GLib.SOURCE_CONTINUE
@@ -169,7 +169,7 @@ function MixerWindow() {
 
   let db1 = 0
   let db2 = 0
-  let db3 = 0
+  const streamDebounces: Record<string, number> = {}
 
   function onSinkSlide(v: number) {
     const r = Math.round(v)
@@ -197,28 +197,35 @@ function MixerWindow() {
     })
   }
 
-  function onAppSlide(v: number) {
+  function onStreamSlide(stream: AudioNode, v: number) {
     const r = Math.round(v)
-    beginDrag("stream")
-    setAppVol(r)
-    if (db3) GLib.source_remove(db3)
-    db3 = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-      setVol("stream", appId, r)
+    beginDrag(`stream:${stream.id}`)
+    setStreams((current) =>
+      current.map((item) =>
+        item.id === stream.id ? { ...item, percent: r } : item,
+      ),
+    )
+    if (streamDebounces[stream.id]) GLib.source_remove(streamDebounces[stream.id])
+    streamDebounces[stream.id] = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+      setVol("stream", stream.id, r)
       endDrag()
-      db3 = 0
+      streamDebounces[stream.id] = 0
       return GLib.SOURCE_REMOVE
     })
+  }
+
+  function onStreamMute(stream: AudioNode) {
+    toggleMute("stream", stream.id)
+    setStreams((current) =>
+      current.map((item) =>
+        item.id === stream.id ? { ...item, muted: !item.muted } : item,
+      ),
+    )
   }
 
   let canDismiss = false
   GLib.idle_add(GLib.PRIORITY_LOW, () => {
     canDismiss = true
-    return GLib.SOURCE_REMOVE
-  })
-
-  const [opacity, setOpacity] = createState(0)
-  GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
-    setOpacity(1)
     return GLib.SOURCE_REMOVE
   })
 
@@ -230,8 +237,9 @@ function MixerWindow() {
 
   return (
     <window
-      visible
-      opacity={opacity}
+      name="volume-popup"
+      application={app}
+      visible={false}
       class="VolumeWindow"
       namespace="volume-popup"
       monitor={monitor}
@@ -249,7 +257,7 @@ function MixerWindow() {
               panel &&
               picked !== null &&
               (picked === panel || picked.is_ancestor(panel))
-            if (!onPanel) dismiss()
+            if (!onPanel) hideWindow()
           }}
         />
         <box
@@ -261,7 +269,7 @@ function MixerWindow() {
 
             <box class="vol-titlebar">
               <label class="vol-title" xalign={0} hexpand label="Volume" />
-              <button class="close-btn" onClicked={dismiss}>
+              <button class="close-btn" onClicked={hideWindow}>
                 <label label="✕" />
               </button>
             </box>
@@ -349,41 +357,35 @@ function MixerWindow() {
             <box
               class="vol-section"
               orientation={Gtk.Orientation.VERTICAL}
-              visible={hasApp}
+              visible={streams((items) => items.length > 0)}
             >
-              <label class="section-label" xalign={0} label="NOW PLAYING" />
-              <box class="slider-row" orientation={Gtk.Orientation.VERTICAL}>
-                <box class="slider-header">
-                  <button
-                    class="mute-btn"
-                    onClicked={() => {
-                      toggleMute("stream", appId)
-                      appMutedVal = !appMutedVal
-                      setAppMuted(appMutedVal)
-                    }}
-                  >
-                    <label label={appMuted((m) => (m ? "󰝟" : "󰎆"))} />
-                  </button>
-                  <label
-                    class="slider-label"
-                    xalign={0}
-                    hexpand
-                    label={appName}
-                  />
-                  <label
-                    class="slider-value"
-                    label={appVol((v) => `${v}%`)}
-                  />
-                </box>
-                <slider
-                  class="vol-slider"
-                  hexpand
-                  min={0}
-                  max={150}
-                  value={appVol}
-                  onChangeValue={({ value }) => onAppSlide(value)}
-                />
-              </box>
+              <label class="section-label" xalign={0} label="APPS" />
+              <For each={streams}>
+                {(stream) => (
+                  <box class="slider-row" orientation={Gtk.Orientation.VERTICAL}>
+                    <box class="slider-header">
+                      <button class="mute-btn" onClicked={() => onStreamMute(stream)}>
+                        <label label={stream.muted ? "󰝟" : "󰎆"} />
+                      </button>
+                      <label
+                        class="slider-label"
+                        xalign={0}
+                        hexpand
+                        label={streamLabel(stream)}
+                      />
+                      <label class="slider-value" label={`${stream.percent}%`} />
+                    </box>
+                    <slider
+                      class="vol-slider"
+                      hexpand
+                      min={0}
+                      max={150}
+                      value={stream.percent}
+                      onChangeValue={({ value }) => onStreamSlide(stream, value)}
+                    />
+                  </box>
+                )}
+              </For>
             </box>
 
             <button class="mixer-btn" onClicked={() => runAsync("pavucontrol")}>
@@ -397,6 +399,7 @@ function MixerWindow() {
 }
 
 app.start({
+  instanceName: "volume-popup",
   css,
   main() {
     return <MixerWindow />

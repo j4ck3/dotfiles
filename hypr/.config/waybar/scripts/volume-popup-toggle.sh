@@ -3,6 +3,8 @@ set -euo pipefail
 
 app_path="${HOME}/.config/ags/app.tsx"
 repo_app_path="${HOME}/dotfiles/hypr/.config/ags/app.tsx"
+instance="volume-popup"
+window="volume-popup"
 monitor=0
 
 if ! command -v ags >/dev/null 2>&1; then
@@ -19,14 +21,23 @@ if [[ ! -f "$app_path" ]]; then
   exit 1
 fi
 
+if ags toggle "$window" -i "$instance" >/dev/null 2>&1; then
+  exit 0
+fi
+
 if command -v hyprctl >/dev/null 2>&1; then
   monitor=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .id' | head -n 1)
   monitor=${monitor:-0}
 fi
 
-if ags list 2>/dev/null | rg -qx 'ags'; then
-  ags quit || pkill -f 'gjs -m /run/user/.*/ags.js' || true
-  exit 0
-fi
-
 nohup env AGS_VOLUME_MONITOR="$monitor" ags run "$app_path" >/dev/null 2>&1 &
+
+for _ in {1..20}; do
+  if ags toggle "$window" -i "$instance" >/dev/null 2>&1; then
+    exit 0
+  fi
+  sleep 0.05
+done
+
+notify-send "Volume popup unavailable" "Could not start AGS volume popup."
+exit 1

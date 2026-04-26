@@ -1,4 +1,3 @@
-import { createState } from "ags"
 import app from "ags/gtk4/app"
 import { Astal } from "ags/gtk4"
 import GLib from "gi://GLib"
@@ -9,9 +8,14 @@ import css from "./power-menu.css"
 const monitor =
   Number.parseInt(GLib.getenv("AGS_POWER_MONITOR") || "0", 10) || 0
 
+function hideWindow() {
+  const win = app.get_window("power-menu")
+  if (win) win.visible = false
+}
+
 function powerAction(command: string) {
   GLib.spawn_command_line_async(command)
-  app.quit()
+  hideWindow()
 }
 
 function PowerButton(props: {
@@ -46,16 +50,11 @@ function PowerMenu() {
     return GLib.SOURCE_REMOVE
   })
 
-  const [opacity, setOpacity] = createState(0)
-  GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
-    setOpacity(1)
-    return GLib.SOURCE_REMOVE
-  })
-
   return (
     <window
-      visible
-      opacity={opacity}
+      name="power-menu"
+      application={app}
+      visible={false}
       class="PowerMenuWindow"
       namespace="power-menu"
       monitor={monitor}
@@ -73,7 +72,7 @@ function PowerMenu() {
               panel &&
               picked !== null &&
               (picked === panel || picked.is_ancestor(panel))
-            if (!onPanel) app.quit()
+            if (!onPanel) hideWindow()
           }}
         />
         <box
@@ -84,7 +83,7 @@ function PowerMenu() {
           <box class="PowerMenuPanel" orientation={Gtk.Orientation.VERTICAL}>
             <box class="panel-titlebar">
             <label class="panel-title" xalign={0} hexpand label="Power" />
-            <button class="close-button" onClicked={() => app.quit()}>
+            <button class="close-button" onClicked={hideWindow}>
               <label label="Close" />
             </button>
           </box>

@@ -103,6 +103,7 @@ window#waybar {
 }
 
 #cpu,
+#custom-gpu,
 #memory,
 #disk {
   margin: 0;
@@ -110,6 +111,7 @@ window#waybar {
 }
 
 #cpu.high,
+#custom-gpu.high,
 #memory.high,
 #disk.high {
   color: #ff4d4d;

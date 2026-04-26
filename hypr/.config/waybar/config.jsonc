@@ -55,7 +55,7 @@
   },
   "group/system-stats": {
     "orientation": "horizontal",
-    "modules": ["pulseaudio", "cpu", "memory", "disk"],
+    "modules": ["pulseaudio", "cpu", "custom/gpu", "memory", "disk"],
   },
   "cpu": {
     "format": "<span size=\"x-small\">CPU</span>\n{usage}%",
@@ -64,6 +64,13 @@
       "high": 70
     },
     "tooltip-format": "CPU usage: {usage}%",
+    "on-click": "xdg-terminal-exec btop",
+  },
+  "custom/gpu": {
+    "exec": "/home/jacke/.config/waybar/scripts/gpu-usage.sh",
+    "return-type": "json",
+    "interval": 3,
+    "tooltip": true,
     "on-click": "xdg-terminal-exec btop",
   },
   "memory": {
