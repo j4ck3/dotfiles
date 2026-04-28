@@ -1,0 +1,26 @@
+#!/bin/bash
+# Put Spotify on the requested workspace and focus it, launching if needed.
+
+WORKSPACE="${1:-15}"
+
+CLIENT=$(hyprctl clients -j | jq -r '[.[] | select(.class == "Spotify" or .class == "spotify" or .class == "com.spotify.Client")][0].address // empty')
+
+if [ -n "$CLIENT" ]; then
+    hyprctl dispatch movetoworkspacesilent "$WORKSPACE,address:$CLIENT"
+    hyprctl dispatch workspace "$WORKSPACE"
+    hyprctl dispatch focuswindow "address:$CLIENT"
+    exit 0
+fi
+
+hyprctl keyword windowrule "workspace $WORKSPACE silent, match:class Spotify"
+hyprctl keyword windowrule "workspace $WORKSPACE silent, match:class spotify"
+hyprctl keyword windowrule "workspace $WORKSPACE silent, match:class com.spotify.Client"
+hyprctl dispatch workspace "$WORKSPACE"
+uwsm-app -- flatpak run com.spotify.Client &
+
+(
+    sleep 5
+    hyprctl keyword windowrule "unset workspace, match:class Spotify"
+    hyprctl keyword windowrule "unset workspace, match:class spotify"
+    hyprctl keyword windowrule "unset workspace, match:class com.spotify.Client"
+) &
