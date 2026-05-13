@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# Download latest ASUS motherboard BIOS (from ASUS support API) and put the
+# extracted .CAP on a removable FAT32 USB stick for EZ Flash / BIOS updater.
+#
+# Usage:
+#   prepare-bios-usb              # auto-pick removable vfat partition
+#   prepare-bios-usb /dev/sdX1    # explicit block device
+#   prepare-bios-usb --dry-run    # show board, URL, skip USB
+#
+# Environment:
+#   BIOS_USB_DEV=/dev/sdX1        # same as passing the device argument
+#   BIOS_USB_BOARD_NAME='…'      # override DMI board name if it does not match ASUS catalog
+#
+# Needs: curl, jq, unzip. Mounting uses udisksctl when possible, else sudo mount.
+set -euo pipefail
+
+DRY_RUN=0
+USB_DEV=""
+
+for arg in "$@"; do
+	case "$arg" in
+	--dry-run) DRY_RUN=1 ;;
+	-h | --help)
+		sed -n '1,20p' "$0"
+		exit 0
+		;;
+	*)
+		if [[ "$arg" == /dev/* ]]; then
+			USB_DEV=$arg
+		else
+			echo "Unknown option: $arg" >&2
+			exit 2
+		fi
+		;;
+	esac
+done
+
+need_cmd() {
+	command -v "$1" >/dev/null 2>&1 || {
+		echo "Missing dependency: $1" >&2
+		exit 1
+	}
+}
+
+need_cmd curl
+need_cmd jq
+need_cmd unzip
+
+vendor=$(tr -d '\0' </sys/class/dmi/id/board_vendor 2>/dev/null || true)
+board=$(tr -d '\0' </sys/class/dmi/id/board_name 2>/dev/null || true)
+if [[ -n "${BIOS_USB_BOARD_NAME:-}" ]]; then
+	board=$BIOS_USB_BOARD_NAME
+fi
+
+if [[ -z "${board:-}" ]]; then
+	echo "Could not read /sys/class/dmi/id/board_name (are you on bare metal?)" >&2
+	exit 1
+fi
+
+if ! echo "$vendor" | grep -qi asus; then
+	echo "This script only automates ASUS boards (vendor: ${vendor:-unknown})." >&2
+	echo "Board model from DMI: $board" >&2
+	exit 1
+fi
+
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/prepare-bios-usb"
+CACHE_JSON="$CACHE_DIR/asus-products.json"
+CACHE_MAX_AGE_SEC=$((7 * 86400))
+mkdir -p "$CACHE_DIR"
+
+refresh_cache() {
+	echo "Fetching ASUS motherboard list (cached one week)…" >&2
+	curl -fsSL \
+		'https://www.asus.com/support/api/product.asmx/GetPDLevel?website=global&type=2&typeid=1156,0&productflag=1' \
+		-o "$CACHE_JSON.part"
+	mv -f "$CACHE_JSON.part" "$CACHE_JSON"
+}
+
+if [[ ! -f "$CACHE_JSON" ]]; then
+	refresh_cache
+else
+	now=$(date +%s)
+	age=$((now - $(stat -c %Y "$CACHE_JSON")))
+	if ((age > CACHE_MAX_AGE_SEC)); then
+		refresh_cache || true
+	fi
+fi
+
+if [[ ! -s "$CACHE_JSON" ]]; then
+	echo "Cache missing or empty; run again with network." >&2
+	exit 1
+fi
+
+pdid=$(jq -r --arg n "$board" '
+	.Result.Product[]
+	| select((.PDName | ascii_downcase) == ($n | ascii_downcase))
+	| .PDId' "$CACHE_JSON" | head -n1)
+
+if [[ -z "$pdid" || "$pdid" == null ]]; then
+	echo "No ASUS support catalog entry for board name: $board" >&2
+	echo "Tip: set BIOS_USB_BOARD_NAME='Exact Name From ASUS Site' once if DMI is wrong." >&2
+	exit 1
+fi
+
+bios_json=$(curl -fsSL "https://www.asus.com/support/api/product.asmx/GetPDBIOS?website=global&pdid=${pdid}")
+
+if [[ $(echo "$bios_json" | jq -r .Status) != SUCCESS ]]; then
+	echo "GetPDBIOS failed for pdid=$pdid board=$board" >&2
+	echo "$bios_json" | jq . >&2
+	exit 1
+fi
+
+pick=$(echo "$bios_json" | jq -c '
+	[ .Result.Obj[]
+		| select(.Name == "BIOS")
+		| .Files[]
+		| {ReleaseDate, DownloadUrl: .DownloadUrl.Global}
+		| select(.DownloadUrl != null and .DownloadUrl != "")
+	]
+	| sort_by(.ReleaseDate | split("/") | map(tonumber))
+	| reverse
+	| .[0]
+')
+
+url=$(echo "$pick" | jq -r .DownloadUrl)
+released=$(echo "$pick" | jq -r .ReleaseDate)
+
+# Catalog URLs include ?model=Board Name with spaces; curl 8+ rejects that as malformed.
+# The file is the same without the tracking query (verified for dlcdnets.asus.com).
+url=${url%%\?*}
+
+if [[ -z "$url" || "$url" == null ]]; then
+	echo "Could not resolve latest BIOS download URL." >&2
+	exit 1
+fi
+
+echo "Board: $board (pdid=$pdid)"
+echo "Latest BIOS on catalog (by date): $released"
+echo "Download: $url"
+
+if ((DRY_RUN)); then
+	echo "Dry run: not downloading or touching USB."
+	exit 0
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+zip_path="$work/bios.zip"
+echo "Downloading…" >&2
+curl -fSL "$url" -o "$zip_path"
+
+unzip -q -j "$zip_path" '*.CAP' -d "$work"
+shopt -s nullglob
+caps=("$work"/*.CAP)
+shopt -u nullglob
+if ((${#caps[@]} != 1)); then
+	echo "Expected exactly one .CAP in zip, got: ${caps[*]-empty}" >&2
+	unzip -l "$zip_path" >&2 || true
+	exit 1
+fi
+cap="${caps[0]}"
+cap_base=$(basename "$cap")
+
+pick_usb_dev() {
+	if [[ -n "$USB_DEV" ]]; then
+		echo "$USB_DEV"
+		return
+	fi
+	if [[ -n "${BIOS_USB_DEV:-}" ]]; then
+		echo "$BIOS_USB_DEV"
+		return
+	fi
+	# Removable vfat partition (typical USB stick for firmware updaters)
+	mapfile -t cands < <(lsblk -nrpo NAME,RM,TYPE,FSTYPE |
+		awk '$2==1 && $3=="part" && $4=="vfat" {print $1}')
+	if ((${#cands[@]} == 0)); then
+		echo "No removable vfat partition found. Plug the USB stick or pass /dev/sdX1." >&2
+		exit 1
+	fi
+	if ((${#cands[@]} > 1)); then
+		echo "Multiple removable vfat partitions; pick one:" >&2
+		printf ' %s\n' "${cands[@]}" >&2
+		echo "Re-run: prepare-bios-usb /dev/sdXN   or export BIOS_USB_DEV=/dev/sdXN" >&2
+		exit 1
+	fi
+	echo "${cands[0]}"
+}
+
+dev=$(pick_usb_dev)
+mnt=$(lsblk -nrpo MOUNTPOINT "$dev" | awk 'NF>0 {print; exit}')
+mounted_here=0
+mount_target=""
+
+if [[ -z "$mnt" ]]; then
+	if udisksctl mount -b "$dev" >/dev/null 2>&1; then
+		mnt=$(lsblk -nrpo MOUNTPOINT "$dev" | awk 'NF>0 {print; exit}')
+	fi
+fi
+
+if [[ -z "$mnt" || ! -d "$mnt" ]]; then
+	mount_target=$(mktemp -d)
+	echo "Mounting $dev on $mount_target (sudo)…" >&2
+	sudo mount -o rw "$dev" "$mount_target"
+	mnt=$mount_target
+	mounted_here=1
+fi
+
+echo "USB mount: $mnt" >&2
+
+shopt -s nullglob
+for old in "$mnt"/*.CAP "$mnt"/*.cap; do
+	rm -f "$old"
+done
+shopt -u nullglob
+
+cp -f "$cap" "$mnt/$cap_base"
+sync
+
+if ((mounted_here)); then
+	sudo umount "$mount_target"
+	rmdir "$mount_target"
+fi
+
+echo "Done. On the USB root: $cap_base"
+echo "Reboot → ASUS EZ Flash (or your usual tool) and select that file." >&2

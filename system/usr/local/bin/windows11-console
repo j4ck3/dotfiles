@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/}
+
+Starts ${DOMAIN} if it is shut off, then opens the normal virt-manager VNC console.
+
+Environment:
+  CONNECT_URI  libvirt URI, default: ${CONNECT_URI}
+  DOMAIN       domain name, default: ${DOMAIN}
+EOF
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    echo "Unknown argument: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}")"
+if [[ "${state}" == "shut off" ]]; then
+  virsh -c "${CONNECT_URI}" start "${DOMAIN}"
+fi
+
+exec virt-manager --connect "${CONNECT_URI}" --show-domain-console "${DOMAIN}"

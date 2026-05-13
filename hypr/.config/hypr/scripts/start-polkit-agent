@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Polkit GUI agent for Hyprland (pkexec, GParted, etc.).
+# Prefer hyprpolkitagent; fall back to polkit-gnome on XWayland (more reliable than Wayland GTK here).
+set -eu
+log="${XDG_RUNTIME_DIR:-/tmp}/polkit-agent.log"
+if command -v hyprpolkitagent >/dev/null 2>&1; then
+	exec hyprpolkitagent >>"$log" 2>&1
+fi
+export GDK_BACKEND=x11
+exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >>"$log" 2>&1

@@ -1,0 +1,13 @@
+[Unit]
+Description=Keep Spotify sink-input volume across track changes
+After=pipewire.service pipewire-pulse.socket
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/hypr/scripts/spotify-volume-guard
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,10 +1,13 @@
 #!/bin/bash
-# Put Spotify on the requested workspace and focus it, launching if needed.
+# Put t3code on the requested workspace and focus it, launching if needed.
 
-WORKSPACE="${1:-15}"
+WORKSPACE="${1:-2}"
 
 get_client() {
-    hyprctl clients -j | jq -r '[.[] | select(.class == "Spotify" or .class == "spotify" or .class == "com.spotify.Client" or ((.title // "") | test("Spotify"; "i")))][0].address // empty'
+    hyprctl clients -j | jq -r '[.[] | select(
+        (.class == "t3code" or .class == "T3code")
+        or (((.class // "") | ascii_downcase) | contains("t3code"))
+    )][0].address // empty'
 }
 
 move_and_focus() {
@@ -23,7 +26,7 @@ if [ -n "$CLIENT" ]; then
 fi
 
 hyprctl dispatch workspace "$WORKSPACE"
-uwsm-app -- flatpak run com.spotify.Client &
+uwsm-app -- t3code &
 
 for _ in $(seq 1 40); do
     sleep 0.25

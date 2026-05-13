@@ -11,8 +11,8 @@ readonly PIPER="$VENV_PATH/bin/piper"
 readonly AUDIO_FILE="/tmp/tts_output.wav"
 readonly LOG_FILE="/tmp/tts.log"
 
-# Voice model - downloaded to ~/.local/share/piper-voices/
-# Available voices: https://rhasspy.github.io/piper-samples/
+# Voice: ~/.local/share/piper-voices/*.onnx — https://rhasspy.github.io/piper-samples/
+# If Piper is missing: create VENV_PATH, pip install piper-tts, add matching .onnx + .onnx.json beside VOICE.
 readonly VOICE="$HOME/.local/share/piper-voices/en_US-lessac-medium.onnx"
 
 # Playback speed (1.0 = normal, 1.5 = faster)
@@ -52,7 +52,6 @@ log "Speaking: $TEXT"
 notify-send -t 2000 "Speaking..." "$PREVIEW"
 
 # --- Generate and play speech ---
-# Piper downloads the model on first use
 echo "$TEXT" | "$PIPER" --model "$VOICE" --output_file "$AUDIO_FILE" 2>>"$LOG_FILE"
 
 if [[ ! -s "$AUDIO_FILE" ]]; then

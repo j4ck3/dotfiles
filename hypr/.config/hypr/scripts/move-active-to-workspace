@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Move only the active window to a workspace.
+# If active window is in a group, detach it first so the whole group is not moved.
+
+set -u
+
+WS="${1:-}"
+if [[ -z "$WS" ]]; then
+    echo "usage: $0 <workspace>" >&2
+    exit 1
+fi
+
+ACTIVE_JSON=$(hyprctl activewindow -j 2>/dev/null || true)
+if [[ -z "$ACTIVE_JSON" || "$ACTIVE_JSON" == "{}" || "$ACTIVE_JSON" == "null" ]]; then
+    exit 0
+fi
+
+ACTIVE_ADDR=$(jq -r '.address // empty' <<< "$ACTIVE_JSON")
+[[ -z "$ACTIVE_ADDR" ]] && exit 0
+
+GROUPED_LEN=$(jq -r '(.grouped // []) | length' <<< "$ACTIVE_JSON")
+
+if [[ "$GROUPED_LEN" -gt 0 ]]; then
+    hyprctl dispatch focuswindow "address:$ACTIVE_ADDR" >/dev/null 2>&1 || true
+    hyprctl dispatch moveoutofgroup >/dev/null 2>&1 || true
+fi
+
+hyprctl dispatch movetoworkspacesilent "$WS,address:$ACTIVE_ADDR" >/dev/null 2>&1 \
+    || hyprctl dispatch movetoworkspace "$WS"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Open a project in tmux with nvim, opencode, lazydocker, and lazygit in separate windows
+# Open a project in tmux with nvim, lazydocker, and lazygit in separate windows
 # Usage: open-project-tmux
 
 # Default starting directory - prefer /work, then ~/work, then ~/Work.
@@ -47,14 +47,19 @@ $TERMINAL -e bash -c "
         SESSION_NAME=\"\${SESSION_NAME: -40}\"
     fi
     
+    ensure_tmux_indexes() {
+        # Make window/pane numbering start at 1 for this session.
+        tmux set-option -t \"\$SESSION_NAME\" base-index 1 >/dev/null 2>&1 || true
+        tmux set-window-option -t \"\$SESSION_NAME\" pane-base-index 1 >/dev/null 2>&1 || true
+    }
+
     # Check if tmux session already exists
     if tmux has-session -t \"\$SESSION_NAME\" 2>/dev/null; then
+        ensure_tmux_indexes
         # Session exists - ensure all windows exist, create missing ones
         cd \"\$SELECTED_DIR\"
         tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^nvim$' || \
             tmux new-window -t \"\$SESSION_NAME\" -n 'nvim' -c \"\$SELECTED_DIR\" 'nvim'
-        tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^opencode$' || \
-            tmux new-window -t \"\$SESSION_NAME\" -n 'opencode' -c \"\$SELECTED_DIR\" 'opencode'
         tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^lazydocker$' || \
             tmux new-window -t \"\$SESSION_NAME\" -n 'lazydocker' -c \"\$SELECTED_DIR\" 'lazydocker'
         tmux list-windows -t \"\$SESSION_NAME\" -F '#{window_name}' 2>/dev/null | grep -q '^lazygit$' || \
@@ -64,11 +69,10 @@ $TERMINAL -e bash -c "
         # Create new session with first window for nvim
         cd \"\$SELECTED_DIR\"
         tmux new-session -d -s \"\$SESSION_NAME\" -n 'nvim' 'nvim'
-        # Create second window for opencode
-        tmux new-window -t \"\$SESSION_NAME\" -n 'opencode' -c \"\$SELECTED_DIR\" 'opencode'
-        # Create third window for lazydocker
+        ensure_tmux_indexes
+        # Create second window for lazydocker
         tmux new-window -t \"\$SESSION_NAME\" -n 'lazydocker' -c \"\$SELECTED_DIR\" 'lazydocker'
-        # Create fourth window for lazygit
+        # Create third window for lazygit
         tmux new-window -t \"\$SESSION_NAME\" -n 'lazygit' -c \"\$SELECTED_DIR\" 'lazygit'
         # Select the first window (nvim) when attaching
         tmux select-window -t \"\$SESSION_NAME:nvim\"

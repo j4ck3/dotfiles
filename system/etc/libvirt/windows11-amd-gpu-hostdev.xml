@@ -1,0 +1,27 @@
+<!--
+  AMD RX 7900 XTX (03:00.0) + HDMI/DP audio (03:00.1) for domain windows11.
+
+  PCI passthrough — merge these two <hostdev> blocks inside <devices>...</devices>
+  of your VM (after <disk>, <interface>, etc. is fine).
+
+  Apply:
+    virsh edit windows11
+    # paste both hostdev stanzas, save and quit
+
+  Or in virt-manager: VM → Show virtual hardware details → Add Hardware →
+  PCI Host Device → add the Navi 31 VGA and the Navi 31 HDMI/DP Audio entries.
+
+  Before first boot with the real GPU:
+    - Remove Virtio / QXL / Spice “display” if the guest should use only the passed GPU.
+    - Use Q35 + OVMF (UEFI) firmware for Windows 11.
+-->
+<hostdev mode="subsystem" type="pci" managed="yes">
+  <source>
+    <address domain="0x0000" bus="0x03" slot="0x00" function="0x0"/>
+  </source>
+</hostdev>
+<hostdev mode="subsystem" type="pci" managed="yes">
+  <source>
+    <address domain="0x0000" bus="0x03" slot="0x00" function="0x1"/>
+  </source>
+</hostdev>

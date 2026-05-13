@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# One-shot display + browser pipeline checks (Hyprland + Helium/Chromium).
+set -euo pipefail
+
+echo "== Hyprland monitors (refresh / vrr) =="
+hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name)  \(.width)x\(.height)  \(.refreshRate) Hz  vrr=\(.vrr)"' || echo "(hyprctl failed)"
+
+echo
+echo "== AMDGPU DP mode (modetest) =="
+if command -v modetest >/dev/null; then
+	modetest -M amdgpu -c 2>/dev/null | grep -F -A18 'DP-1' | head -22
+else
+	echo "(install libdrm modetest for this block)"
+fi
+
+echo
+echo "== Helium main process vs flags file =="
+flags_file="${XDG_CONFIG_HOME:-$HOME/.config}/helium-browser-flags.conf"
+main_pid="$(pgrep -af '^/opt/helium-browser-bin/helium --homepage' | awk '{print $1; exit}' || true)"
+if [[ -z "${main_pid:-}" ]]; then
+	echo "No main Helium process found (pattern: helium --homepage...)."
+else
+	echo "Main PID: $main_pid"
+	tr '\0' ' ' <"/proc/$main_pid/cmdline" | fold -s -w 100
+	echo
+	if [[ -r "$flags_file" ]]; then
+		echo "Checking tokens from: $flags_file"
+		cmd_flat="$(tr '\0' ' ' <"/proc/$main_pid/cmdline")"
+		while IFS= read -r line; do
+			[[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+			[[ "$line" != --* ]] && continue
+			token="${line%%[[:space:]]*}"
+			case "$cmd_flat" in
+				*"${token}"*) echo "  OK   $token" ;;
+				*) echo "  MISS $token  (restart Helium so the wrapper re-reads the flags file)" ;;
+			esac
+		done <"$flags_file"
+	else
+		echo "Flags file not readable: $flags_file"
+	fi
+fi
+
+echo
+echo "== Hyprland compositor FPS (debug overlay) =="
+echo "Run:  hyprctl keyword debug:overlay true"
+echo "Then: hyprctl keyword debug:overlay false"

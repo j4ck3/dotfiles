@@ -17,7 +17,7 @@ get_volume() {
     local id="$1"
     pactl --format=json list sink-inputs 2>/dev/null \
         | jq -r --argjson id "$id" '.[] | select(.index == $id) | .volume["front-left"].value_percent // empty' \
-        | tr -d '%'
+        | tr -d '%[:space:]'
 }
 
 # Seed the state file from current Spotify volume if it doesn't exist
@@ -37,19 +37,18 @@ pactl subscribe 2>/dev/null | grep --line-buffered "sink-input" | while read -r 
     [[ -z "$vol" ]] && continue
 
     saved_vol=""
-    [[ -f "$STATE_FILE" ]] && saved_vol=$(cat "$STATE_FILE")
+    [[ -f "$STATE_FILE" ]] && saved_vol=$(tr -d '[:space:]' <"$STATE_FILE")
 
     if [[ -z "$saved_vol" ]]; then
         echo "$vol" > "$STATE_FILE"
         continue
     fi
 
-    if (( vol == 100 && saved_vol != 100 )); then
-        # Spotify reset volume to 100% on new track — revert to saved
+    # Spotify often jumps the stream to >=100% on track change; revert if above saved level
+    if (( vol >= 100 && saved_vol < vol )); then
         pactl set-sink-input-volume "$id" "${saved_vol}%"
-    elif (( vol != 100 )); then
-        # User-initiated change — save new volume
+    elif (( vol < 100 )); then
         echo "$vol" > "$STATE_FILE"
     fi
-    # vol==100 && saved_vol==100: user intentionally at 100%, do nothing
+    # vol==100 && saved_vol==100: intentional max, do nothing
 done
