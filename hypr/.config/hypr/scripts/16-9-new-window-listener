@@ -87,10 +87,7 @@ while IFS= read -r addr; do
 	[[ "$addr" != 0x* ]] && addr="0x$addr"
 	[[ ! -f "$MODE_FLAG" ]] && continue
 	echo "$(date +%T) openwindow addr=$addr applying" >> "$LOG" 2>/dev/null
-	# Disable animations before we touch the window so open/resize don't animate
-	hyprctl keyword animations:enabled false
 	apply_16_9 "$addr"
-	hyprctl keyword animations:enabled true
 	echo "$(date +%T) openwindow addr=$addr done" >> "$LOG" 2>/dev/null
 done < <(python3 - "$SOCKET" << 'PY'
 import sys, socket

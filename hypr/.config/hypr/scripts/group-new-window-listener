@@ -73,8 +73,6 @@ join_group_16_9() {
     GROUP_ADDR=$(hyprctl clients -j 2>/dev/null \
         | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
 
-    hyprctl keyword animations:enabled false
-
     if [[ -z "$GROUP_ADDR" ]]; then
         # First tiled window on this workspace — create a new group
         hyprctl dispatch focuswindow "address:$addr"
@@ -87,8 +85,6 @@ join_group_16_9() {
         hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
         hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
     fi
-
-    hyprctl keyword animations:enabled true
 }
 
 while IFS= read -r addr; do

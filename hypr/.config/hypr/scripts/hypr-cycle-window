@@ -39,7 +39,5 @@ else
 fi
 
 NEXT_ADDR="${MAPFILE[$NEXT_IDX]}"
-hyprctl keyword animations:enabled false
 hyprctl dispatch focuswindow "address:$NEXT_ADDR"
 hyprctl dispatch alterzorder top
-hyprctl keyword animations:enabled true

@@ -36,11 +36,9 @@ WIN_TOP=$WORK_TOP
 
 # Revert: only tile windows we previously floated (leaves dialogs/popups alone)
 if [[ -f "$MODE_FLAG" ]] && [[ "$(head -1 "$MODE_FLAG" 2>/dev/null)" == "$WORKSPACE_ID" ]]; then
-	hyprctl keyword animations:enabled false
 	while IFS= read -r addr; do
 		[[ -n "$addr" ]] && hyprctl dispatch settiled "address:$addr"
 	done < <(tail -n +2 "$MODE_FLAG")
-	hyprctl keyword animations:enabled true
 	rm -f "$MODE_FLAG"
 	exit 0
 fi
@@ -55,10 +53,8 @@ done < <(echo "$ALL_CLIENTS" | jq -r --argjson ws "$WORKSPACE_ID" \
 
 [[ ${#ADDRESSES[@]} -eq 0 ]] && exit 0
 
-hyprctl keyword animations:enabled false
 for addr in "${ADDRESSES[@]}"; do
 	hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
 done
-hyprctl keyword animations:enabled true
 
 printf '%s\n' "$WORKSPACE_ID" "${ADDRESSES[@]}" > "$MODE_FLAG"

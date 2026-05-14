@@ -41,10 +41,8 @@ WIN_TOP=$WORK_TOP
 
 # --- Dissolve: tile the group, then break it apart ---
 if [[ "$GROUPED_LEN" -gt 0 ]]; then
-    hyprctl keyword animations:enabled false
     hyprctl dispatch settiled "address:$ACTIVE_ADDR"
     hyprctl dispatch togglegroup
-    hyprctl keyword animations:enabled true
     # Only clear flag if it was set to this specific workspace (preserve "all" default)
     CURRENT_MODE=""
     CURRENT_MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
@@ -65,8 +63,6 @@ if [[ "$COUNT" -le 0 && "$ACTIVE_FLOATING" == "true" ]]; then
 fi
 [[ "$COUNT" -le 0 ]] && exit 0
 
-hyprctl keyword animations:enabled false
-
 # Step 1: Build group while windows are tiled (so direction-based moveintogroup works)
 if [[ "$ACTIVE_FLOATING" == "true" ]]; then
     hyprctl dispatch settiled "address:$ACTIVE_ADDR"
@@ -84,7 +80,6 @@ fi
 # Step 2: Float the group and resize to 16:9
 hyprctl --batch "dispatch setfloating address:$ACTIVE_ADDR ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${ACTIVE_ADDR} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${ACTIVE_ADDR}"
 
-hyprctl keyword animations:enabled true
 # Only write workspace-specific flag if not already in "all" mode
 CURRENT_MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
 [[ "$CURRENT_MODE" != "all" ]] && echo "$WS_ID" > "$MODE_FLAG"
