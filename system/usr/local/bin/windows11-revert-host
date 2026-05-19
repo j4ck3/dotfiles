@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Reattach GPU to amdgpu and restart the display stack (after emergency stop / hard reboot).
+set -u
+
+export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+export LC_ALL=C
+export LANG=C
+
+GPU_NODE="${GPU_NODE:-pci_0000_03_00_0}"
+AUDIO_NODE="${AUDIO_NODE:-pci_0000_03_00_1}"
+DISPLAY_MANAGER="${DISPLAY_MANAGER:-display-manager.service}"
+HOOK="${HOOK:-/etc/libvirt/hooks/qemu.d/windows11/release/end/revert.sh}"
+
+if [[ -x "${HOOK}" ]]; then
+  echo "Running passthrough revert hook..."
+  "${HOOK}" windows11 release end
+  exit 0
+fi
+
+echo "Hook not found at ${HOOK}; running minimal revert..." >&2
+virsh nodedev-reattach "${AUDIO_NODE}" 2>/dev/null || true
+virsh nodedev-reattach "${GPU_NODE}" 2>/dev/null || true
+modprobe amdgpu 2>/dev/null || true
+systemctl start "${DISPLAY_MANAGER}" 2>/dev/null || true

@@ -32,11 +32,21 @@ else
 			token="${line%%[[:space:]]*}"
 			case "$cmd_flat" in
 				*"${token}"*) echo "  OK   $token" ;;
-				*) echo "  MISS $token  (restart Helium so the wrapper re-reads the flags file)" ;;
+				*) echo "  MISS $token  (run: ~/.config/hypr/scripts/helium-restart)" ;;
 			esac
 		done <"$flags_file"
+		if [[ "$cmd_flat" != *WaylandWpColorManagerV1* && "$cmd_flat" == *enable-features=* ]]; then
+			echo "  WARN Helium missing WaylandWpColorManagerV1 disable (stale session or flags not loaded)"
+		fi
 	else
 		echo "Flags file not readable: $flags_file"
+	fi
+	gpu_pid="$(pgrep -af 'helium.*--type=gpu-process' | awk '{print $1; exit}' || true)"
+	if [[ -n "${gpu_pid:-}" ]]; then
+		echo
+		echo "GPU process render node:"
+		tr '\0' ' ' <"/proc/$gpu_pid/cmdline" | grep -oE 'render-node-override=[^ ]+' || echo "  (no override in cmdline)"
+		ls -l "/proc/$gpu_pid/fd" 2>/dev/null | grep -E 'renderD|by-path' || true
 	fi
 fi
 

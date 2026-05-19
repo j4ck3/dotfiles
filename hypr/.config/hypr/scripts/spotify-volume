@@ -6,6 +6,7 @@
 set -euo pipefail
 
 MAX_VOLUME=100  # percent
+MIN_VOLUME=5
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
 
 DIRECTION="$1"
@@ -41,8 +42,8 @@ if [ -n "$ID" ]; then
         fi
     else
         NEW=$((CURRENT - 5))
-        if [ "$NEW" -lt 0 ]; then
-            NEW=0
+        if [ "$NEW" -lt "$MIN_VOLUME" ]; then
+            NEW=$MIN_VOLUME
         fi
         pactl set-sink-input-volume "$ID" "${NEW}%"
         echo "$NEW" > "$STATE_FILE"

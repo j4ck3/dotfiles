@@ -102,7 +102,7 @@ window#waybar {
   min-width: 0;
 }
 
-#cpu,
+#custom-cpu,
 #custom-gpu,
 #memory,
 #disk {
@@ -110,14 +110,14 @@ window#waybar {
   padding: 0 6px;
 }
 
-#cpu.high,
+#custom-cpu.high,
 #custom-gpu.high,
 #memory.high,
 #disk.high {
   color: #ff4d4d;
 }
 
-#cpu {
+#custom-cpu {
   padding-left: 6px;
 }
 
@@ -133,6 +133,20 @@ window#waybar {
 
 #pulseaudio.muted {
   color: @foreground-dim;
+}
+
+#custom-dictation.active {
+  color: #ff6b6b;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  animation: dictation-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dictation-pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 #custom-media {

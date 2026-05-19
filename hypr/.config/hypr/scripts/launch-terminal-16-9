@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Super+Return: open terminal on current workspace in 16:9 group mode.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/16-9-lib.sh"
+
+WS_ID=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty')
+if [[ -z "$WS_ID" || "$WS_ID" == "null" ]]; then
+	exec uwsm-app -- xdg-terminal-exec
+fi
+
+BEFORE=$(hyprctl clients -j 2>/dev/null | jq -c --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws) | .address]' || echo '[]')
+MON_ID=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.monitorID // 0')
+
+sixteen_nine_enable_workspace "$WS_ID" || true
+sixteen_nine_activate_terminal_open_rule "$MON_ID" || true
+( sleep 2 && sixteen_nine_deactivate_terminal_open_rule ) &
+
+uwsm-app -- xdg-terminal-exec &
+
+ADDR=""
+for _ in $(seq 1 200); do
+	sleep 0.01
+	ADDR=$(hyprctl clients -j 2>/dev/null | jq -r --argjson ws "$WS_ID" --argjson before "$BEFORE" '
+		[.[] | select(.workspace.id == $ws and .mapped == true) | .address]
+		| map(select(. as $a | ($before | index($a)) | not))
+		| last // empty
+	' 2>/dev/null || true)
+	[[ -n "$ADDR" ]] && break
+done
+
+sixteen_nine_deactivate_terminal_open_rule
+
+if [[ -n "$ADDR" ]]; then
+	# Windowrule should have placed it; only fix up if group/layout did not apply.
+	already=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$ADDR" '
+		[.[] | select(.address == $a and .floating == true and (.grouped | length) > 0)] | length
+	')
+	[[ "$already" == "0" ]] && sixteen_nine_apply_to_address "$ADDR" || true
+fi

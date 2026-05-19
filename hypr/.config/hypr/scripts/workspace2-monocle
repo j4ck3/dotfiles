@@ -2,11 +2,18 @@
 # Monocle mode for workspace 2 - maximize all windows, stacked on top of each other
 
 maximize_workspace2() {
-    hyprctl clients -j | jq -r '.[] | select(.workspace.id == 2) | .address' | while read -r addr; do
-        FULLSCREEN=$(hyprctl clients -j | jq -r ".[] | select(.address == \"$addr\") | .fullscreen")
-        if [ "$FULLSCREEN" = "0" ]; then
+    local cur_ws
+    cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty')
+
+    hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.workspace.id == 2) | [.address, .fullscreen] | @tsv' \
+        | while IFS=$'\t' read -r addr fullscreen; do
+        [[ -z "$addr" || "$fullscreen" != "0" ]] && continue
+        if [[ "$cur_ws" == "2" ]]; then
             hyprctl dispatch focuswindow "address:$addr"
             hyprctl dispatch fullscreen 1
+        else
+            # Fullscreen without focuswindow — avoids yanking the user to workspace 2.
+            hyprctl dispatch fullscreen "1,address:$addr" 2>/dev/null || true
         fi
     done
 }

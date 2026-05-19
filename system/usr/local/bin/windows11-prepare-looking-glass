@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# One-shot host prep for Looking Glass B7 + virt-manager windows11 (kvmfr path).
+set -euo pipefail
+
+SYSTEM="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+INSTALL="${SYSTEM}/install-libvirt-windows11.sh"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo $0" >&2
+  exit 1
+fi
+
+TARGET_USER="${SUDO_USER:-${USER}}"
+if [[ "${TARGET_USER}" == root ]]; then
+  echo "Set SUDO_USER or run: sudo -u jacke is wrong — use: sudo $0 as your normal user" >&2
+  exit 1
+fi
+
+echo "=== Looking Glass B7 host setup (kvmfr + libvirt) ==="
+
+bash "${INSTALL}"
+
+if [[ ! -c /dev/kvmfr0 ]]; then
+  echo "=== kvmfr module ==="
+  windows11-setup-kvmfr
+fi
+
+if ! command -v looking-glass-client >/dev/null; then
+  echo "=== looking-glass-client ==="
+  if pacman -Q looking-glass &>/dev/null; then
+    echo "Package looking-glass already installed."
+  elif command -v paru >/dev/null && [[ "${BUILD_CLIENT:-}" != 1 ]]; then
+    echo "Trying AUR: paru -S looking-glass --needed"
+    sudo -u "${TARGET_USER}" paru -S looking-glass --needed --noconfirm || {
+      echo "paru failed — building from source ..."
+      BUILD_CLIENT=1
+    }
+  fi
+  if [[ "${BUILD_CLIENT:-}" == 1 ]] || ! command -v looking-glass-client >/dev/null; then
+    windows11-build-looking-glass-client
+  fi
+fi
+
+if ! id -nG "${TARGET_USER}" | grep -qw kvm; then
+  usermod -aG kvm "${TARGET_USER}"
+  echo "Added ${TARGET_USER} to group kvm (log out and back in)."
+fi
+
+STATE="$(virsh -c qemu:///system domstate windows11 2>/dev/null || echo missing)"
+if [[ "${STATE}" == "shut off" ]]; then
+  echo "=== Applying passthrough + Looking Glass XML ==="
+  windows11-mode passthrough
+elif [[ "${STATE}" == "running" ]]; then
+  echo "windows11 is running — shut it down to refresh XML: windows11-stop"
+else
+  echo "Domain windows11 state: ${STATE}"
+fi
+
+echo ""
+windows11-looking-glass-doctor || true
+
+echo ""
+echo "Host prep done."
+echo "Guest (Windows, console mode): install Looking Glass Host B7 from looking-glass.io"
+echo "Then: windows11-start --yes && windows11-looking-glass"

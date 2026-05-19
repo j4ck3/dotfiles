@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Auto-stop windows11 and restore the host (scheduled by passthrough start hook).
+set -u
+
+export LC_ALL=C
+export LANG=C
+export VIRSH_DEFAULT_CONNECT_URI='qemu:///system'
+
+DOMAIN="${DOMAIN:-windows11}"
+PID_FILE="${PID_FILE:-/run/windows11-watchdog.pid}"
+FORCE_STOP="${FORCE_STOP:-/usr/local/bin/windows11-force-stop}"
+
+logger -t windows11-watchdog "Watchdog fired; stopping ${DOMAIN}"
+
+if virsh domstate "${DOMAIN}" 2>/dev/null | grep -q running; then
+  DOMAIN="${DOMAIN}" "${FORCE_STOP}" || true
+fi
+
+rm -f "${PID_FILE}"

@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+#
+# Live dictation: toggle streaming speech-to-text into the focused window.
+# Uses Vosk (streaming) + wtype (Wayland). Super+V to toggle.
+#
+
+set -euo pipefail
+
+readonly VENV_PYTHON="$HOME/.local/share/stt/.venv/bin/python3"
+readonly DICTATE_SCRIPT="$HOME/.local/share/stt/dictate.py"
+readonly SCRIPT_PATH="${BASH_SOURCE[0]}"
+readonly SV_MODEL="$HOME/.local/share/vosk-model-small-sv-rhasspy-0.15"
+readonly EN_MODEL="$HOME/.local/share/vosk-model-small-en-us-0.15"
+if [[ -n "${VOSK_MODEL_PATH:-}" ]]; then
+    readonly MODEL_DIR="$VOSK_MODEL_PATH"
+elif [[ -d "$SV_MODEL" ]] && [[ "${LANG:-}" == sv* ]]; then
+    readonly MODEL_DIR="$SV_MODEL"
+else
+    readonly MODEL_DIR="$EN_MODEL"
+fi
+readonly PID_FILE="/tmp/stt-dictate.pid"
+readonly LOG_FILE="/tmp/stt-dictate.log"
+
+STOPPING=0
+
+log() {
+    echo "[$(date '+%T')] $1" | tee -a "$LOG_FILE" >&2
+}
+
+bind_escape_stop() {
+    hyprctl keyword "bindd = , escape, Stop live dictation, exec, $SCRIPT_PATH --stop" 2>/dev/null || true
+}
+
+unbind_escape_stop() {
+    hyprctl keyword "unbind , escape" 2>/dev/null || true
+}
+
+notify_hypr() {
+    local icon=$1 duration=$2
+    shift 2
+    hyprctl notify "$icon" "$duration" 0 "$*" 2>/dev/null || true
+}
+
+stop_dictation() {
+    [[ "$STOPPING" == 1 ]] && return 0
+    STOPPING=1
+
+    unbind_escape_stop
+
+    local pid
+    pid=$(cat "$PID_FILE" 2>/dev/null) || true
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    notify_hypr 5 1500 "Dictation stopped"
+    log "Stopped"
+}
+
+capture_focus_window() {
+    hyprctl activewindow -j 2>/dev/null \
+        | "$VENV_PYTHON" -c "import json,sys; print(json.load(sys.stdin).get('address',''))" 2>/dev/null \
+        || true
+}
+
+start_dictation() {
+    : >"$LOG_FILE"
+    export VOSK_MODEL_PATH="$MODEL_DIR"
+    export STT_DICTATE_LOG="$LOG_FILE"
+    export STT_DICTATE_PARTIALS="${STT_DICTATE_PARTIALS:-1}"
+    export STT_FOCUS_ADDRESS="${STT_FOCUS_ADDRESS:-$(capture_focus_window)}"
+    export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    export PULSE_SOURCE="${PULSE_SOURCE:-$(pactl get-default-source 2>/dev/null || true)}"
+
+    if [[ -n "${PULSE_SOURCE:-}" ]]; then
+        pactl set-source-mute "$PULSE_SOURCE" 0 2>/dev/null || true
+    fi
+
+    log "Starting (source=${PULSE_SOURCE:-default})"
+
+    "$VENV_PYTHON" "$DICTATE_SCRIPT" >>"$LOG_FILE" 2>&1 &
+    echo $! >"$PID_FILE"
+
+    bind_escape_stop
+    log "Focus window: ${STT_FOCUS_ADDRESS:-none}"
+    notify_hypr 2 4000 "Dictating - ESC or Super+V to stop"
+    log "Started (pid $(cat "$PID_FILE"))"
+}
+
+# --- Stop only (ESC bind) ---
+if [[ "${1:-}" == "--stop" ]]; then
+    if [[ -f "$PID_FILE" ]]; then
+        stop_dictation
+    fi
+    exit 0
+fi
+
+# --- Toggle ---
+if [[ -f "$PID_FILE" ]]; then
+    stop_dictation
+    exit 0
+fi
+
+# --- Dependencies ---
+[[ -x "$VENV_PYTHON" ]] || {
+    notify-send -u critical "Dictation" "STT venv missing at ~/.local/share/stt/.venv"
+    exit 1
+}
+[[ -f "$DICTATE_SCRIPT" ]] || {
+    notify-send -u critical "Dictation" "dictate.py not found"
+    exit 1
+}
+command -v wtype >/dev/null 2>&1 || {
+    notify-send -u critical "Dictation" "Install wtype (pacman -S wtype)"
+    exit 1
+}
+command -v ffmpeg >/dev/null 2>&1 || {
+    notify-send -u critical "Dictation" "Install ffmpeg"
+    exit 1
+}
+"$VENV_PYTHON" -c "import vosk" 2>/dev/null || {
+    notify-send -u critical "Dictation" "Run: ~/.local/share/stt/.venv/bin/pip install vosk"
+    exit 1
+}
+[[ -d "$MODEL_DIR" ]] || {
+    notify-send -u critical "Dictation" "Vosk model missing at $MODEL_DIR"
+    exit 1
+}
+
+start_dictation

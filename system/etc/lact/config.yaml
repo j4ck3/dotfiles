@@ -1,0 +1,51 @@
+# XFX SPEEDSTER MERC 310 RX 7900 XTX (03:00.0)
+# Undervolt + junction fan curve via LACT (requires amdgpu overdrive).
+# Install: sudo bash ~/dotfiles/system/install-lact.sh
+#
+# Tuning basis (web consensus for 7900 XTX / Merc):
+#   ~3020 MHz core, -50 to -100 mV VDDGFX offset, stock-ish VRAM = stable daily
+#   Test with games + vkmark; drop offset to -50 if unstable.
+
+version: 5
+
+daemon:
+  log_level: info
+  admin_group: wheel
+  # RDNA3: avoid LACT resetting clocks when applying other settings
+  disable_clocks_cleanup: true
+
+apply_settings_timer: 5
+
+gpus:
+  1002:744C-1EAE:7901-0000:03:00.0:
+    performance_level: high
+    # Mild cap — card is power-limited; undervolt saves headroom without hard throttling
+    power_cap: 355
+    # VDDGFX offset (mV). OD range on this card: -450 … 0. Start -75; try -100 if stable.
+    voltage_offset: -75
+    min_core_clock: 500
+    max_core_clock: 3020
+    min_memory_clock: 97
+    max_memory_clock: 1250
+    fan_control_enabled: true
+    fan_control_settings:
+      mode: curve
+      temperature_key: junction
+      interval_ms: 1000
+      spindown_delay_ms: 8000
+      change_threshold: 3
+      # 5 points required on RDNA3+. Slightly more airflow than the old quiet curve
+      # now that core voltage is lower (hotspot stays in check under load).
+      curve:
+        48: 0.0
+        58: 0.12
+        68: 0.24
+        78: 0.40
+        88: 0.58
+    pmfw_options:
+      zero_rpm: true
+      zero_rpm_threshold: 48
+      acoustic_limit: 2200
+      acoustic_target: 800
+      target_temperature: 84
+      minimum_pwm: 10

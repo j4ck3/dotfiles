@@ -1,0 +1,22 @@
+# Stable DRM symlinks for Hyprland / Aquamarine.
+#
+# Aquamarine's AQ_DRM_DEVICES parses its list on ':' which collides with the
+# colons inside /dev/dri/by-path/pci-0000:03:00.0-card. See
+# https://github.com/hyprwm/aquamarine/issues/167 and the Multi-GPU page on the
+# Hyprland wiki. The workaround the wiki recommends is to expose colon-free
+# udev symlinks and reference those from hyprland's env line.
+#
+# PCI slots on this box (confirmed via `lspci`):
+#   0000:03:00.0  Radeon RX 7900 (DP-1 is wired to this GPU)
+#   0000:00:02.0  Intel iGPU (kept as fallback so Hyprland can boot if the
+#                  discrete card disappears, e.g. fresh kernel + amdgpu issue).
+#
+# Install:
+#   sudo install -m 0644 system/etc/udev/rules.d/70-amdgpu-symlinks.rules \
+#       /etc/udev/rules.d/70-amdgpu-symlinks.rules
+#   sudo udevadm control --reload
+#   sudo udevadm trigger --subsystem-match=drm --action=change
+#   ls -l /dev/dri/amd-card /dev/dri/intel-card
+
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="0000:03:00.0", SYMLINK+="dri/amd-card"
+SUBSYSTEM=="drm", KERNEL=="card[0-9]*", KERNELS=="0000:00:02.0", SYMLINK+="dri/intel-card"

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Open Helium on the currently active workspace.
+#
+# Chromium-based browsers funnel new-window requests through the existing
+# helium process. Hyprland places that new window on whatever workspace
+# Helium considers "current" — frequently the last workspace a Helium window
+# was focused on (e.g. workspace 10 for Trilium), not the workspace the user
+# is on right now. The result: launching Helium from walker / fuzzel / MIME
+# handlers while on workspace 1 made the window pop up on workspace 10.
+#
+# Workaround: capture the active workspace, install a transient
+# `workspace <id> silent` windowrule that matches class:helium, launch
+# Helium, then drop the rule after a short delay. The webapp-launch script
+# uses the same pattern for SUPER+I/U/Y, so concurrent launches stay
+# isolated by the title-based rules in autostart.conf.
+
+set -eu
+
+ACTIVE_WS="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id' 2>/dev/null || echo)"
+
+if [[ -n "$ACTIVE_WS" && "$ACTIVE_WS" != "null" ]]; then
+	# `silent` = window opens on $ACTIVE_WS without yanking focus elsewhere.
+	hyprctl keyword windowrule "workspace $ACTIVE_WS silent, class:^(helium)$" >/dev/null 2>&1 || true
+	# Remove the rule after the window has had time to map. Backgrounded so we
+	# can exec helium right away.
+	( sleep 4 && hyprctl keyword windowrule "unset, class:^(helium)$" >/dev/null 2>&1 || true ) &
+	disown || true
+fi
+
+exec /home/jacke/.local/bin/helium-browser "$@"

@@ -1,98 +1,62 @@
 #!/usr/bin/env bash
-# When 16:9 group mode is active on a workspace, new tiled windows auto-join the group.
-# Floating windows (dialogs/popups) are left alone so they render on top correctly.
+# First tiled window on a workspace → 16:9 group. Further windows join the stack.
+# Floating popups are ignored. Workspace 2 excluded unless SUPER+T enabled 16:9 there.
 
-MODE_FLAG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-ws-mode"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/16-9-lib.sh"
 
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SOCKET=""
 for _ in $(seq 15); do
-    for s in "$RUNTIME"/hypr/*/.socket2.sock; do
-        [[ -S "$s" ]] && SOCKET="$s" && break 2
-    done
-    sleep 0.2
+	for s in "$RUNTIME"/hypr/*/.socket2.sock; do
+		[[ -S "$s" ]] && SOCKET="$s" && break 2
+	done
+	sleep 0.2
 done
 [[ -z "$SOCKET" ]] && exit 0
 
 export XDG_RUNTIME_DIR="$RUNTIME"
 export HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$SOCKET")")
 
-join_group_16_9() {
-    local addr="$1"
+handle_openwindow() {
+	local addr="$1"
+	[[ "$addr" != 0x* ]] && addr="0x$addr"
 
-    local WIN_JSON
-    for _ in $(seq 25); do
-        WIN_JSON=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a)')
-        [[ -n "$WIN_JSON" ]] && break
-        sleep 0.02
-    done
-    [[ -z "$WIN_JSON" ]] && return
+	local win_json
+	for _ in $(seq 30); do
+		win_json=$(hyprctl clients -j 2>/dev/null | jq -c --arg a "$addr" '.[] | select(.address == $a)')
+		[[ -n "$win_json" ]] && break
+		sleep 0.02
+	done
+	[[ -z "$win_json" ]] && return
 
-    # Skip dialogs/popups (already floating)
-    local IS_FLOAT
-    IS_FLOAT=$(jq -r '.floating' <<< "$WIN_JSON")
-    [[ "$IS_FLOAT" == "true" ]] && return
+	[[ "$(jq -r '.floating' <<<"$win_json")" == "true" ]] && return
 
-    local WS_ID
-    WS_ID=$(jq -r '.workspace.id' <<< "$WIN_JSON")
-    local MODE
-    MODE=$(head -1 "$MODE_FLAG" 2>/dev/null)
-    [[ "$MODE" != "all" && "$MODE" != "$WS_ID" ]] && return
+	local ws_id tiled_count mode
+	ws_id=$(jq -r '.workspace.id' <<<"$win_json")
+	tiled_count=$(hyprctl clients -j 2>/dev/null \
+		| jq -r --argjson ws "$ws_id" '[.[] | select(.workspace.id == $ws and .mapped == true and .floating == false)] | length')
+	mode=$(head -1 "$MODE_FLAG" 2>/dev/null)
 
-    # --- Monitor geometry & 16:9 size calculation ---
-    local MON_ID MON_JSON
-    MON_ID=$(jq -r '.monitor' <<< "$WIN_JSON")
-    MON_JSON=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$MON_ID" '.[] | select(.id == $id)')
-    [[ -z "$MON_JSON" ]] && return
+	if [[ "$ws_id" == "2" ]]; then
+		[[ "$mode" == "all" || "$mode" == "2" ]] || return
+	elif [[ "$tiled_count" -le 1 ]]; then
+		sixteen_nine_enable_workspace "$ws_id"
+	else
+		[[ "$mode" == "all" || "$mode" == "$ws_id" ]] || return
+		local cur_ws
+		cur_ws=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty')
+		[[ "$cur_ws" == "$ws_id" ]] || return
+	fi
 
-    local MON_X MON_Y MON_W MON_H TOP BOTTOM
-    MON_X=$(jq -r '.x' <<< "$MON_JSON")
-    MON_Y=$(jq -r '.y' <<< "$MON_JSON")
-    MON_W=$(jq -r '.width' <<< "$MON_JSON")
-    MON_H=$(jq -r '.height' <<< "$MON_JSON")
-    TOP=$(jq -r '.reserved[1]' <<< "$MON_JSON")
-    BOTTOM=$(jq -r '.reserved[3]' <<< "$MON_JSON")
-
-    local GAPS_STR GAPS_L GAPS_T GAPS_R GAPS_B
-    GAPS_STR=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
-    GAPS_L=0; GAPS_T=0; GAPS_R=0; GAPS_B=0
-    [[ -n "$GAPS_STR" ]] && read -r GAPS_L GAPS_T GAPS_R GAPS_B <<< "$GAPS_STR"
-
-    local WORK_LEFT WORK_TOP WORK_W WORK_H USE_H USE_W WIN_LEFT WIN_TOP
-    WORK_LEFT=$((MON_X + GAPS_L))
-    WORK_TOP=$((MON_Y + TOP + GAPS_T))
-    WORK_W=$((MON_W - GAPS_L - GAPS_R))
-    WORK_H=$((MON_H - TOP - BOTTOM - GAPS_T - GAPS_B))
-    USE_H=$WORK_H
-    USE_W=$((USE_H * 16 * 108 / 9 / 100))
-    WIN_LEFT=$((WORK_LEFT + (WORK_W - USE_W) / 2))
-    WIN_TOP=$WORK_TOP
-
-    # Find any grouped window on this workspace
-    local GROUP_ADDR
-    GROUP_ADDR=$(hyprctl clients -j 2>/dev/null \
-        | jq -r --argjson ws "$WS_ID" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
-
-    if [[ -z "$GROUP_ADDR" ]]; then
-        # First tiled window on this workspace — create a new group
-        hyprctl dispatch focuswindow "address:$addr"
-        hyprctl dispatch togglegroup
-        hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
-    else
-        # Existing group — tile it temporarily, join, then re-float
-        hyprctl dispatch settiled "address:$GROUP_ADDR"
-        hyprctl dispatch focuswindow "address:$addr"
-        hyprctl --batch "dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d"
-        hyprctl --batch "dispatch setfloating address:$addr ; dispatch resizewindowpixel exact ${USE_W} ${USE_H},address:${addr} ; dispatch movewindowpixel exact ${WIN_LEFT} ${WIN_TOP},address:${addr}"
-    fi
+	sixteen_nine_apply_to_address "$addr"
 }
 
 while IFS= read -r addr; do
-    [[ -z "$addr" ]] && continue
-    [[ "$addr" != 0x* ]] && addr="0x$addr"
-    [[ ! -f "$MODE_FLAG" ]] && continue
-    join_group_16_9 "$addr" &
-done < <(python3 - "$SOCKET" << 'PY'
+	[[ -z "$addr" ]] && continue
+	handle_openwindow "$addr" &
+done < <(python3 - "$SOCKET" <<'PY'
 import sys, socket
 
 sock_path = sys.argv[1]
@@ -109,7 +73,7 @@ while True:
         line = line.decode("utf-8", errors="replace").strip()
         if not line.startswith("openwindow>>"):
             continue
-        payload = line[len("openwindow>>"):]
+        payload = line[len("openwindow>>") :]
         idx = payload.find(",")
         addr = (payload[:idx] if idx >= 0 else payload).strip()
         if addr:

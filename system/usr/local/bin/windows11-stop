@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Force-stop windows11 when the guest or virt-manager is wedged.
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+FORCE_STOP="${FORCE_STOP:-/usr/local/bin/windows11-force-stop}"
+
+export LC_ALL=C
+export LANG=C
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} [--destroy|--shutdown]
+
+  --destroy   Immediate power-off (default). Use when the host is stuck.
+  --shutdown  ACPI shutdown (only if the guest still responds).
+
+Over SSH if this hangs, use:  windows11-force-stop
+
+Emergency:  virsh -c ${CONNECT_URI} destroy ${DOMAIN}
+EOF
+}
+
+action=destroy
+case "${1:-}" in
+  --destroy|"") action=destroy ;;
+  --shutdown) action=shutdown ;;
+  -h|--help) usage; exit 0 ;;
+  *)
+    echo "Unknown option: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "shut off" || -z "${state}" ]]; then
+  echo "${DOMAIN} is already shut off."
+  exit 0
+fi
+
+if [[ "${action}" == "shutdown" ]]; then
+  echo "Stopping ${DOMAIN} (${state}) via shutdown..."
+  if command -v timeout >/dev/null; then
+    timeout 15 virsh -c "${CONNECT_URI}" shutdown "${DOMAIN}" || true
+  else
+    virsh -c "${CONNECT_URI}" shutdown "${DOMAIN}" || true
+  fi
+  virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" --timeout 60 || true
+  exit 0
+fi
+
+echo "Stopping ${DOMAIN} (${state}) via destroy (with QEMU kill fallback)..."
+CONNECT_URI="${CONNECT_URI}" DOMAIN="${DOMAIN}" "${FORCE_STOP}"

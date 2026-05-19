@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Quick offline check: Vosk + wtype without the microphone.
+set -euo pipefail
+
+readonly VENV_PYTHON="$HOME/.local/share/stt/.venv/bin/python3"
+readonly DICTATE_SCRIPT="$HOME/.local/share/stt/dictate.py"
+readonly TEST_WAV="/tmp/vosk-test.wav"
+readonly LOG_FILE="/tmp/stt-dictate-test.log"
+
+curl -fsSL -o "$TEST_WAV" \
+    "https://raw.githubusercontent.com/alphacep/vosk-api/master/python/example/test.wav"
+
+rm -f "$LOG_FILE"
+ffmpeg -nostdin -y -i "$TEST_WAV" -f s16le -ar 16000 -ac 1 - 2>/dev/null \
+    | STT_DICTATE_LOG="$LOG_FILE" "$VENV_PYTHON" "$DICTATE_SCRIPT"
+
+if rg -q "typed:" "$LOG_FILE"; then
+    notify-send "Dictation test OK" "See $LOG_FILE"
+    cat "$LOG_FILE"
+    exit 0
+fi
+
+notify-send -u critical "Dictation test failed" "See $LOG_FILE"
+cat "$LOG_FILE" >&2
+exit 1

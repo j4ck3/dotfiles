@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Dump AMD GPU VBIOS for VFIO passthrough (requires VM off, GPU on host driver).
+set -euo pipefail
+
+PCI_SLOT="${PCI_SLOT:-0000:03:00.0}"
+OUT="${OUT:-/var/lib/libvirt/vbios/rx7900xtx.rom}"
+SYS_ROM="/sys/bus/pci/devices/${PCI_SLOT}/rom"
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo $0" >&2
+  exit 1
+fi
+
+if virsh -c qemu:///system list --state-running --name 2>/dev/null | grep -qx windows11; then
+  echo "Shut off windows11 before dumping VBIOS." >&2
+  exit 1
+fi
+
+if [[ ! -e "${SYS_ROM}" ]]; then
+  echo "Missing ${SYS_ROM} (GPU not visible on host?)" >&2
+  exit 1
+fi
+
+driver="$(lspci -k -s "${PCI_SLOT#0000:}" 2>/dev/null | awk -F': ' '/Kernel driver in use/{print $2}')"
+if [[ "${driver}" != "amdgpu" && "${driver}" != "vfio-pci" ]]; then
+  echo "Warning: ${PCI_SLOT} driver is '${driver:-unknown}' (expected amdgpu on host)." >&2
+fi
+
+install -d -m 0755 "$(dirname "${OUT}")"
+echo 1 > "${SYS_ROM}"
+dd if="${SYS_ROM}" of="${OUT}.tmp" bs=64k status=none
+echo 0 > "${SYS_ROM}"
+mv -f "${OUT}.tmp" "${OUT}"
+chown libvirt-qemu:libvirt-qemu "${OUT}" 2>/dev/null || true
+chmod 0644 "${OUT}"
+
+size="$(stat -c%s "${OUT}")"
+if [[ "${size}" -lt 65536 ]]; then
+  echo "VBIOS dump looks too small (${size} bytes). Check ${PCI_SLOT}." >&2
+  exit 1
+fi
+echo "Wrote ${OUT} (${size} bytes)"

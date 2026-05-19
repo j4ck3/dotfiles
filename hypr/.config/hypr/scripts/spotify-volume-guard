@@ -6,6 +6,7 @@
 # Coordinates with spotify-volume script via a shared state file.
 
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
+MIN_SAVED_VOLUME=5  # avoid pinning stream at 0% after F11 spam
 
 get_spotify_id() {
     pactl --format=json list sink-inputs 2>/dev/null \
@@ -45,6 +46,10 @@ pactl subscribe 2>/dev/null | grep --line-buffered "sink-input" | while read -r 
     fi
 
     # Spotify often jumps the stream to >=100% on track change; revert if above saved level
+    if (( saved_vol < MIN_SAVED_VOLUME )); then
+        saved_vol=$MIN_SAVED_VOLUME
+    fi
+
     if (( vol >= 100 && saved_vol < vol )); then
         pactl set-sink-input-volume "$id" "${saved_vol}%"
     elif (( vol < 100 )); then

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Quick check for Walker clipboard history (Elephant clipboard provider).
+set -u
+
+echo "=== environment ==="
+echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>}"
+echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-<unset>}"
+
+echo
+echo "=== processes ==="
+pgrep -a elephant || echo "elephant: not running"
+pgrep -af 'walker --gapplication-service' || echo "walker service: not running"
+
+echo
+echo "=== elephant providers ==="
+if command -v elephant >/dev/null 2>&1; then
+	elephant listproviders 2>&1 || true
+else
+	echo "elephant: not installed"
+fi
+
+echo
+echo "=== socket ==="
+sock="${XDG_RUNTIME_DIR:-}/elephant/elephant.sock"
+if [[ -n "${XDG_RUNTIME_DIR:-}" && -S "$sock" ]]; then
+	echo "ok: $sock"
+else
+	echo "missing: $sock"
+fi
+
+echo
+echo "=== clipboard query ==="
+if elephant query "clipboard;;5;false" 2>&1; then
+	:
+else
+	echo "(query failed — restart with: ~/.config/hypr/scripts/start-elephant)"
+fi
+
+echo
+echo "=== record test copy ==="
+if command -v wl-copy >/dev/null 2>&1; then
+	echo "clipboard-history-debug $(date +%s)" | wl-copy
+	sleep 0.5
+	elephant query "clipboard;;3;false" 2>&1 || true
+else
+	echo "wl-copy not found"
+fi

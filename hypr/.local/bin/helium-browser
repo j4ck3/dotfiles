@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Prefer discrete AMD GPU on Intel + AMD hybrid (DRI_PRIME=1 → RX 7900).
+export DRI_PRIME=1
+exec /usr/bin/helium-browser "$@"

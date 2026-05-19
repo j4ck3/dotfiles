@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Elephant backend for Walker (clipboard history, apps, etc.).
+# Hypr exec-once does not restart after new providers are installed; a stale
+# process can also hold the socket without a working clipboard provider.
+set -eu
+
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-Hyprland}"
+
+log="${XDG_RUNTIME_DIR:-/tmp}/elephant.log"
+sock="${XDG_RUNTIME_DIR:-/tmp}/elephant/elephant.sock"
+
+clipboard_ok() {
+	command -v elephant >/dev/null 2>&1 || return 1
+	elephant query "clipboard;;1;false" >/dev/null 2>&1
+}
+
+if pgrep -x elephant >/dev/null 2>&1; then
+	if [[ -S "$sock" ]] && clipboard_ok; then
+		exit 0
+	fi
+	killall elephant 2>/dev/null || true
+	sleep 0.5
+fi
+
+elephant >>"$log" 2>&1 &
+
+for _ in $(seq 1 50); do
+	[[ -S "$sock" ]] || { sleep 0.1; continue; }
+	clipboard_ok && exit 0
+	sleep 0.1
+done
+
+notify-send -u critical "Elephant" "Failed to start (see $log)" 2>/dev/null || true
+exit 1

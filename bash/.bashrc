@@ -14,10 +14,9 @@ case ":$PATH:" in
 esac
 # pnpm end
 export PATH="$PATH:/home/jacke/.dotnet/tools"
-export PATH="$PATH:/home/jacke/.dotnet/tools"
-export PATH="$PATH:/home/jacke/.dotnet/tools"
 export PATH="$HOME/.bun/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
+export PATH="$PATH:/home/jacke/.lmstudio/bin"
 
 # ============================================================================
 # Custom Aliases
@@ -124,3 +123,8 @@ alias codex-desktop="~/codex-desktop-linux/codex-app/start.sh"
 # Starship Prompt
 # ============================================================================
 eval "$(starship init bash)"
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/home/jacke/.lmstudio/bin"
+# End of LM Studio CLI section
+

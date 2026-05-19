@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Recover when passthrough left the GPU on vfio and/or a hook is blocking libvirt.
+set -u
+
+export LC_ALL=C
+export LANG=C
+export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+
+DOMAIN="${DOMAIN:-windows11}"
+HOOK_PID_FILE="${HOOK_PID_FILE:-/run/libvirt/qemu/windows11.prepare.pid}"
+
+echo "=== windows11-unstick ==="
+
+for pid in $(pgrep -f '/hooks/qemu.d/windows11/prepare/begin/start.sh' 2>/dev/null || true); do
+  echo "Killing stuck passthrough hook pid ${pid}..."
+  kill -TERM "${pid}" 2>/dev/null || true
+done
+sleep 1
+for pid in $(pgrep -f '/hooks/qemu.d/windows11/prepare/begin/start.sh' 2>/dev/null || true); do
+  kill -KILL "${pid}" 2>/dev/null || true
+done
+
+if [[ -f /run/windows11-watchdog.pid ]]; then
+  wp="$(cat /run/windows11-watchdog.pid 2>/dev/null || true)"
+  [[ -n "${wp}" ]] && kill "${wp}" 2>/dev/null || true
+  rm -f /run/windows11-watchdog.pid
+fi
+
+if command -v timeout >/dev/null; then
+  if timeout 5 virsh domstate "${DOMAIN}" 2>/dev/null | grep -q running; then
+    echo "Stopping running VM..."
+    if [[ -x /usr/local/bin/windows11-force-stop ]]; then
+      /usr/local/bin/windows11-force-stop
+    else
+      timeout 8 virsh destroy "${DOMAIN}" 2>/dev/null || true
+    fi
+  fi
+else
+  virsh destroy "${DOMAIN}" 2>/dev/null || true
+fi
+
+if [[ -x /usr/local/bin/windows11-revert-host ]]; then
+  echo "Reattaching GPU to host..."
+  sudo /usr/local/bin/windows11-revert-host 2>/dev/null || /usr/local/bin/windows11-revert-host
+elif [[ "${EUID}" -eq 0 ]]; then
+  virsh nodedev-reattach pci_0000_03_00_1 2>/dev/null || true
+  virsh nodedev-reattach pci_0000_03_00_0 2>/dev/null || true
+  modprobe amdgpu 2>/dev/null || true
+  systemctl start display-manager 2>/dev/null || true
+else
+  echo "Run: sudo windows11-revert-host" >&2
+fi
+
+echo "Done. If virsh still hangs: sudo systemctl restart libvirtd"
+echo "Hook log:  sudo tail -40 /var/log/windows11-passthrough-hook.log"
+echo "Then: windows11-mode status"

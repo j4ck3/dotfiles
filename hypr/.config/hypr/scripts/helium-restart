@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Restart Helium so helium-browser-flags.conf is applied (wrapper only reads flags at launch).
+# Preserve the active workspace/window so audio-fix restarts do not jump to workspace 1.
+set -euo pipefail
+
+ACTIVE_WS="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true)"
+FOCUS_ADDR="$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty' 2>/dev/null || true)"
+
+pkill -x helium 2>/dev/null || true
+sleep 0.5
+
+if [[ -n "$ACTIVE_WS" && "$ACTIVE_WS" != "null" ]]; then
+	hyprctl keyword windowrule "workspace ${ACTIVE_WS} silent, class:^(helium)$" >/dev/null 2>&1 || true
+	( sleep 8 && hyprctl keyword windowrule "unset, class:^(helium)$" >/dev/null 2>&1 || true ) &
+	disown || true
+fi
+
+if [[ -n "$FOCUS_ADDR" && "$FOCUS_ADDR" != "null" && "$FOCUS_ADDR" != "0x0" ]]; then
+	(
+		for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+			if hyprctl clients -j 2>/dev/null \
+				| jq -e --arg a "$FOCUS_ADDR" 'any(.[]; .address == $a)' >/dev/null 2>&1; then
+				hyprctl dispatch focuswindow "address:${FOCUS_ADDR}" >/dev/null 2>&1 || true
+				break
+			fi
+			sleep 0.5
+		done
+	) &
+	disown || true
+fi
+
+exec /home/jacke/.local/bin/helium-browser "$@"

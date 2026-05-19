@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Walker DBus service must start after Elephant is listening.
+set -eu
+
+command -v walker >/dev/null 2>&1 || exit 0
+
+"${HOME}/.config/hypr/scripts/start-elephant"
+
+walker_bus_owned() {
+	dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+		org.freedesktop.DBus.NameHasOwner string:dev.benz.walker 2>/dev/null \
+		| grep -q 'boolean true'
+}
+
+stop_walker_service() {
+	walker -q 2>/dev/null || true
+	if pgrep -f 'walker --gapplication-service' >/dev/null 2>&1; then
+		pkill -f 'walker --gapplication-service' 2>/dev/null || true
+	fi
+	for _ in $(seq 1 30); do
+		walker_bus_owned || return 0
+		sleep 0.1
+	done
+	echo "start-walker-service: timed out waiting for dev.benz.walker to release" >&2
+	return 1
+}
+
+case "${1:-}" in
+restart|--restart)
+	stop_walker_service
+	;;
+'')
+	if walker_bus_owned; then
+		exit 0
+	fi
+	stop_walker_service
+	;;
+*)
+	echo "usage: start-walker-service [restart]" >&2
+	exit 2
+	;;
+esac
+
+exec walker --gapplication-service

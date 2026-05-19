@@ -1,0 +1,39 @@
+# Overrides /usr/share/applications/helium.desktop.
+#
+# Exec goes through ~/.config/hypr/scripts/helium-launch-here. That script:
+#  - captures the currently active Hyprland workspace,
+#  - installs a transient `workspace <id> silent` rule for class:helium so the
+#    new window opens on the workspace the user is on (Chromium's single-
+#    instance IPC otherwise places it on whichever workspace the existing
+#    Helium window was last focused on, e.g. 10 for Trilium),
+#  - exec's ~/.local/bin/helium-browser, which exports DRI_PRIME=1 and then
+#    exec's /usr/bin/helium-browser (the upstream wrapper that reads
+#    ~/.config/helium-browser-flags.conf).
+#
+# Absolute paths are required: walker/elephant, fuzzel, dbus-activated MIME
+# handlers etc. run with a minimal PATH that does not include ~/.local/bin
+# or ~/.config/hypr/scripts.
+#
+# Do not put comments inside the [Desktop Entry] group: elephant's .desktop
+# parser is stricter than desktop-file-validate and will mark the file invalid
+# ("ERROR desktopapplications parsing=\"invalid desktop file\"" in elephant.log),
+# which makes walker silently drop the entry.
+
+[Desktop Entry]
+Version=1.0
+Name=Helium Browser
+Exec=/home/jacke/.config/hypr/scripts/helium-launch-here %U
+StartupWMClass=helium
+Icon=helium-browser
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=application/pdf;application/rdf+xml;application/rss+xml;application/xhtml+xml;application/xhtml_xml;application/xml;image/gif;image/jpeg;image/png;image/webp;text/html;text/xml;x-scheme-handler/http;x-scheme-handler/https;
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=/home/jacke/.config/hypr/scripts/helium-launch-here
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=/home/jacke/.config/hypr/scripts/helium-launch-here --incognito

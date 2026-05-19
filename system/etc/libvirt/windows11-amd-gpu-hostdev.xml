@@ -1,24 +1,18 @@
 <!--
-  AMD RX 7900 XTX (03:00.0) + HDMI/DP audio (03:00.1) for domain windows11.
+  AMD RX 7900 XTX (03:00.0) + HDMI/DP audio (03:00.1)
 
-  PCI passthrough — merge these two <hostdev> blocks inside <devices>...</devices>
-  of your VM (after <disk>, <interface>, etc. is fine).
+  Install VBIOS once: sudo windows11-dump-vbios
 
-  Apply:
-    virsh edit windows11
-    # paste both hostdev stanzas, save and quit
+  BIOS for passthrough: Above 4G Decoding + Re-Size BAR enabled.
 
-  Or in virt-manager: VM → Show virtual hardware details → Add Hardware →
-  PCI Host Device → add the Navi 31 VGA and the Navi 31 HDMI/DP Audio entries.
-
-  Before first boot with the real GPU:
-    - Remove Virtio / QXL / Spice “display” if the guest should use only the passed GPU.
-    - Use Q35 + OVMF (UEFI) firmware for Windows 11.
+  NOTE: <rom> must be a direct child of <hostdev>, NOT inside <driver>.
 -->
 <hostdev mode="subsystem" type="pci" managed="yes">
+  <driver name="vfio"/>
   <source>
     <address domain="0x0000" bus="0x03" slot="0x00" function="0x0"/>
   </source>
+  <rom bar="on" file="/var/lib/libvirt/vbios/rx7900xtx.rom"/>
 </hostdev>
 <hostdev mode="subsystem" type="pci" managed="yes">
   <source>

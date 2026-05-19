@@ -1,0 +1,601 @@
+#!/usr/bin/env bash
+# Switch windows11 between VNC/QXL console mode and single-GPU passthrough.
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+
+# virsh domstate is localized (e.g. Swedish "avstängd"); use C locale for parsing.
+export LC_ALL=C
+export LANG=C
+ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
+GPU_PCI="${GPU_PCI:-0000:03:00.0}"
+AUDIO_PCI="${AUDIO_PCI:-0000:03:00.1}"
+libvirt_data_dir() {
+  if [[ -n "${DOTFILES_LIBVIRT:-}" ]]; then
+    printf '%s\n' "${DOTFILES_LIBVIRT}"
+    return
+  fi
+  if [[ -f /etc/libvirt/windows11/windows11-amd-gpu-hostdev.xml ]]; then
+    printf '%s\n' "/etc/libvirt/windows11"
+    return
+  fi
+  local u home
+  u="${SUDO_USER:-${USER}}"
+  home="$(getent passwd "${u}" 2>/dev/null | cut -d: -f6)"
+  if [[ -n "${home}" && -f "${home}/dotfiles/system/etc/libvirt/windows11-amd-gpu-hostdev.xml" ]]; then
+    printf '%s\n' "${home}/dotfiles/system/etc/libvirt"
+    return
+  fi
+  printf '%s\n' "/etc/libvirt/windows11"
+}
+
+DOTFILES_LIBVIRT="$(libvirt_data_dir)"
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} <command>
+
+Commands:
+  status            Show current mode and pending VM/device changes
+  console           VNC/QXL; host keeps GPU and USB keyboard/mouse
+  passthrough       GPU + audio + Looking Glass + evdev (host keeps USB)
+  passthrough-usb   GPU + audio + USB HID (no Looking Glass; legacy)
+  network           Fix networking only (user-mode NAT)
+
+Examples:
+  ${0##*/} status
+  sudo ${0##*/} console
+  sudo windows11-dump-vbios
+  sudo ${0##*/} passthrough
+  virsh start ${DOMAIN}
+
+After console mode:  windows11-console
+Stop VM safely:      windows11-stop   (do not hard power-off the PC)
+EOF
+}
+
+virsh_cmd() {
+  virsh -c "${CONNECT_URI}" "$@"
+}
+
+virt_xml() {
+  virt-xml -c "${CONNECT_URI}" "${DOMAIN}" "$@"
+}
+
+require_shutoff() {
+  local state
+  state="$(virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true)"
+  case "${state}" in
+    shut\ off|"")
+      ;;
+    *)
+      echo "Domain ${DOMAIN} is ${state}. Shut it down first:" >&2
+      echo "  virsh -c ${CONNECT_URI} shutdown ${DOMAIN}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+has_graphics() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<graphics "
+}
+
+has_qxl() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<model type='qxl'"
+}
+
+has_gpu_hostdev() {
+  virsh_cmd dumpxml "${DOMAIN}" | awk '
+    /<hostdev / { in_hostdev=1 }
+    in_hostdev && /type=.pci. managed=.yes./ { pci=1 }
+    pci && /bus=.0x03. slot=.0x00. function=.0x0./ { found=1 }
+    /<\/hostdev>/ { in_hostdev=0; pci=0 }
+    END { exit !found }
+  '
+}
+
+has_usb_hostdev() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "type='usb' managed='yes'"
+}
+
+has_cirrus_video() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "type='cirrus'"
+}
+
+has_evdev_input() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "type='evdev'"
+}
+
+has_looking_glass() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -qE "looking-glass|mem-path.*kvmfr0"
+}
+
+has_virtual_sound() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<sound "
+}
+
+has_gpu_vbios_rom() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'
+}
+
+has_gpu_audio_only() {
+  virsh_cmd dumpxml "${DOMAIN}" | awk '
+    /<hostdev / { in_hostdev=1; pci=0 }
+    in_hostdev && /type=.pci. managed=.yes./ { pci=1 }
+    in_hostdev && pci && /bus=.0x03. slot=.0x00. function=.0x0./ { has_gpu=1 }
+    in_hostdev && pci && /bus=.0x03. slot=.0x00. function=.0x1./ { has_aud=1 }
+    /<\/hostdev>/ { in_hostdev=0; pci=0 }
+    END { exit !(has_aud && !has_gpu) }
+  '
+}
+
+define_domain_from_patch() {
+  local xml tmp
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${tmp}" "$@" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+domain_path, out_path, mode = sys.argv[1:4]
+tree = ET.parse(domain_path)
+root = tree.getroot()
+devices = root.find("devices")
+if devices is None:
+    sys.exit("no <devices> in domain XML")
+
+if mode in ("console", "remove-usb"):
+    for hostdev in list(devices.findall("hostdev")):
+        if hostdev.get("type") == "usb":
+            devices.remove(hostdev)
+    if mode == "remove-usb":
+        tree.write(out_path, encoding="unicode", xml_declaration=True)
+        sys.exit(0)
+    for video in list(devices.findall("video")):
+        devices.remove(video)
+    if devices.find("graphics") is None:
+        graphics = ET.SubElement(
+            devices,
+            "graphics",
+            type="vnc",
+            port="-1",
+            autoport="yes",
+            listen="127.0.0.1",
+        )
+        ET.SubElement(
+            graphics, "listen", type="address", address="127.0.0.1"
+        )
+    video = ET.SubElement(devices, "video")
+    ET.SubElement(
+        video,
+        "model",
+        type="qxl",
+        ram="65536",
+        vram="65536",
+        vgamem="16384",
+        heads="1",
+        primary="yes",
+    )
+
+tree.write(out_path, encoding="unicode", xml_declaration=True)
+PY
+  virsh_cmd define "${tmp}"
+  rm -f "${xml}" "${tmp}"
+}
+
+merge_hostdev_fragment() {
+  local fragment="$1"
+  local xml tmp
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${fragment}" "${tmp}" <<'PY'
+import re
+import sys
+
+domain_path, fragment_path, out_path = sys.argv[1:4]
+domain = open(domain_path, encoding="utf-8").read()
+fragment = open(fragment_path, encoding="utf-8").read()
+blocks = re.findall(
+    r"<hostdev mode=[\"']subsystem[\"'] type=[\"'](?:pci|usb)[\"'] managed=[\"']yes[\"']>.*?</hostdev>",
+    fragment,
+    flags=re.S,
+)
+if not blocks:
+    sys.exit(f"No hostdev blocks in {fragment_path}")
+
+
+def pci_hostdev_source_present(text, bus, slot, func):
+    """Match host PCI IDs only inside <hostdev><source>, not guest <address> elements."""
+    for hostdev in re.findall(
+        r"<hostdev mode=[\"']subsystem[\"'] type=[\"']pci[\"'][^>]*>.*?</hostdev>",
+        text,
+        flags=re.S,
+    ):
+        src = re.search(r"<source>(.*?)</source>", hostdev, re.S)
+        if not src:
+            continue
+        if re.search(
+            rf"bus=[\"']{re.escape(bus)}[\"'][^>]*"
+            rf"slot=[\"']{re.escape(slot)}[\"'][^>]*"
+            rf"function=[\"']{re.escape(func)}[\"']",
+            src.group(1),
+            re.S,
+        ):
+            return True
+    return False
+
+
+def usb_present(text, vendor, product):
+    v = vendor.lower().removeprefix("0x")
+    p = product.lower().removeprefix("0x")
+    return (
+        re.search(rf"vendor id=[\"']0x{v}[\"']", text, re.I)
+        and re.search(rf"product id=[\"']0x{p}[\"']", text, re.I)
+    )
+
+
+def block_already_present(block):
+    if re.search(r"type=[\"']pci[\"']", block):
+        src = re.search(r"<source>(.*?)</source>", block, re.S)
+        if not src:
+            return False
+        m = re.search(
+            r"bus=[\"'](0x[^\"']+)[\"'].*slot=[\"'](0x[^\"']+)[\"'].*function=[\"'](0x[^\"']+)[\"']",
+            src.group(1),
+            re.S,
+        )
+        return bool(m and pci_hostdev_source_present(domain, *m.groups()))
+    if re.search(r"type=[\"']usb[\"']", block):
+        vm = re.search(r"vendor id=[\"'](0x[^\"']+)[\"']", block, re.I)
+        pm = re.search(r"product id=[\"'](0x[^\"']+)[\"']", block, re.I)
+        return bool(vm and pm and usb_present(domain, vm.group(1), pm.group(1)))
+    return False
+
+
+missing = [b for b in blocks if not block_already_present(b)]
+if not missing:
+    open(out_path, "w", encoding="utf-8").write(domain)
+    sys.exit(0)
+insert = "\n    ".join(missing) + "\n    "
+domain, count = re.subn(
+    r"(<audio id=['\"]1['\"] type=['\"]none['\"]/?>)",
+    r"\1\n    " + insert,
+    domain,
+    count=1,
+)
+if count != 1:
+    domain, count = re.subn(r"(</devices>)", "    " + insert + r"\1", domain, count=1)
+if count != 1:
+    sys.exit("Could not find insertion point in domain XML")
+open(out_path, "w", encoding="utf-8").write(domain)
+PY
+  if ! cmp -s "${xml}" "${tmp}"; then
+    virsh_cmd define "${tmp}"
+  fi
+  rm -f "${xml}" "${tmp}"
+}
+
+apply_domain_mode_patch() {
+  local mode="$1"
+  local patch_py="${DOTFILES_LIBVIRT}/patch-domain.py"
+  [[ -f "${patch_py}" ]] || patch_py="/etc/libvirt/windows11/patch-domain.py"
+  [[ -x "${patch_py}" ]] || chmod +x "${patch_py}" 2>/dev/null || true
+  [[ -f "${patch_py}" ]] || {
+    echo "Missing patch-domain.py (re-run install-libvirt-windows11.sh)" >&2
+    exit 1
+  }
+  local xml tmp
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 "${patch_py}" "${mode}" "${xml}" "${tmp}"
+  if ! virsh_cmd define "${tmp}" 2> "${tmp}.err"; then
+    cat "${tmp}.err" >&2
+    rm -f "${xml}" "${tmp}" "${tmp}.err"
+    echo "ERROR: virsh define failed — domain XML invalid." >&2
+    exit 1
+  fi
+  rm -f "${xml}" "${tmp}" "${tmp}.err"
+}
+
+looking_glass_backend() {
+  if [[ -c /dev/kvmfr0 ]]; then
+    echo kvmfr
+  else
+    echo shm
+  fi
+}
+
+warn_looking_glass_prereqs() {
+  if [[ -c /dev/kvmfr0 ]]; then
+    return 0
+  fi
+  if [[ -f /dev/kvmfr0 ]]; then
+    echo "WARNING: /dev/kvmfr0 is a regular file — remove it and run: sudo windows11-setup-kvmfr" >&2
+    return 0
+  fi
+  modprobe kvmfr 2>/dev/null || true
+  if [[ -c /dev/kvmfr0 ]]; then
+    return 0
+  fi
+  echo "NOTE: kvmfr not loaded — using /dev/shm/looking-glass (slower)." >&2
+  echo "      For GPU DMA: sudo windows11-setup-kvmfr" >&2
+  echo "      Then: sudo windows11-mode passthrough" >&2
+  systemd-tmpfiles --create /etc/tmpfiles.d/10-looking-glass.conf 2>/dev/null \
+    || systemd-tmpfiles --create 2>/dev/null || true
+}
+
+hook_enabled() {
+  [[ -e "${ENABLE_FILE}" ]]
+}
+
+network_count() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -c "<interface "
+}
+
+cmd_status() {
+  echo "Domain:      ${DOMAIN}"
+  echo "State:       $(virsh_cmd domstate "${DOMAIN}" 2>/dev/null || echo unknown)"
+  echo "Hook file:   ${ENABLE_FILE} ($([[ -e ${ENABLE_FILE} ]] && echo enabled || echo disabled))"
+  echo "Graphics:    $(has_graphics && echo yes || echo no)"
+  echo "QXL video:   $(has_qxl && echo yes || echo no)"
+  echo "GPU hostdev: $(has_gpu_hostdev && echo yes || echo no)"
+  if has_gpu_hostdev; then
+    echo "GPU VBIOS:   $(has_gpu_vbios_rom && echo yes || echo no — run: sudo $0 passthrough)"
+  fi
+  echo "USB hostdev: $(has_usb_hostdev && echo yes || echo no) (must be no in console mode)"
+  echo "Cirrus VGA:  $(has_cirrus_video && echo yes || echo no) (must be no in console mode)"
+  echo "Evdev:       $(has_evdev_input && echo yes || echo no)"
+  echo "LookingGlass:$(has_looking_glass && echo yes || echo no)"
+  echo "Virt sound:  $(has_virtual_sound && echo yes || echo no) (should be no in passthrough)"
+  echo "LG backend:  $(looking_glass_backend)"
+  echo "KVMFR dev:   $([[ -c /dev/kvmfr0 ]] && echo yes || echo no)"
+  echo "NIC count:   $(network_count)"
+  if has_gpu_audio_only; then
+    echo "WARNING:     GPU audio passed through but NOT the GPU — broken; run: sudo $0 passthrough"
+  fi
+  if has_graphics && has_qxl && ! has_gpu_hostdev && ! has_usb_hostdev && ! has_cirrus_video && ! hook_enabled; then
+    echo "Mode:        console (expected)"
+  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && has_looking_glass && has_evdev_input; then
+    echo "Mode:        passthrough + Looking Glass (expected)"
+  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev; then
+    echo "Mode:        passthrough (run: sudo $0 passthrough to add Looking Glass/evdev)"
+  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && has_usb_hostdev; then
+    echo "Mode:        passthrough+usb (legacy; no Looking Glass)"
+  else
+    echo "Mode:        mixed (run: sudo $0 console  OR  sudo $0 passthrough)"
+  fi
+}
+
+enable_hook() {
+  install -d -m 0755 "$(dirname "${ENABLE_FILE}")"
+  touch "${ENABLE_FILE}"
+  chmod 0644 "${ENABLE_FILE}"
+}
+
+disable_hook() {
+  rm -f "${ENABLE_FILE}"
+}
+
+remove_pci_hostdevs() {
+  virt_xml --remove-device --hostdev "${GPU_PCI}" --define 2>/dev/null || true
+  virt_xml --remove-device --hostdev "${AUDIO_PCI}" --define 2>/dev/null || true
+}
+
+remove_usb_hostdevs() {
+  has_usb_hostdev || return 0
+  define_domain_from_patch remove-usb
+}
+
+ensure_gpu_vbios_in_xml() {
+  [[ -f /var/lib/libvirt/vbios/rx7900xtx.rom ]] || {
+    echo "Missing /var/lib/libvirt/vbios/rx7900xtx.rom — run: sudo windows11-dump-vbios" >&2
+    return 1
+  }
+  local xml tmp
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${tmp}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+tree = ET.parse(sys.argv[1])
+devices = tree.getroot().find("devices")
+rom_path = "/var/lib/libvirt/vbios/rx7900xtx.rom"
+changed = False
+for hostdev in devices.findall("hostdev"):
+    if hostdev.get("type") != "pci":
+        continue
+    src = hostdev.find("source/address")
+    if src is None:
+        continue
+    if (src.get("bus"), src.get("slot"), src.get("function")) != ("0x03", "0x00", "0x0"):
+        continue
+    if hostdev.find("driver") is None:
+        ET.SubElement(hostdev, "driver", name="vfio")
+        changed = True
+    # <rom> must be under <hostdev>, not <driver> — libvirt drops it otherwise.
+    driver = hostdev.find("driver")
+    if driver is not None:
+        wrong_rom = driver.find("rom")
+        if wrong_rom is not None:
+            driver.remove(wrong_rom)
+            changed = True
+    rom = hostdev.find("rom")
+    if rom is None:
+        rom = ET.SubElement(hostdev, "rom", bar="on", file=rom_path)
+        changed = True
+    elif rom.get("file") != rom_path or rom.get("bar") != "on":
+        rom.set("bar", "on")
+        rom.set("file", rom_path)
+        changed = True
+tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
+sys.exit(0 if changed else 2)
+PY
+  local rc=$?
+  if [[ "${rc}" -eq 0 ]]; then
+    virsh_cmd define "${tmp}"
+    if has_gpu_vbios_rom; then
+      echo "Updated GPU hostdev with VBIOS ROM."
+    else
+      echo "ERROR: libvirt dropped VBIOS ROM from domain XML." >&2
+      echo "Run: sudo $0 passthrough  (ROM changes require root define)" >&2
+      rm -f "${xml}" "${tmp}"
+      return 1
+    fi
+  fi
+  rm -f "${xml}" "${tmp}"
+}
+
+add_pci_hostdevs() {
+  if has_gpu_hostdev; then
+    return 0
+  fi
+  [[ -f "${DOTFILES_LIBVIRT}/windows11-amd-gpu-hostdev.xml" ]] || {
+    echo "Missing ${DOTFILES_LIBVIRT}/windows11-amd-gpu-hostdev.xml" >&2
+    exit 1
+  }
+  merge_hostdev_fragment "${DOTFILES_LIBVIRT}/windows11-amd-gpu-hostdev.xml"
+}
+
+add_usb_hostdevs() {
+  if has_usb_hostdev; then
+    return 0
+  fi
+  [[ -f "${DOTFILES_LIBVIRT}/windows11-passthrough-usb.xml" ]] || {
+    echo "Missing ${DOTFILES_LIBVIRT}/windows11-passthrough-usb.xml" >&2
+    exit 1
+  }
+  merge_hostdev_fragment "${DOTFILES_LIBVIRT}/windows11-passthrough-usb.xml"
+}
+
+apply_console_devices() {
+  while has_graphics; do
+    virt_xml --remove-device --graphics 1 --define 2>/dev/null || break
+  done
+  virt_xml --remove-device --video all --define 2>/dev/null || true
+  define_domain_from_patch console
+}
+
+cmd_network() {
+  require_shutoff
+  local count
+  count="$(network_count)"
+  while [[ "${count}" -gt 1 ]]; do
+    virt_xml --remove-device --network "${count}" --define
+    count="$(network_count)"
+  done
+  virt_xml --edit --network model=virtio --define
+  echo "Network: single VirtIO NIC on libvirt \"default\"."
+}
+
+cmd_console() {
+  require_shutoff
+  disable_hook
+  remove_pci_hostdevs
+  remove_usb_hostdevs
+  apply_console_devices
+  apply_domain_mode_patch console
+  cmd_network
+  echo "Console mode ready (host keyboard/mouse stay on Linux)."
+  echo "  Start: ${DOMAIN} via  windows11-console"
+  echo "  Stop:  windows11-stop"
+}
+
+apply_passthrough_devices() {
+  local with_usb="${1:-0}"
+  while has_graphics; do
+    virt_xml --remove-device --graphics 1 --define 2>/dev/null || break
+  done
+  virt_xml --remove-device --video all --define 2>/dev/null || true
+  remove_usb_hostdevs
+  if ! has_gpu_hostdev; then
+    remove_pci_hostdevs
+  fi
+  add_pci_hostdevs
+  # GPU may exist without ROM (virt-xml network edit strips it). Re-merge from fragment.
+  if has_gpu_hostdev && ! has_gpu_vbios_rom; then
+    echo "GPU hostdev missing VBIOS ROM; re-applying PCI fragment..." >&2
+    remove_pci_hostdevs
+    add_pci_hostdevs
+  fi
+  ensure_gpu_vbios_in_xml || true
+  if [[ "${with_usb}" -eq 1 ]]; then
+    add_usb_hostdevs
+  else
+    warn_looking_glass_prereqs
+    apply_domain_mode_patch passthrough
+    echo "Looking Glass IVSHMEM: $(looking_glass_backend)"
+  fi
+}
+
+cmd_passthrough() {
+  local with_usb=0
+  [[ "${1:-}" == "--usb" ]] && with_usb=1
+  require_shutoff
+  enable_hook
+  apply_passthrough_devices "${with_usb}"
+  cmd_network
+  # virt-xml network define can drop nested <rom>; apply VBIOS last.
+  ensure_gpu_vbios_in_xml || true
+  if has_gpu_hostdev && ! has_gpu_vbios_rom; then
+    echo "ERROR: GPU VBIOS ROM still missing from domain XML." >&2
+    exit 1
+  fi
+  echo ""
+  echo "Passthrough ready. Before start, confirm:"
+  echo "  - Monitor cable on the AMD RX 7900 (not Intel motherboard HDMI)"
+  echo "  - BIOS: Above 4G Decoding + Re-Size BAR enabled"
+  echo "  - VBIOS: sudo windows11-dump-vbios  (if not done)"
+  echo "  - Disk:  sudo windows11-disk check"
+  echo ""
+  echo "  Start: windows11-start   (NOT bare virsh start — see README)"
+  echo "  View:  windows11-looking-glass   (after Windows is up)"
+  echo "  Input: both Ctrl keys toggles host ↔ guest (evdev)"
+  echo "  Stop:  ssh to host → windows11-stop"
+  if [[ "${1:-}" == "--usb" ]]; then
+    echo "  USB is passed to the VM — host has no keyboard/mouse on Linux."
+  else
+    echo "  Guest: install Looking Glass Host inside Windows (see README)."
+  fi
+}
+
+cmd_passthrough_usb() {
+  cmd_passthrough --usb
+}
+
+main() {
+  local cmd="${1:-}"
+
+  case "${cmd}" in
+    status)
+      cmd_status
+      ;;
+    console|passthrough|passthrough-usb|network)
+      if [[ "${EUID}" -ne 0 ]]; then
+        echo "Run as root: sudo $0 ${cmd}" >&2
+        exit 1
+      fi
+      case "${cmd}" in
+        console) cmd_console ;;
+        passthrough) cmd_passthrough ;;
+        passthrough-usb) cmd_passthrough_usb ;;
+        network) cmd_network ;;
+      esac
+      ;;
+    -h|--help|"")
+      usage
+      ;;
+    *)
+      echo "Unknown command: ${cmd}" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"

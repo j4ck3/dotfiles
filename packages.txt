@@ -16,6 +16,7 @@ hyprpicker
 waybar
 uwsm
 walker
+ghostty
 
 grim
 slurp
@@ -34,6 +35,10 @@ bluez-utils
 
 brightnessctl
 polkit
+polkit-gnome
+hyprpolkitagent
+
+xdg-desktop-portal-gtk
 
 jq
 ripgrep
@@ -41,13 +46,18 @@ docker
 virt-manager
 qemu-full
 libvirt
+edk2-ovmf
+swtpm
 dnsmasq
 openbsd-netcat
 
 playerctl
 
 ffmpeg
+yt-dlp
 yad
+wtype
+python-vosk
 
 tesseract
 tesseract-data-eng
@@ -58,9 +68,10 @@ mpv
 libnotify
 
 nautilus
+gparted
+localsend
 
 tmux
-nnn
 
 neovim
 git
@@ -73,6 +84,8 @@ lazydocker
 lazygit
 opencode
 btop
+fastfetch
+lact
 rocm-smi-lib
 docker-compose
 
@@ -91,3 +104,5 @@ openssh
 freecad
 
 tailscale
+
+steam

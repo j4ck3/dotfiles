@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Cancel the passthrough auto-stop timer (run over SSH before it fires).
+set -euo pipefail
+
+PID_FILE="${PID_FILE:-/run/windows11-watchdog.pid}"
+
+if [[ ! -f "${PID_FILE}" ]]; then
+  echo "No watchdog running."
+  exit 0
+fi
+
+pid="$(cat "${PID_FILE}")"
+if kill -0 "${pid}" 2>/dev/null; then
+  kill "${pid}"
+  echo "Watchdog cancelled (pid ${pid})."
+else
+  echo "Watchdog pid ${pid} not running."
+fi
+rm -f "${PID_FILE}"

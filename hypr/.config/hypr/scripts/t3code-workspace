@@ -1,5 +1,5 @@
 #!/bin/bash
-# Put t3code on the requested workspace and focus it, launching if needed.
+# Switch to workspace 2 (current monitor). Focus t3code if already open; never launch it.
 
 WORKSPACE="${1:-2}"
 
@@ -10,31 +10,13 @@ get_client() {
     )][0].address // empty'
 }
 
-move_and_focus() {
-    local client="$1"
-
-    hyprctl dispatch movetoworkspacesilent "$WORKSPACE,address:$client"
-    hyprctl dispatch workspace "$WORKSPACE"
-    hyprctl dispatch focuswindow "address:$client"
-}
-
 CLIENT="$(get_client)"
 
 if [ -n "$CLIENT" ]; then
-    move_and_focus "$CLIENT"
+    hyprctl dispatch movetoworkspacesilent "$WORKSPACE,address:$CLIENT"
+    hyprctl dispatch focusworkspaceoncurrentmonitor "$WORKSPACE"
+    hyprctl dispatch focuswindow "address:$CLIENT"
     exit 0
 fi
 
-hyprctl dispatch workspace "$WORKSPACE"
-uwsm-app -- t3code &
-
-for _ in $(seq 1 40); do
-    sleep 0.25
-    CLIENT="$(get_client)"
-    if [ -n "$CLIENT" ]; then
-        move_and_focus "$CLIENT"
-        exit 0
-    fi
-done
-
-exit 0
+hyprctl dispatch focusworkspaceoncurrentmonitor "$WORKSPACE"

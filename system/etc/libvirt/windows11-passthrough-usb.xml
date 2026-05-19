@@ -1,0 +1,25 @@
+<!--
+  USB devices for passthrough gaming (keyboard/mouse dongles).
+  Do NOT use in console mode — the host loses these devices and you cannot
+  stop the VM from Hyprland.
+
+  Merged by: sudo windows11-mode passthrough
+-->
+<hostdev mode="subsystem" type="usb" managed="yes">
+  <source>
+    <vendor id="0x1532"/>
+    <product id="0x007a"/>
+  </source>
+</hostdev>
+<hostdev mode="subsystem" type="usb" managed="yes">
+  <source>
+    <vendor id="0x3434"/>
+    <product id="0x0108"/>
+  </source>
+</hostdev>
+<hostdev mode="subsystem" type="usb" managed="yes">
+  <source>
+    <vendor id="0x1532"/>
+    <product id="0x007b"/>
+  </source>
+</hostdev>

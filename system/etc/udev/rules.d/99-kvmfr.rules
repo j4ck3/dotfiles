@@ -1,0 +1,2 @@
+# Looking Glass KVMFR — libvirt-qemu needs RW; user runs looking-glass-client
+SUBSYSTEM=="kvmfr", OWNER="libvirt-qemu", GROUP="kvm", MODE="0660"

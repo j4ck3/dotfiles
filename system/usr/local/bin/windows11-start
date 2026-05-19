@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Safe passthrough start — use this instead of bare "virsh start windows11".
+set -euo pipefail
+
+export LC_ALL=C
+export LANG=C
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+WATCHDOG_SECONDS="${WATCHDOG_SECONDS:-900}"
+assume_yes=0
+no_watchdog=0
+
+host_ip() {
+  ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1
+}
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} [--yes] [--no-watchdog] [--watchdog-seconds N]
+
+Starts ${DOMAIN} in GPU passthrough mode.
+
+IMPORTANT — single monitor on the AMD GPU:
+  When the VM runs, Linux has NO picture on that screen. Ctrl+Alt+F3 will NOT
+  help you see a rescue TTY (same physical outputs as the VM).
+
+  Before starting, use ONE of:
+    • SSH from phone/laptop:  ssh YOU@HOST 'windows11-force-stop'
+    • Auto-stop timer (default ${WATCHDOG_SECONDS}s)
+    • Second monitor on Intel motherboard HDMI (host rescue screen)
+
+Options:
+  --yes, -y             Start without confirmation prompt
+  --no-watchdog         Disable auto-stop timer
+  --watchdog-seconds N  Auto-stop after N seconds (default: ${WATCHDOG_SECONDS})
+
+If Windows appears: shut down from Start menu (do not hard power-off the PC).
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y) assume_yes=1; shift ;;
+    --no-watchdog) no_watchdog=1; shift ;;
+    --watchdog-seconds)
+      WATCHDOG_SECONDS="${2:?}"
+      shift 2
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -e /etc/libvirt/hooks/windows11-gpu-passthrough.enabled ]]; then
+  echo "Passthrough hook is disabled. Run: sudo windows11-mode passthrough" >&2
+  exit 1
+fi
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is already running."
+  exit 0
+fi
+
+if ! [[ -f /var/lib/libvirt/vbios/rx7900xtx.rom ]]; then
+  echo "Missing VBIOS. Run: sudo windows11-dump-vbios" >&2
+  exit 1
+fi
+if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'; then
+  echo "GPU VBIOS ROM not in domain XML. Run: sudo windows11-mode passthrough" >&2
+  exit 1
+fi
+
+ip_addr="$(host_ip || true)"
+user="$(id -un)"
+
+cat <<EOF
+
+=== Passthrough start checklist ===
+  Monitor:     cable on AMD RX 7900 (not Intel-only)
+  BIOS:        Above 4G + Re-Size BAR on
+  Recovery:    ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-force-stop'
+                 ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-watchdog-cancel'
+                 (if display broken after stop) ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'sudo windows11-revert-host'
+EOF
+
+if systemctl is-active --quiet sshd 2>/dev/null; then
+  echo "  SSH:         active"
+else
+  echo "  SSH:         NOT RUNNING — enable sshd before passthrough!" >&2
+fi
+
+if [[ "${no_watchdog}" -eq 0 ]]; then
+  echo "  Watchdog:    auto-stop in ${WATCHDOG_SECONDS}s (cancel via SSH)"
+  export WINDOWS11_WATCHDOG_SECONDS="${WATCHDOG_SECONDS}"
+else
+  echo "  Watchdog:    disabled"
+  export WINDOWS11_WATCHDOG_SECONDS=0
+fi
+
+if [[ "${assume_yes}" -eq 0 ]]; then
+  echo ""
+  if ! [[ -t 0 ]]; then
+    echo "Not a TTY — use: ${0##*/} --yes" >&2
+    exit 1
+  fi
+  read -r -p "Start ${DOMAIN} now? [y/N] " ans
+  if [[ "${ans,,}" != "y" && "${ans,,}" != "yes" ]]; then
+    echo "Cancelled (no changes). Use --yes to skip this prompt."
+    exit 0
+  fi
+fi
+
+echo ""
+echo "Starting ${DOMAIN}..."
+virsh -c "${CONNECT_URI}" start "${DOMAIN}"
+echo "Started. On the host run: windows11-looking-glass"
+echo "If the screen stays black, wait 2 min, then recover via SSH."

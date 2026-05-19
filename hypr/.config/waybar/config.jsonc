@@ -8,6 +8,7 @@
   "modules-center": ["hyprland/workspaces"],
   "modules-right": [
     "custom/media",
+    "custom/dictation",
     "bluetooth",
     "group/system-stats",
     "custom/network-usage",
@@ -55,17 +56,21 @@
     "on-scroll-up": "playerctl --player=spotify volume 0.02+",
     "on-scroll-down": "playerctl --player=spotify volume 0.02-",
   },
+  "custom/dictation": {
+    "exec": "~/.config/waybar/scripts/dictation-status.sh",
+    "return-type": "json",
+    "interval": 1,
+    "tooltip": true,
+  },
   "group/system-stats": {
     "orientation": "horizontal",
-    "modules": ["pulseaudio", "cpu", "custom/gpu", "memory", "disk"],
+    "modules": ["pulseaudio", "custom/cpu", "custom/gpu", "memory", "disk"],
   },
-  "cpu": {
-    "format": "<span size=\"x-small\">CPU</span>\n{usage}%",
+  "custom/cpu": {
+    "exec": "/home/jacke/.config/waybar/scripts/cpu-usage.sh",
+    "return-type": "json",
     "interval": 3,
-    "states": {
-      "high": 70
-    },
-    "tooltip-format": "CPU usage: {usage}%",
+    "tooltip": true,
     "on-click": "xdg-terminal-exec btop",
   },
   "custom/gpu": {

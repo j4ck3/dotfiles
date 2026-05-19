@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Fix or switch windows11 networking (requires VM shut off for --apply).
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+MAC="${MAC:-52:54:00:1a:5e:fe}"
+
+export LC_ALL=C
+export LANG=C
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} <command>
+
+Commands:
+  status     Show VM NIC type and guest IP (if running + guest agent up)
+  user       Print how to use QEMU user NAT (10.0.2.15 — reliable DHCP)
+  bridge     Print how to use libvirt "default" (192.168.122.x)
+  apply-user   Shut off VM and switch to user networking (run: sudo $0 apply-user)
+  apply-bridge Shut off VM and switch to libvirt default NAT
+
+User mode (current fix): guest IP 10.0.2.15, gateway 10.0.2.2, DNS 10.0.2.3
+Bridge mode:             guest IP via DHCP 192.168.122.x, gateway 192.168.122.1
+EOF
+}
+
+virsh_cmd() { virsh -c "${CONNECT_URI}" "$@"; }
+
+require_shutoff() {
+  local state
+  state="$(virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true)"
+  [[ "${state}" == "shut off" || -z "${state}" ]] || {
+    echo "Shut off ${DOMAIN} first (state: ${state})" >&2
+    exit 1
+  }
+}
+
+apply_user() {
+  require_shutoff
+  local xml out
+  xml="$(mktemp)"
+  out="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${out}" "${MAC}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+tree = ET.parse(sys.argv[1])
+mac = sys.argv[3]
+devices = tree.getroot().find("devices")
+for iface in list(devices.findall("interface")):
+    devices.remove(iface)
+iface = ET.SubElement(devices, "interface", type="user")
+ET.SubElement(iface, "mac", address=mac)
+ET.SubElement(iface, "model", type="virtio")
+ET.SubElement(
+    iface, "address", type="pci",
+    domain="0x0000", bus="0x08", slot="0x00", function="0x0",
+)
+tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
+PY
+  virsh_cmd define "${out}"
+  rm -f "${xml}" "${out}"
+  echo "Applied user networking. Start VM: windows11-console"
+  echo "Guest should get 10.0.2.15 via DHCP automatically."
+}
+
+apply_bridge() {
+  require_shutoff
+  virsh_cmd net-start default 2>/dev/null || true
+  virt-xml -c "${CONNECT_URI}" "${DOMAIN}" \
+    --edit --network type=network,network=default,model=virtio --define
+  echo "Applied libvirt 'default' bridge. Start VM and renew DHCP in Windows."
+}
+
+cmd_status() {
+  virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true
+  virsh_cmd dumpxml "${DOMAIN}" 2>/dev/null | grep -A6 "<interface" || true
+  echo "--- guest addresses (needs guest agent + running VM) ---"
+  virsh_cmd domifaddr "${DOMAIN}" --source agent 2>/dev/null || true
+}
+
+main() {
+  case "${1:-}" in
+    status) cmd_status ;;
+    user)
+      cat <<EOF
+QEMU user NAT — no host virbr0/DHCP required.
+Guest: 10.0.2.15/24  Gateway: 10.0.2.2  DNS: 10.0.2.3
+Apply: sudo ${0##*/} apply-user
+EOF
+      ;;
+    bridge)
+      cat <<EOF
+libvirt network "default" on virbr0 (192.168.122.0/24).
+If DHCP fails, check: sudo firewall-cmd --zone=libvirt --list-all
+Apply: sudo ${0##*/} apply-bridge
+EOF
+      ;;
+    apply-user)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 apply-user" >&2; exit 1; }
+      apply_user
+      ;;
+    apply-bridge)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 apply-bridge" >&2; exit 1; }
+      apply_bridge
+      ;;
+    -h|--help|"") usage ;;
+    *) echo "Unknown: $1" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

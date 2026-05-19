@@ -4,25 +4,29 @@ set -euo pipefail
 CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 DOMAIN="${DOMAIN:-windows11}"
 
+export LC_ALL=C
+export LANG=C
+
 usage() {
   cat <<EOF
-Usage: ${0##*/}
+Usage: ${0##*/} [--no-start]
 
-Starts ${DOMAIN} if it is shut off, then opens the normal virt-manager VNC console.
+Opens the virt-manager VNC window for ${DOMAIN}.
 
-Environment:
-  CONNECT_URI  libvirt URI, default: ${CONNECT_URI}
-  DOMAIN       domain name, default: ${DOMAIN}
+  --no-start   Only open the console; do not start a shut-off VM.
+
+Console mode keeps keyboard/mouse on the HOST. If USB devices were passed
+through to the VM, the host will feel frozen — run: sudo windows11-mode console
+
+Emergency stop (another terminal):  windows11-stop
 EOF
 }
 
+no_start=0
 case "${1:-}" in
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  "")
-    ;;
+  -h|--help) usage; exit 0 ;;
+  --no-start) no_start=1 ;;
+  "") ;;
   *)
     echo "Unknown argument: $1" >&2
     usage >&2
@@ -30,8 +34,28 @@ case "${1:-}" in
     ;;
 esac
 
+if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<graphics "; then
+  echo "No VNC/QXL display on ${DOMAIN}. Console mode is not active." >&2
+  echo "Run: sudo windows11-mode console" >&2
+  exit 1
+fi
+
+if virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q "type='usb' managed='yes'"; then
+  echo "USB passthrough is still enabled — your keyboard/mouse may be captured by the VM." >&2
+  echo "Run: sudo windows11-mode console" >&2
+  exit 1
+fi
+
+cat <<EOF >&2
+
+=== windows11 console ===
+  Stop VM:     windows11-stop          (or: virsh -c ${CONNECT_URI} destroy ${DOMAIN})
+  Host stays on Hyprland; use the mouse in the virt-manager window.
+
+EOF
+
 state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}")"
-if [[ "${state}" == "shut off" ]]; then
+if [[ "${state}" == "shut off" && "${no_start}" -eq 0 ]]; then
   virsh -c "${CONNECT_URI}" start "${DOMAIN}"
 fi
 

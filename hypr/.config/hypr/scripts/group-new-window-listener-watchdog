@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Keep group-new-window-listener alive (exec-once only runs once per Hyprland session).
+set -u
+
+LISTENER="${HOME}/.config/hypr/scripts/group-new-window-listener"
+LOG="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/.16-9-listener.log"
+
+while true; do
+	"$LISTENER" >>"$LOG" 2>&1 || true
+	sleep 1
+done

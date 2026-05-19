@@ -6,14 +6,30 @@ xdg-terminal-exec
 blueberry
 
 elephant-bin
+elephant-clipboard-bin
 elephant-desktopapplications-bin
 
 helium-browser-bin
 
 aylurs-gtk-shell-git
+libastal-git
+libastal-4-git
+libastal-io-git
 
-ghostty
+python-hyprland-config
+python-hyprland-monitors
+python-hyprland-schema
+python-hyprland-socket
+python-hyprland-state
+
 cursor-bin
 t3code-bin
 
 netbird-bin
+
+lmstudio-bin
+topgrade-bin
+brave-origin-nightly-bin
+
+looking-glass
+looking-glass-module-dkms
