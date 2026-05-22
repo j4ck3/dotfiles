@@ -18,6 +18,24 @@ export PATH="$HOME/.bun/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$PATH:/home/jacke/.lmstudio/bin"
 
+# Hyprland IPC: fix stale HYPRLAND_INSTANCE_SIGNATURE after compositor restart.
+if command -v hypr-sync-env &>/dev/null; then
+  hypr_sync_env() {
+    local sig
+    sig=$(hypr-sync-env print 2>/dev/null) || return 1
+    export HYPRLAND_INSTANCE_SIGNATURE="${sig}"
+  }
+  hyprctl() {
+    hypr_sync_env 2>/dev/null
+    command hyprctl "$@"
+  }
+  hyprpm() {
+    hypr_sync_env 2>/dev/null
+    command hyprpm "$@"
+  }
+  hypr_sync_env 2>/dev/null || true
+fi
+
 # ============================================================================
 # Custom Aliases
 # ============================================================================

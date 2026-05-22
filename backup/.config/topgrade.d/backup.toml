@@ -1,0 +1,6 @@
+[misc]
+pre_sudo = true
+no_self_update = true
+
+[pre_commands]
+"Backup (Snapper + tower)" = "/usr/local/bin/backup-before-topgrade"

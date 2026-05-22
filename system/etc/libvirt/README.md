@@ -1,4 +1,6 @@
-# Windows 11 on KVM
+# Windows 11 on KVM (CachyOS + Hyprland + RX 7900)
+
+Single-GPU passthrough follows [VFIO-Tools libvirt hooks](https://passthroughpo.st/simple-per-vm-libvirt-hooks-with-the-vfio-tools-hook-helper/) and [joeknock90 Single-GPU-Passthrough](https://github.com/joeknock90/Single-GPU-Passthrough), tailored for this host.
 
 ## Install once
 
@@ -6,117 +8,140 @@
 sudo bash ~/dotfiles/system/install-libvirt-windows11.sh
 ```
 
+Installs:
+
+
+| Path                                                   | Role                                           |
+| ------------------------------------------------------ | ---------------------------------------------- |
+| `/etc/libvirt/hooks/qemu`                              | VFIO-Tools dispatcher                          |
+| `hooks/qemu.d/windows11/prepare/begin/start.sh`        | **Pre:** stop Hyprland → detach GPU            |
+| `hooks/qemu.d/windows11/release/end/revert.sh`         | **Post:** reattach GPU → start display-manager |
+| `/etc/libvirt/windows11/gpu-handoff.conf`              | PCI addresses, user, timings                   |
+| `/etc/libvirt/hooks/windows11-gpu-passthrough.enabled` | Created by `windows11-mode passthrough`        |
+
+
+Hook log: `/var/log/windows11-passthrough-hook.log`
+
 ## Modes
 
-| Command | Use |
-|---------|-----|
-| `windows11-console` | Daily desktop VM (QXL/VNC), host keeps GPU + keyboard |
-| `sudo windows11-mode passthrough` | GPU + Looking Glass + evdev (host keeps USB) |
-| `windows11-looking-glass` | View Windows on the Linux desktop (after VM is running) |
-| `sudo windows11-mode passthrough-usb` | Legacy: GPU + USB HID to VM (no Looking Glass) |
-| `windows11-stop` | Force off VM (uses `windows11-force-stop` if virsh hangs) |
-| `windows11-force-stop` | Kill QEMU directly — use when SSH `windows11-stop` hangs |
-| `windows11-revert-host` | Reattach GPU + restart display manager after bad shutdown |
-| `windows11-unstick` | Kill stuck passthrough hook + reattach GPU (black screen, VM never started) |
-| `sudo windows11-disk check` | Repair qcow2 (needs root — file owned by libvirt-qemu) |
-| `sudo windows11-dump-vbios` | Dump GPU ROM for VFIO |
 
-## Passthrough checklist (fixes black screen)
+| Command                           | Use                                              |
+| --------------------------------- | ------------------------------------------------ |
+| `windows11-console`               | **Daily** — VNC/QXL; host keeps GPU + Hyprland   |
+| `sudo windows11-mode console`     | Switch domain to VNC                             |
+| `sudo windows11-mode passthrough` | GPU passthrough XML + enable hook file           |
+| `windows11-start --yes`           | Start passthrough (runs **prepare** hook first)  |
+| `windows11-stop`                  | Shutdown VM → **release** hook restores Hyprland |
+| `windows11-force-stop`            | Kill QEMU if stuck                               |
+| `sudo windows11-revert-host`      | Manual **post** hook (emergency)                 |
+| `windows11-unstick`               | Kill stuck pre-hook + revert                     |
 
-1. **BIOS:** Above 4G Decoding **On**, Re-Size BAR **On**, VT-d **On**
-2. **Cable:** Monitor on **AMD RX 7900**, not Intel motherboard video
-3. **VBIOS:** `sudo windows11-dump-vbios` (VM off, GPU on amdgpu)
-4. **Disk:** `sudo windows11-disk backup` then `sudo windows11-disk check`
-5. **Windows (console mode first):** AMD driver installed, Fast Startup **off**, clean shutdown
-6. **Start:** `windows11-start` (not bare `virsh start`) — includes auto-stop timer
-7. **Recovery (read this):** see below — **Ctrl+Alt+F3 does not work** with one monitor on the AMD GPU
 
-## Why Ctrl+Alt+F3 does nothing
-
-Your only monitor is on the **RX 7900**. In passthrough that GPU belongs to Windows, so Linux has **no visible console** on that display. The key combo may switch TTYs, but you cannot see them.
-
-**Use one of these before every passthrough start:**
-
-| Method | How |
-|--------|-----|
-| **SSH (recommended)** | From phone/laptop: `ssh jacke@YOUR_HOST_IP windows11-force-stop` |
-| **Auto-stop timer** | Default 15 min via `windows11-start`; cancel: `ssh … windows11-watchdog-cancel` |
-| **Second monitor** | HDMI to **Intel** motherboard port → host TTY visible on that screen |
-| **Windows visible** | Shut down from **Start menu** in Windows (runs revert hook) |
-
-**Never hard power-off** — it skips the revert hook and can corrupt the disk.
-
-**Emergency reboot (last resort):** hold power button, or if SysRq enabled: Alt+SysRq, release, type `REISUB` slowly.
-
-## Start passthrough safely
-
-```sh
-windows11-start          # prompts, 15 min auto-stop
-# or: WINDOWS11_WATCHDOG_SECONDS=600 windows11-start
-```
-
-## Passthrough hook log
-
-Start/stop hooks append to:
+## Single-GPU passthrough flow
 
 ```text
-/var/log/windows11-passthrough-hook.log
+windows11-start
+    │
+    ▼
+prepare/begin/start.sh
+    ├─ hyprctl dispatch exit  (Hyprland)
+    ├─ systemctl stop display-manager
+    ├─ unbind vtconsoles / EFI fb
+    ├─ modprobe -r amdgpu       (optional, gpu-handoff.conf)
+    ├─ virsh nodedev-detach GPU + audio
+    └─ start 15 min watchdog
+    │
+    ▼
+QEMU starts → Windows on RX 7900 monitor
+    │
+    ▼
+windows11-stop  (or Start menu shutdown in Windows)
+    │
+    ▼
+release/end/revert.sh
+    ├─ cancel watchdog
+    ├─ virsh nodedev-reattach audio + GPU
+    ├─ modprobe amdgpu
+    └─ systemctl start display-manager  → Hyprland login
 ```
 
-After a failed start:
+**Monitor** must stay on the **RX 7900** during passthrough. Hyprland uses the same GPU when not passthrough (`AQ_DRM_DEVICES` → `amd-card`).
+
+## First-time passthrough checklist
+
+1. BIOS: Above 4G Decoding, Re-Size BAR, **VT-d** (Intel) or **IOMMU / AMD-Vi** (AMD) **enabled**
+2. Kernel: `sudo vfio-limine-enable --iommu-only` then reboot (must see IOMMU groups > 0)
+3. `sudo windows11-dump-vbios`
+4. Windows in **console mode** first: AMD driver, Fast Startup off, clean shutdown
+5. `sudo windows11-mode passthrough`
+6. `windows11-start --yes`
+7. Recovery: SSH → `windows11-force-stop` then `windows11-revert-host` (auto-sudo)
+
+If `virsh nodedev-detach` says VFIO is not supported: confirm IOMMU groups exist (`find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 | head`), fix cmdline (`sudo vfio-limine-enable` — uses `amd_iommu=on` on Ryzen, `intel_iommu=on` on Intel), reboot, reinstall hooks, retry.
+
+### Black screen / picture on Intel iGPU only
+
+Your board has **Intel iGPU + RX 7900**. During passthrough the **7900 goes to the VM**. The motherboard HDMI/DP (Intel) will be **black** or show **Linux kernel text** (e.g. `amdgpu: overdrive is enabled` when the host reloads the AMD driver) — that is **not** Windows.
+
+1. Plug the monitor into the **RX 7900** (not ASUS rear HDMI from Intel).
+2. Run `windows11-passthrough-doctor` while the VM is running (GPU driver should be `vfio-pci`).
+3. First-time Windows: use **console mode** (`windows11-console`) and install the AMD driver via VNC before relying on passthrough output.
+4. Re-dump VBIOS if the 7900 stays black with the cable on the card: `sudo windows11-dump-vbios` (VM off, GPU on host).
+
+## VNC (no passthrough)
 
 ```sh
-sudo tail -80 /var/log/windows11-passthrough-hook.log
-sudo tail -30 /var/log/libvirt/qemu/windows11.log
+sudo windows11-mode console
+windows11-console
 ```
 
-## QEMU log errors explained
+## LAN access from other PCs
 
-- `vfio_container_dma_map ... Invalid argument` → enable **Above 4G Decoding** + **Re-Size BAR** in BIOS (RX 7900 has a 32 GiB BAR); dump VBIOS; confirm `windows11-mode status` shows **GPU VBIOS: yes**
-- `windows11-stop` hangs over SSH → use **`windows11-force-stop`** (kills QEMU if virsh blocks)
-- VBIOS never sticks in XML → `<rom>` must be under **`<hostdev>`**, not inside `<driver>`; then **`sudo windows11-mode passthrough`**
-- `Repairing cluster` on qcow2 → run `sudo windows11-disk check` after unclean shutdown
-
-## Looking Glass + evdev (recommended passthrough)
-
-**Host (once):**
+Use a real Linux bridge, not libvirt `default` NAT, when the Windows VM should be reachable from other machines on the LAN:
 
 ```sh
-sudo bash ~/dotfiles/system/install-libvirt-windows11.sh
-sudo windows11-setup-kvmfr
-sudo windows11-build-looking-glass-client   # if paru/pacman mirror .sig 404
-# Or: paru -S looking-glass --needed
-sudo usermod -aG kvm "$USER"    # re-login after
-# Edit keyboard/mouse paths if needed:
-#   /etc/libvirt/windows11/evdev.conf
-sudo windows11-mode passthrough
+sudo windows11-mode console
+sudo windows11-network apply-bridge
+windows11-console
 ```
 
-If libvirt refuses to start the VM with `/dev/kvmfr0`, edit `/etc/libvirt/qemu.conf`: uncomment `cgroup_device_acl` and add `"/dev/kvmfr0"`, then `sudo systemctl restart libvirtd`.
+`windows11-network apply-bridge` creates a NetworkManager bridge named `br0` over the wired default-route interface, then switches the VM NIC to `<interface type="bridge">`. On this host that means `eno1` becomes a slave of `br0`, and both the host and the Windows VM get normal LAN DHCP addresses from the router.
 
-**Guest (Windows, in console mode first):**
+If Windows was previously pinned to `192.168.122.10`, run `windows11-set-libvirt-ip.ps1` in an elevated PowerShell inside the VM to reset the VirtIO NIC to DHCP. Then use `ipconfig`, your router leases, or `windows11-network status` to find the Windows LAN IP.
 
-1. Download **Looking Glass Host** from [looking-glass.io](https://looking-glass.io/docs/stable/install_guest/).
-2. Install the host application; reboot Windows.
-3. Audio comes from the **passed-through GPU HDMI/DP** (virtual `ich9` sound is removed in passthrough mode).
-
-**Daily use:**
+If VNC/console clipboard does not work, attach the script as a virtual CD-ROM from the host:
 
 ```sh
-windows11-start --yes
-windows11-looking-glass    # fullscreen guest on host monitor
+sudo windows11-tools-iso attach
 ```
 
-Toggle keyboard/mouse: press **both Ctrl keys** (host ↔ guest).
+Inside Windows, open the `WIN11_TOOLS` drive and double-click `reset-network-admin.cmd`.
 
-## Networking
+## Tune this machine
 
-User-mode NAT (`10.0.2.15`) is applied by `windows11-mode` / `windows11-network`. Guest tools: `virtio-win-guest-tools.exe`.
+Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
+
+
+| Variable           | Default | Meaning                                                  |
+| ------------------ | ------- | -------------------------------------------------------- |
+| `CONSOLE_USER`     | jacke   | Hyprland user for `hyprctl dispatch exit`                |
+| `DETACH_SLEEP`     | 3       | Pause after stopping DM                                  |
+| `SKIP_EFI_FB`      | 0       | Set `1` to skip EFI framebuffer unbind (some AMD boards) |
+| `UNLOAD_AMGPU`     | 1       | `modprobe -r amdgpu` before detach                       |
+| `WATCHDOG_SECONDS` | 900     | Auto `windows11-watchdog-revert` if VM left running      |
+
+
+## References
+
+- [VFIO-Tools](https://github.com/PassthroughPOST/VFIO-Tools) — `libvirt_hooks/qemu`
+- [Single-GPU-Passthrough](https://github.com/joeknock90/Single-GPU-Passthrough) — example start/revert scripts
+- [Libvirt hooks](https://www.libvirt.org/hooks.html)
 
 ## Files
 
-| Path | Purpose |
-|------|---------|
-| `windows11-amd-gpu-hostdev.xml` | GPU + audio PCI passthrough + ROM |
-| `windows11-passthrough-usb.xml` | Optional Razer USB |
-| `hooks/qemu.d/windows11/` | Stop Hyprland gracefully, detach GPU |
+
+| Path                            | Purpose                      |
+| ------------------------------- | ---------------------------- |
+| `windows11-amd-gpu-hostdev.xml` | GPU + HDMI audio + VBIOS ROM |
+| `windows11-passthrough-usb.xml` | Optional USB HID passthrough |
+| `windows11/gpu-handoff.sh`      | Shared pre/post logic        |

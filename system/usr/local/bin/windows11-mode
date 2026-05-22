@@ -38,9 +38,9 @@ Usage: ${0##*/} <command>
 
 Commands:
   status            Show current mode and pending VM/device changes
-  console           VNC/QXL; host keeps GPU and USB keyboard/mouse
-  passthrough       GPU + audio + Looking Glass + evdev (host keeps USB)
-  passthrough-usb   GPU + audio + USB HID (no Looking Glass; legacy)
+  console           VNC/QXL; host keeps GPU and USB keyboard/mouse (daily use)
+  passthrough       GPU + audio; enables pre/post hooks (monitor on RX 7900)
+  passthrough-usb   GPU + audio + USB keyboard/mouse to VM
   network           Fix networking only (user-mode NAT)
 
 Examples:
@@ -301,33 +301,6 @@ apply_domain_mode_patch() {
   rm -f "${xml}" "${tmp}" "${tmp}.err"
 }
 
-looking_glass_backend() {
-  if [[ -c /dev/kvmfr0 ]]; then
-    echo kvmfr
-  else
-    echo shm
-  fi
-}
-
-warn_looking_glass_prereqs() {
-  if [[ -c /dev/kvmfr0 ]]; then
-    return 0
-  fi
-  if [[ -f /dev/kvmfr0 ]]; then
-    echo "WARNING: /dev/kvmfr0 is a regular file — remove it and run: sudo windows11-setup-kvmfr" >&2
-    return 0
-  fi
-  modprobe kvmfr 2>/dev/null || true
-  if [[ -c /dev/kvmfr0 ]]; then
-    return 0
-  fi
-  echo "NOTE: kvmfr not loaded — using /dev/shm/looking-glass (slower)." >&2
-  echo "      For GPU DMA: sudo windows11-setup-kvmfr" >&2
-  echo "      Then: sudo windows11-mode passthrough" >&2
-  systemd-tmpfiles --create /etc/tmpfiles.d/10-looking-glass.conf 2>/dev/null \
-    || systemd-tmpfiles --create 2>/dev/null || true
-}
-
 hook_enabled() {
   [[ -e "${ENABLE_FILE}" ]]
 }
@@ -349,22 +322,20 @@ cmd_status() {
   echo "USB hostdev: $(has_usb_hostdev && echo yes || echo no) (must be no in console mode)"
   echo "Cirrus VGA:  $(has_cirrus_video && echo yes || echo no) (must be no in console mode)"
   echo "Evdev:       $(has_evdev_input && echo yes || echo no)"
-  echo "LookingGlass:$(has_looking_glass && echo yes || echo no)"
+  echo "LookingGlass:$(has_looking_glass && echo yes || echo no) (should be no)"
   echo "Virt sound:  $(has_virtual_sound && echo yes || echo no) (should be no in passthrough)"
-  echo "LG backend:  $(looking_glass_backend)"
-  echo "KVMFR dev:   $([[ -c /dev/kvmfr0 ]] && echo yes || echo no)"
   echo "NIC count:   $(network_count)"
   if has_gpu_audio_only; then
     echo "WARNING:     GPU audio passed through but NOT the GPU — broken; run: sudo $0 passthrough"
   fi
   if has_graphics && has_qxl && ! has_gpu_hostdev && ! has_usb_hostdev && ! has_cirrus_video && ! hook_enabled; then
     echo "Mode:        console (expected)"
-  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && has_looking_glass && has_evdev_input; then
-    echo "Mode:        passthrough + Looking Glass (expected)"
-  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev; then
-    echo "Mode:        passthrough (run: sudo $0 passthrough to add Looking Glass/evdev)"
+  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && ! has_looking_glass && ! has_evdev_input; then
+    echo "Mode:        passthrough (expected)"
+  elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && (has_looking_glass || has_evdev_input); then
+    echo "Mode:        passthrough + legacy LG/evdev (run: sudo $0 passthrough to clean up)"
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && has_usb_hostdev; then
-    echo "Mode:        passthrough+usb (legacy; no Looking Glass)"
+    echo "Mode:        passthrough+usb"
   else
     echo "Mode:        mixed (run: sudo $0 console  OR  sudo $0 passthrough)"
   fi
@@ -527,10 +498,21 @@ apply_passthrough_devices() {
   if [[ "${with_usb}" -eq 1 ]]; then
     add_usb_hostdevs
   else
-    warn_looking_glass_prereqs
     apply_domain_mode_patch passthrough
-    echo "Looking Glass IVSHMEM: $(looking_glass_backend)"
   fi
+}
+
+verify_passthrough_xml() {
+  if ! has_gpu_hostdev; then
+    echo "ERROR: GPU PCI hostdev missing from domain XML." >&2
+    echo "  virt-xml network edits can strip hostdev; re-run: sudo $0 passthrough" >&2
+    exit 1
+  fi
+  if ! has_gpu_vbios_rom; then
+    echo "ERROR: GPU VBIOS ROM missing from domain XML." >&2
+    exit 1
+  fi
+  echo "Verified: GPU hostdev + VBIOS ROM in domain XML."
 }
 
 cmd_passthrough() {
@@ -538,14 +520,11 @@ cmd_passthrough() {
   [[ "${1:-}" == "--usb" ]] && with_usb=1
   require_shutoff
   enable_hook
-  apply_passthrough_devices "${with_usb}"
+  # Network first: virt-xml --edit --network can drop <hostdev>/<rom> if run after merge.
   cmd_network
-  # virt-xml network define can drop nested <rom>; apply VBIOS last.
+  apply_passthrough_devices "${with_usb}"
   ensure_gpu_vbios_in_xml || true
-  if has_gpu_hostdev && ! has_gpu_vbios_rom; then
-    echo "ERROR: GPU VBIOS ROM still missing from domain XML." >&2
-    exit 1
-  fi
+  verify_passthrough_xml
   echo ""
   echo "Passthrough ready. Before start, confirm:"
   echo "  - Monitor cable on the AMD RX 7900 (not Intel motherboard HDMI)"
@@ -553,14 +532,11 @@ cmd_passthrough() {
   echo "  - VBIOS: sudo windows11-dump-vbios  (if not done)"
   echo "  - Disk:  sudo windows11-disk check"
   echo ""
-  echo "  Start: windows11-start   (NOT bare virsh start — see README)"
-  echo "  View:  windows11-looking-glass   (after Windows is up)"
-  echo "  Input: both Ctrl keys toggles host ↔ guest (evdev)"
+  echo "  Start: windows11-start --yes   (NOT bare virsh start — see README)"
+  echo "  View:  Windows on the RX 7900 monitor"
   echo "  Stop:  ssh to host → windows11-stop"
   if [[ "${1:-}" == "--usb" ]]; then
     echo "  USB is passed to the VM — host has no keyboard/mouse on Linux."
-  else
-    echo "  Guest: install Looking Glass Host inside Windows (see README)."
   fi
 }
 

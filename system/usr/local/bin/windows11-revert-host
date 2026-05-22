@@ -1,24 +1,35 @@
 #!/usr/bin/env bash
-# Reattach GPU to amdgpu and restart the display stack (after emergency stop / hard reboot).
+# Reattach GPU to amdgpu and restart Hyprland (after emergency stop / hard reboot).
 set -u
 
-export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
-export LC_ALL=C
-export LANG=C
+if [[ "${EUID}" -ne 0 ]]; then
+  exec sudo -E "$0" "$@"
+fi
 
-GPU_NODE="${GPU_NODE:-pci_0000_03_00_0}"
-AUDIO_NODE="${AUDIO_NODE:-pci_0000_03_00_1}"
-DISPLAY_MANAGER="${DISPLAY_MANAGER:-display-manager.service}"
+HANDOFF_LIB="${HANDOFF_LIB:-/etc/libvirt/windows11/gpu-handoff.sh}"
 HOOK="${HOOK:-/etc/libvirt/hooks/qemu.d/windows11/release/end/revert.sh}"
 
 if [[ -x "${HOOK}" ]]; then
   echo "Running passthrough revert hook..."
-  "${HOOK}" windows11 release end
+  export GPU_HANDOFF_FORCE=1
+  "${HOOK}" windows11 release end -
   exit 0
 fi
 
-echo "Hook not found at ${HOOK}; running minimal revert..." >&2
-virsh nodedev-reattach "${AUDIO_NODE}" 2>/dev/null || true
-virsh nodedev-reattach "${GPU_NODE}" 2>/dev/null || true
+if [[ -f "${HANDOFF_LIB}" ]]; then
+  # shellcheck source=/etc/libvirt/windows11/gpu-handoff.sh
+  source "${HANDOFF_LIB}"
+  export GPU_HANDOFF_FORCE=1
+  hook_log_begin "windows11-revert-host (manual)" "$@"
+  hook_log_attach
+  set -x
+  gpu_handoff_release_end
+  exit 0
+fi
+
+echo "No hook library found; minimal revert..." >&2
+export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+virsh nodedev-reattach pci_0000_03_00_1 2>/dev/null || true
+virsh nodedev-reattach pci_0000_03_00_0 2>/dev/null || true
 modprobe amdgpu 2>/dev/null || true
-systemctl start "${DISPLAY_MANAGER}" 2>/dev/null || true
+systemctl start display-manager.service 2>/dev/null || true

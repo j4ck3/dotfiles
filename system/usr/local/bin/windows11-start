@@ -82,7 +82,7 @@ user="$(id -un)"
 cat <<EOF
 
 === Passthrough start checklist ===
-  Monitor:     cable on AMD RX 7900 (not Intel-only)
+  Monitor:     cable on RX 7900 only (Intel/iGPU will stay black — not Windows)
   BIOS:        Above 4G + Re-Size BAR on
   Recovery:    ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-force-stop'
                  ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-watchdog-cancel'
@@ -119,5 +119,7 @@ fi
 echo ""
 echo "Starting ${DOMAIN}..."
 virsh -c "${CONNECT_URI}" start "${DOMAIN}"
-echo "Started. On the host run: windows11-looking-glass"
-echo "If the screen stays black, wait 2 min, then recover via SSH."
+echo "Started. Windows appears ONLY on the RX 7900 port (not motherboard HDMI)."
+echo "Kernel text on Intel/iGPU during revert is normal (amdgpu overdrive notice)."
+echo "Black on AMD? Run: windows11-passthrough-doctor"
+echo "If still black after 2 min, recover via SSH (see checklist above)."

@@ -30,6 +30,3 @@ netbird-bin
 lmstudio-bin
 topgrade-bin
 brave-origin-nightly-bin
-
-looking-glass
-looking-glass-module-dkms

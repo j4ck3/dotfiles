@@ -1,0 +1,6 @@
+# hyprpm needs the live HYPRLAND_INSTANCE_SIGNATURE (stale after Hyprland restart).
+[misc]
+disable = ["hyprpm"]
+
+[commands]
+"Hyprpm" = "hypr-sync-env run hyprpm update"

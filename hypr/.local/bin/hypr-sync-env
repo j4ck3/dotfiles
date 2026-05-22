@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Point HYPRLAND_INSTANCE_SIGNATURE at the live Hyprland IPC socket.
+set -euo pipefail
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+active_signature() {
+  local sig
+  if command -v ss >/dev/null 2>&1; then
+    sig=$(ss -xl 2>/dev/null | sed -n "s|.*${runtime}/hypr/\\([^/]*\\)/\\.socket\\.sock.*|\\1|p" | head -1)
+    if [[ -n "${sig}" ]]; then
+      echo "${sig}"
+      return 0
+    fi
+  fi
+
+  local dir
+  for dir in "${runtime}"/hypr/*/; do
+    [[ -d "${dir}" ]] || continue
+    sig=$(basename "${dir}")
+    [[ -S "${dir}/.socket.sock" ]] || continue
+    if HYPRLAND_INSTANCE_SIGNATURE="${sig}" command hyprctl version >/dev/null 2>&1; then
+      echo "${sig}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+apply_env() {
+  local sig
+  sig="$(active_signature)" || return 1
+  export HYPRLAND_INSTANCE_SIGNATURE="${sig}"
+  if [[ -z "${WAYLAND_DISPLAY:-}" && -S "${runtime}/wayland-1" ]]; then
+    export WAYLAND_DISPLAY=wayland-1
+  fi
+}
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} [print|export|run CMD...]
+
+  print   Print the active Hyprland instance signature
+  export  Print shell export statements (bash: eval "\$(${0##*/} export)")
+  run     Sync env, then exec CMD (for topgrade / scripts)
+EOF
+}
+
+cmd="${1:-export}"
+case "${cmd}" in
+  print)
+    active_signature
+    ;;
+  export)
+    sig="$(active_signature)" || exit 1
+    printf 'export HYPRLAND_INSTANCE_SIGNATURE=%q\n' "${sig}"
+    if [[ -z "${WAYLAND_DISPLAY:-}" && -S "${runtime}/wayland-1" ]]; then
+      printf 'export WAYLAND_DISPLAY=%q\n' wayland-1
+    fi
+    ;;
+  run)
+    shift
+    [[ $# -gt 0 ]] || { usage >&2; exit 2; }
+    apply_env || exit 1
+    exec "$@"
+    ;;
+  -h | --help | help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

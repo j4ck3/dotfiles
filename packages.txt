@@ -100,6 +100,9 @@ ttf-cascadia-mono-nerd
 python
 
 openssh
+rsync
+snapper
+snap-pac
 
 freecad
 

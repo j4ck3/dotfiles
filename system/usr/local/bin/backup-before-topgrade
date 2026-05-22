@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# Create a Snapper BTRFS snapshot, sync it to tower, prune old snapshots.
+set -euo pipefail
+
+CONFIG="${BACKUP_CONFIG:-/etc/backup/backup.conf}"
+if [[ -f "${CONFIG}" ]]; then
+  # shellcheck source=/etc/backup/backup.conf
+  source "${CONFIG}"
+fi
+
+BACKUP_HOSTNAME="${BACKUP_HOSTNAME:-$(hostname -s)}"
+SSH_TARGET="${SSH_TARGET:-tower}"
+REMOTE_BASE="${REMOTE_BASE:-/mnt/disk1/backups}"
+SNAPPER_CONFIG="${SNAPPER_CONFIG:-root}"
+SNAPSHOT_DESCRIPTION_PREFIX="${SNAPSHOT_DESCRIPTION_PREFIX:-pre-topgrade}"
+KEEP_LOCAL="${KEEP_LOCAL:-3}"
+KEEP_REMOTE="${KEEP_REMOTE:-5}"
+MIN_FREE_GB="${MIN_FREE_GB:-10}"
+LOG_FILE="${LOG_FILE:-${HOME}/.local/state/backup-before-topgrade.log}"
+LOCK_FILE="${LOCK_FILE:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/backup-before-topgrade.lock}"
+
+SSH_CONFIG="${SSH_CONFIG:-${HOME}/.ssh/config}"
+SSH_KNOWN_HOSTS="${SSH_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts}"
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/tower_privatekey}"
+
+RSYNC_PROGRESS="${RSYNC_PROGRESS:-1}"
+
+REMOTE_SNAP_BASE="${REMOTE_BASE}/${BACKUP_HOSTNAME}/snapshots"
+
+rsync_ssh() {
+  printf 'ssh -F %q -o UserKnownHostsFile=%q -o IdentityFile=%q -o BatchMode=yes -o ConnectTimeout=10' \
+    "${SSH_CONFIG}" "${SSH_KNOWN_HOSTS}" "${SSH_IDENTITY}"
+}
+
+rsync_progress_opts() {
+  [[ "${RSYNC_PROGRESS}" == 1 ]] || return 0
+  printf '%s\n' --info=progress2 --stats --human-readable
+}
+
+print_rsync_header() {
+  local snap_num="$1"
+  local snap_name="$2"
+  local remote_dir="$3"
+  [[ "${RSYNC_PROGRESS}" == 1 ]] || return 0
+  printf '\n%s\n' '────────────────────────────────────────────────────────────' >&2
+  printf '  Backup rsync  snap #%s  →  %s:%s\n' "${snap_num}" "${SSH_TARGET}" "${remote_dir}" >&2
+  printf '%s\n\n' '────────────────────────────────────────────────────────────' >&2
+}
+
+run_rsync() {
+  local local_dir="$1"
+  local remote_dir="$2"
+  shift 2
+  local -a rsync_opts=("$@")
+  local -a progress_opts=()
+  mapfile -t progress_opts < <(rsync_progress_opts)
+  local rsync_env=(env HOME="${HOME}" TERM="${TERM:-xterm-256color}")
+  if [[ "${RSYNC_PROGRESS}" == 1 ]]; then
+    if sudo -E -t "${rsync_env[@]}" rsync "${rsync_opts[@]}" "${progress_opts[@]+"${progress_opts[@]}"}" \
+      -e "$(rsync_ssh)" \
+      "${local_dir}/" \
+      "${SSH_TARGET}:${remote_dir}/"; then
+      return 0
+    fi
+  fi
+  sudo -E "${rsync_env[@]}" rsync "${rsync_opts[@]}" "${progress_opts[@]+"${progress_opts[@]}"}" \
+    -e "$(rsync_ssh)" \
+    "${local_dir}/" \
+    "${SSH_TARGET}:${remote_dir}/"
+}
+
+log() {
+  local msg="[$(date -Iseconds)] $*"
+  echo "${msg}"
+  mkdir -p "$(dirname "${LOG_FILE}")"
+  echo "${msg}" >>"${LOG_FILE}"
+}
+
+die() {
+  log "ERROR: $*"
+  exit 1
+}
+
+cleanup_lock() {
+  rm -f "${LOCK_FILE}"
+}
+
+acquire_lock() {
+  mkdir -p "$(dirname "${LOCK_FILE}")"
+  if [[ -e "${LOCK_FILE}" ]]; then
+    die "Another backup is running (lock: ${LOCK_FILE})"
+  fi
+  echo "$$" >"${LOCK_FILE}"
+  trap cleanup_lock EXIT
+}
+
+ssh_tower() {
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "${SSH_TARGET}" "$@"
+}
+
+check_ssh() {
+  ssh_tower true 2>/dev/null || die "Cannot reach ${SSH_TARGET} over SSH (BatchMode)"
+}
+
+check_disk_space() {
+  local avail_kb need_kb
+  avail_kb="$(df -P / | awk 'NR==2 {print $4}')"
+  need_kb=$((MIN_FREE_GB * 1024 * 1024))
+  if [[ "${avail_kb}" -lt "${need_kb}" ]]; then
+    die "Less than ${MIN_FREE_GB} GiB free on / (avail=$((avail_kb / 1024 / 1024)) GiB)"
+  fi
+}
+
+snapper_cmd() {
+  sudo snapper -c "${SNAPPER_CONFIG}" "$@"
+}
+
+snapshot_path() {
+  local num="$1"
+  local candidates=(
+    "/.snapshots/${num}/snapshot"
+    "/.snapshots/${num}"
+  )
+  local path
+  for path in "${candidates[@]}"; do
+    if sudo test -d "${path}"; then
+      echo "${path}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_snapshot_path() {
+  local num="$1"
+  local path
+  path="$(snapshot_path "${num}")" || die "Snapshot directory missing for #${num}"
+  echo "${path}"
+}
+
+list_backup_snapshot_numbers() {
+  snapper_cmd list --columns number,description \
+    | tail -n +2 \
+    | awk -F'|' -v prefix="${SNAPSHOT_DESCRIPTION_PREFIX}" '
+        {
+          gsub(/^ +| +$/, "", $1)
+          gsub(/^ +| +$/, "", $2)
+          if ($2 ~ prefix) print $1
+        }' \
+    | sort -rn
+}
+
+create_snapshot() {
+  local comment="${SNAPSHOT_DESCRIPTION_PREFIX} $(date -Iseconds)"
+  log "Creating Snapper snapshot (${comment})"
+  SNAP_NUM="$(snapper_cmd create --description "${comment}" --type single --print-number)"
+  [[ -n "${SNAP_NUM}" ]] || die "snapper create failed"
+  SNAP_NAME="$(date +%Y-%m-%d_%H-%M-%S)-snap${SNAP_NUM}"
+}
+
+sync_snapshot() {
+  local snap_num="$1"
+  local snap_name="$2"
+  local local_dir
+  local remote_dir="${REMOTE_SNAP_BASE}/${snap_name}"
+  local prev rsync_opts=(-aHAXx --numeric-ids)
+
+  local_dir="$(resolve_snapshot_path "${snap_num}")"
+
+  prev="$(ssh_tower "ls -1 '${REMOTE_SNAP_BASE}' 2>/dev/null | sort -r | head -1" || true)"
+  if [[ -n "${prev}" && "${prev}" != "${snap_name}" && -n "$(ssh_tower "test -d '${REMOTE_SNAP_BASE}/${prev}' && echo ok" 2>/dev/null || true)" ]]; then
+    rsync_opts+=(--link-dest="${REMOTE_SNAP_BASE}/${prev}")
+    log "Rsync with link-dest=${prev}"
+  else
+    log "Rsync full copy (no previous remote snapshot)"
+  fi
+
+  ssh_tower "mkdir -p '${REMOTE_SNAP_BASE}'"
+  log "Syncing snap${snap_num} from ${local_dir} -> ${SSH_TARGET}:${remote_dir}"
+  print_rsync_header "${snap_num}" "${snap_name}" "${remote_dir}"
+  run_rsync "${local_dir}" "${remote_dir}" "${rsync_opts[@]}"
+  [[ "${RSYNC_PROGRESS}" == 1 ]] && printf '\n' >&2
+  ssh_tower "printf '%s\n' '${snap_num}' > '${remote_dir}/.snapper-number'"
+}
+
+prune_local() {
+  local snaps=() snap
+  mapfile -t snaps < <(list_backup_snapshot_numbers)
+  if [[ "${#snaps[@]}" -le "${KEEP_LOCAL}" ]]; then
+    return 0
+  fi
+  local i
+  for ((i = KEEP_LOCAL; i < ${#snaps[@]}; i++)); do
+    snap="${snaps[i]}"
+    log "Deleting local snapshot ${snap}"
+    snapper_cmd delete "${snap}" || log "WARN: failed to delete local snap ${snap}"
+  done
+}
+
+prune_remote() {
+  local to_delete
+  mapfile -t to_delete < <(
+    ssh_tower "ls -1 '${REMOTE_SNAP_BASE}' 2>/dev/null | sort -r | tail -n +$((KEEP_REMOTE + 1))" || true
+  )
+  local snap
+  for snap in "${to_delete[@]}"; do
+    [[ -n "${snap}" ]] || continue
+    log "Deleting remote snapshot ${snap}"
+    ssh_tower "rm -rf '${REMOTE_SNAP_BASE}/${snap}'" || log "WARN: failed to delete remote ${snap}"
+  done
+}
+
+main() {
+  command -v snapper >/dev/null || die "snapper not installed — run: sudo bash ~/dotfiles/system/install-backup.sh"
+  command -v rsync >/dev/null || die "rsync not installed"
+  [[ -f "/etc/snapper/configs/${SNAPPER_CONFIG}" ]] \
+    || die "Missing snapper config ${SNAPPER_CONFIG} — run: sudo bash ~/dotfiles/system/install-backup.sh"
+
+  acquire_lock
+  check_ssh
+  check_disk_space
+
+  SNAP_NUM=""
+  SNAP_NAME=""
+  create_snapshot
+
+  sync_snapshot "${SNAP_NUM}" "${SNAP_NAME}"
+  prune_local
+  prune_remote
+
+  log "Backup finished: ${SNAP_NAME} (snapper #${SNAP_NUM})"
+}
+
+main "$@"

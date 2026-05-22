@@ -26,5 +26,10 @@ hook_log_begin() {
 
 hook_log_attach() {
   # Tee stdout/stderr (including bash -x) into the log file.
+  if ! touch "${WINDOWS11_HOOK_LOG}" 2>/dev/null; then
+    echo "WARN: cannot write ${WINDOWS11_HOOK_LOG}; continuing without file log" >&2
+    return 0
+  fi
+  chmod 0644 "${WINDOWS11_HOOK_LOG}" 2>/dev/null || true
   exec >> >(tee -a "${WINDOWS11_HOOK_LOG}") 2>&1
 }

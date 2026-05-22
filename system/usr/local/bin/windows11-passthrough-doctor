@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Quick checks when passthrough shows black screen or wrong display.
+set -u
+
+export LC_ALL=C
+export LANG=C
+export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+
+DOMAIN="${DOMAIN:-windows11}"
+GPU_PCI="${GPU_PCI:-0000:03:00.0}"
+AUDIO_PCI="${AUDIO_PCI:-0000:03:00.1}"
+ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
+
+pci_driver() {
+  local pci="$1" link
+  link="/sys/bus/pci/devices/${pci}/driver"
+  [[ -L "${link}" ]] || { echo "<none>"; return; }
+  basename "$(readlink -f "${link}")"
+}
+
+echo "=== windows11-passthrough-doctor ==="
+echo ""
+
+echo "## Displays (where is your cable?)"
+echo "Passthrough picture appears ONLY on the RX 7900 physical port."
+echo "Intel motherboard HDMI/DP stays black or shows Linux kernel text — that is normal."
+echo ""
+if command -v lspci >/dev/null; then
+  lspci -nn | grep -iE 'vga|3d|display' || true
+fi
+echo ""
+for card in /sys/class/drm/card*; do
+  [[ -d "${card}" ]] || continue
+  name="$(<"${card}/device/uevent" 2>/dev/null | grep '^DRIVER=' | cut -d= -f2 || echo '?')"
+  echo "  $(basename "${card}"): driver=${name}"
+  for conn in "${card}"-*; do
+    [[ -e "${conn}/status" ]] || continue
+    echo "    $(basename "${conn}"): status=$(<"${conn}/status")"
+  done
+done
+echo ""
+
+echo "## VM"
+state="$(virsh domstate "${DOMAIN}" 2>/dev/null || echo unknown)"
+echo "  Domain state: ${state}"
+echo "  Hook enabled: $([[ -e ${ENABLE_FILE} ]] && echo yes || echo no)"
+if command -v windows11-mode >/dev/null; then
+  echo ""
+  sudo windows11-mode status 2>/dev/null || windows11-mode status 2>/dev/null || true
+fi
+echo ""
+
+echo "## GPU PCI (must be vfio-pci while VM is running)"
+echo "  ${GPU_PCI} driver=$(pci_driver "${GPU_PCI}")"
+echo "  ${AUDIO_PCI} driver=$(pci_driver "${AUDIO_PCI}")"
+if ! virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -qE "bus=.0x03. slot=.0x00. function=.0x0."; then
+  echo "  ERROR: Domain XML has NO GPU PCI hostdev — VM is not doing GPU passthrough." >&2
+  echo "  Fix (VM must be shut off): sudo windows11-mode passthrough" >&2
+fi
+if [[ "${state}" == "running" ]]; then
+  if ! virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -qE "bus=.0x03. slot=.0x00. function=.0x0."; then
+    echo "  (GPU on host driver because it was never assigned to the VM.)" >&2
+  elif [[ "$(pci_driver "${GPU_PCI}")" != "vfio-pci" ]]; then
+    echo "  ERROR: GPU is not on vfio-pci — hook may not have run on start." >&2
+  else
+    echo "  OK: GPU is detached for the VM."
+  fi
+elif [[ "$(pci_driver "${GPU_PCI}")" == "vfio-pci" ]]; then
+  echo "  NOTE: GPU still on vfio but VM not running — run: windows11-revert-host"
+fi
+echo ""
+
+echo "## VBIOS ROM"
+rom="/var/lib/libvirt/vbios/rx7900xtx.rom"
+if [[ -f "${rom}" ]]; then
+  echo "  ${rom}: $(stat -c%s "${rom}") bytes"
+else
+  echo "  MISSING ${rom} — run: sudo windows11-dump-vbios" >&2
+fi
+if virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q 'rx7900xtx\.rom'; then
+  echo "  Domain XML: ROM referenced"
+else
+  echo "  Domain XML: ROM NOT in XML — run: sudo windows11-mode passthrough" >&2
+fi
+echo ""
+
+echo "## Emulated video (must be absent in passthrough)"
+for tag in graphics video; do
+  if virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<${tag} "; then
+    echo "  WARNING: <${tag}> still in domain — Windows may boot on a virtual GPU" >&2
+  fi
+done
+if ! virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<graphics "; then
+  echo "  No <graphics> in XML (good)"
+fi
+echo ""
+
+echo "## IOMMU"
+groups="$(find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+echo "  Groups: ${groups}"
+grep -oE '(intel_iommu|amd_iommu|iommu)=[^[:space:]]+' /proc/cmdline 2>/dev/null | sed 's/^/  /' || echo "  (no iommu on cmdline)" >&2
+echo ""
+
+echo "## Watchdog"
+if [[ -f /run/windows11-watchdog.pid ]]; then
+  echo "  Active pid=$(cat /run/windows11-watchdog.pid) — cancel: windows11-watchdog-cancel"
+else
+  echo "  Not running"
+fi
+echo ""
+
+echo "## Likely causes of black RX 7900"
+echo "  1. Monitor on Intel iGPU port (move cable to RX 7900)"
+echo "  2. Wrong GPU output (try another DP/HDMI on the card)"
+echo "  3. Bad/old VBIOS dump — re-dump with VM off, GPU on amdgpu"
+echo "  4. BIOS: Above 4G Decoding + Re-Size BAR off"
+echo "  5. Windows never got AMD driver (use console mode + VNC first)"
+echo ""
+echo "Recover host desktop: windows11-watchdog-cancel && windows11-revert-host"

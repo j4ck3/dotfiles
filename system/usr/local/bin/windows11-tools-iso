@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Build and attach a small tools ISO for the windows11 VM.
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+ISO="${ISO:-/var/lib/libvirt/images/windows11-tools.iso}"
+SCRIPT_SOURCE="${SCRIPT_SOURCE:-/etc/libvirt/windows11-set-libvirt-ip.ps1}"
+
+export LC_ALL=C
+export LANG=C
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} <command>
+
+Commands:
+  build    Create ${ISO}
+  attach   Create ${ISO} and attach it to ${DOMAIN} as a CD-ROM
+  eject    Eject the tools ISO from ${DOMAIN}
+
+Inside Windows, open the WIN11_TOOLS drive and run reset-network-admin.cmd.
+EOF
+}
+
+virsh_cmd() { virsh -c "${CONNECT_URI}" "$@"; }
+
+require_root() {
+  [[ "${EUID}" -eq 0 ]] || {
+    echo "Run with sudo: sudo $0 $*" >&2
+    exit 1
+  }
+}
+
+domain_state() {
+  virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true
+}
+
+virsh_scope_args() {
+  local state
+  state="$(domain_state)"
+  if [[ "${state}" == "running" || "${state}" == "paused" ]]; then
+    printf '%s\n' "--live"
+  else
+    printf '%s\n' "--config"
+  fi
+}
+
+find_cdrom_target() {
+  virsh_cmd dumpxml "${DOMAIN}" | python3 -c '
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.fromstring(sys.stdin.read())
+for disk in root.findall("./devices/disk"):
+    if disk.get("device") != "cdrom":
+        continue
+    target = disk.find("target")
+    if target is not None and target.get("dev"):
+        print(target.get("dev"))
+        raise SystemExit(0)
+'
+}
+
+build_iso() {
+  command -v xorriso >/dev/null || {
+    echo "Missing xorriso. Install it first: sudo pacman -S xorriso" >&2
+    exit 1
+  }
+  [[ -f "${SCRIPT_SOURCE}" ]] || {
+    echo "Missing ${SCRIPT_SOURCE}. Reinstall helpers first:" >&2
+    echo "  sudo bash ~/dotfiles/system/install-libvirt-windows11.sh" >&2
+    exit 1
+  }
+
+  local tmp
+  tmp="$(mktemp -d)"
+
+  install -m 0644 "${SCRIPT_SOURCE}" "${tmp}/windows11-set-libvirt-ip.ps1"
+  cat > "${tmp}/reset-network-admin.ps1" <<'EOF'
+$ErrorActionPreference = 'Stop'
+$script = Join-Path $PSScriptRoot 'windows11-set-libvirt-ip.ps1'
+Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList @(
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    "`"$script`""
+)
+EOF
+  cat > "${tmp}/reset-network-admin.cmd" <<'EOF'
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0reset-network-admin.ps1"
+pause
+EOF
+  cat > "${tmp}/README.txt" <<'EOF'
+Windows 11 VM tools
+
+To reset the VirtIO network adapter to DHCP:
+
+1. Open this WIN11_TOOLS drive in Windows.
+2. Double-click reset-network-admin.cmd.
+3. Accept the UAC prompt.
+4. Run ipconfig and use the 10.0.0.x address from another PC.
+EOF
+
+  install -d -m 0755 "$(dirname "${ISO}")"
+  xorriso -as mkisofs -quiet -J -R -V WIN11_TOOLS -o "${ISO}" "${tmp}"
+  chmod 0644 "${ISO}"
+  chown libvirt-qemu:libvirt-qemu "${ISO}" 2>/dev/null || true
+  rm -rf "${tmp}"
+  echo "Built ${ISO}"
+}
+
+attach_iso() {
+  build_iso
+
+  local scope target
+  mapfile -t scope < <(virsh_scope_args)
+  target="$(find_cdrom_target || true)"
+
+  if [[ -n "${target}" ]]; then
+    virsh_cmd change-media "${DOMAIN}" "${target}" "${ISO}" --update --force "${scope[@]}" ||
+      virsh_cmd change-media "${DOMAIN}" "${target}" "${ISO}" --insert --force "${scope[@]}"
+  else
+    virsh_cmd attach-disk "${DOMAIN}" "${ISO}" sdb \
+      --type cdrom --mode readonly --targetbus sata "${scope[@]}"
+  fi
+
+  echo "Attached ${ISO} to ${DOMAIN}."
+  echo "In Windows: open WIN11_TOOLS and run reset-network-admin.cmd"
+}
+
+eject_iso() {
+  local scope target
+  mapfile -t scope < <(virsh_scope_args)
+  target="$(find_cdrom_target || true)"
+  [[ -n "${target}" ]] || {
+    echo "No CD-ROM device found in ${DOMAIN}." >&2
+    exit 1
+  }
+  virsh_cmd change-media "${DOMAIN}" "${target}" --eject --force "${scope[@]}"
+  echo "Ejected CD-ROM ${target} from ${DOMAIN}."
+}
+
+main() {
+  case "${1:-}" in
+    build)
+      require_root "$@"
+      build_iso
+      ;;
+    attach)
+      require_root "$@"
+      attach_iso
+      ;;
+    eject)
+      require_root "$@"
+      eject_iso
+      ;;
+    -h|--help|"") usage ;;
+    *) echo "Unknown: $1" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"
