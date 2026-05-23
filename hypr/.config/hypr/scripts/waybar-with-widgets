@@ -19,12 +19,14 @@ preload_widget() {
 widgets_ready() {
   has_instance volume-popup &&
     has_instance media-player &&
-    has_instance power-menu
+    has_instance power-menu &&
+    has_instance shortcuts-cheatsheet
 }
 
 preload_widget volume-popup "${HOME}/.config/ags/app.tsx"
 preload_widget media-player "${HOME}/.config/ags/media-player.tsx"
 preload_widget power-menu "${HOME}/.config/ags/power-menu.tsx"
+preload_widget shortcuts-cheatsheet "${HOME}/.config/ags/shortcuts-cheatsheet.tsx"
 
 deadline=$((SECONDS + 2))
 until widgets_ready || (( SECONDS >= deadline )); do

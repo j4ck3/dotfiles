@@ -22,4 +22,3 @@ elif command -v pkexec >/dev/null 2>&1; then
 else
     echo "Note: Setting deep sleep requires root. Consider adding 'mem_sleep_default=deep' to kernel parameters"
 fi
-

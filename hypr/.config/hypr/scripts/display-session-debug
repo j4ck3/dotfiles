@@ -2,13 +2,22 @@
 # One-shot display + browser pipeline checks (Hyprland + Helium/Chromium).
 set -euo pipefail
 
-echo "== Hyprland monitors (refresh / vrr) =="
-hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name)  \(.width)x\(.height)  \(.refreshRate) Hz  vrr=\(.vrr)"' || echo "(hyprctl failed)"
+echo "== Hyprland monitors (refresh / vrr / scanout) =="
+hyprctl monitors -j 2>/dev/null | jq -r '.[] | "\(.name)  \(.width)x\(.height)  \(.refreshRate) Hz  vrr=\(.vrr)  directScanoutTo=\(.directScanoutTo)"' || echo "(hyprctl failed)"
+
+echo
+echo "== Hyprland render (flicker-related) =="
+hyprctl getoption render:send_content_type 2>/dev/null || true
+hyprctl getoption render:direct_scanout 2>/dev/null || true
+hyprctl getoption misc:vrr 2>/dev/null || true
+grep -E '^env = (AQ_NO_ATOMIC|AQ_DRM|__GL_VRR)' "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/envs.conf" 2>/dev/null || true
+echo "AQ_NO_ATOMIC in Hyprland process (needs full session restart after env change):"
+tr '\0' '\n' <"/proc/$(pgrep -x Hyprland 2>/dev/null || echo 0)/environ" 2>/dev/null | rg '^AQ_NO_ATOMIC=' || echo "  (not visible — log out/in once if flicker remains)"
 
 echo
 echo "== AMDGPU DP mode (modetest) =="
 if command -v modetest >/dev/null; then
-	modetest -M amdgpu -c 2>/dev/null | grep -F -A18 'DP-1' | head -22
+	modetest -M amdgpu -c 2>/dev/null | grep -F -A18 'DP-2' | head -22
 else
 	echo "(install libdrm modetest for this block)"
 fi

@@ -10,7 +10,7 @@ Personal configs for **CachyOS** (Arch-based).
 
 **Shell & prompt:** Bash, Starship.
 
-**Editors & coding:** Lazyvim, Cursor, t3code, Ghostty.
+**Editors & coding:** Lazyvim, Zed (LazyVim-style keymaps), Cursor, t3code, Ghostty.
 
 **Network / infra:** Docker, Netbird.
 
