@@ -1,0 +1,74 @@
+{
+  "ssh_connections": [
+    {
+      "host": "tower",
+      "projects": [
+        {
+          "paths": [
+            "/mnt/user/documents/compose"
+          ]
+        },
+        {
+          "paths": [
+            "/root"
+          ]
+        }
+      ],
+      "nickname": "tower (unRAID)"
+    },
+    {
+      "host": "web",
+      "projects": [
+        {
+          "paths": [
+            "/home/ubuntu"
+          ]
+        },
+        {
+          "paths": [
+            "/home/ubuntu/c"
+          ]
+        }
+      ],
+      "nickname": "web (VPS)"
+    },
+    {
+      "host": "htpc",
+      "projects": []
+    }
+  ],
+  "context_servers": {
+    "mcp-server-context7": {
+      "enabled": true,
+      "remote": false,
+      "settings": {
+        "context7_api_key": ""
+      }
+    }
+  },
+  "vim_mode": true,
+  "base_keymap": "VSCode",
+  "project_panel": {
+    "dock": "left"
+  },
+  "agent": {
+    "dock": "right",
+    "sidebar_side": "right"
+  },
+  "terminal": {
+    "font_family": "monospace"
+  },
+  "agent_servers": {
+    "cursor": {
+      "type": "registry"
+    }
+  },
+  "icon_theme": "Zed (Default)",
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": {
+    "mode": "dark",
+    "light": "One Light",
+    "dark": "Pitch Blackout"
+  }
+}
