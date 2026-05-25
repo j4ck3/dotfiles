@@ -21,7 +21,6 @@ GPU_NODE="${GPU_NODE:-pci_0000_03_00_0}"
 AUDIO_NODE="${AUDIO_NODE:-pci_0000_03_00_1}"
 GPU_PCI="${GPU_PCI:-0000:03:00.0}"
 AUDIO_PCI="${AUDIO_PCI:-0000:03:00.1}"
-DISPLAY_MANAGER="${DISPLAY_MANAGER:-display-manager.service}"
 CONSOLE_USER="${CONSOLE_USER:-jacke}"
 DETACH_SLEEP="${DETACH_SLEEP:-3}"
 SKIP_EFI_FB="${SKIP_EFI_FB:-0}"
@@ -29,6 +28,10 @@ UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
 ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
+
+if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
+  DISPLAY_MANAGER_UNITS=("${DISPLAY_MANAGER:-display-manager.service}")
+fi
 
 passthrough_enabled() {
   [[ -e "${ENABLE_FILE}" ]]
@@ -110,7 +113,7 @@ stop_display_stack() {
     if hyprctl_as_user dispatch exit; then
       echo "STEP: hyprctl dispatch exit"
     else
-      echo "STEP: hyprctl skipped (no socket); continuing with loginctl + ${DISPLAY_MANAGER}" >&2
+      echo "STEP: hyprctl skipped (no socket); continuing with loginctl + display manager" >&2
     fi
     sleep 1
   fi
@@ -125,8 +128,12 @@ stop_display_stack() {
     sleep 0.5
   fi
 
-  echo "STEP: stop ${DISPLAY_MANAGER}"
-  systemctl stop "${DISPLAY_MANAGER}" 2>/dev/null || true
+  local unit
+  for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
+    [[ -n "${unit}" ]] || continue
+    echo "STEP: stop ${unit}"
+    systemctl stop "${unit}" 2>/dev/null || true
+  done
 
   local max_iters=$((DISPLAY_STOP_TIMEOUT * 4))
   wait_for_process_exit Hyprland "${max_iters}"
@@ -134,9 +141,21 @@ stop_display_stack() {
   sleep 1
 }
 
+settle_console_input() {
+  echo "STEP: settle console/input"
+  udevadm trigger --subsystem-match=input 2>/dev/null || true
+  udevadm settle 2>/dev/null || true
+  systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
+}
+
 start_display_stack() {
-  echo "STEP: start ${DISPLAY_MANAGER}"
-  systemctl start "${DISPLAY_MANAGER}" 2>/dev/null || true
+  local unit
+  settle_console_input
+  for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
+    [[ -n "${unit}" ]] || continue
+    echo "STEP: start ${unit}"
+    systemctl start "${unit}" 2>/dev/null || true
+  done
 }
 
 pci_sysfs_dir() {

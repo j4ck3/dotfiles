@@ -109,14 +109,6 @@ windows11-console
 
 If Windows was previously pinned to `192.168.122.10`, run `windows11-set-libvirt-ip.ps1` in an elevated PowerShell inside the VM to reset the VirtIO NIC to DHCP. Then use `ipconfig`, your router leases, or `windows11-network status` to find the Windows LAN IP.
 
-If VNC/console clipboard does not work, attach the script as a virtual CD-ROM from the host:
-
-```sh
-sudo windows11-tools-iso attach
-```
-
-Inside Windows, open the `WIN11_TOOLS` drive and double-click `reset-network-admin.cmd`.
-
 ## Tune this machine
 
 Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
