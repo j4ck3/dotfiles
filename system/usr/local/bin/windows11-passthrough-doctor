@@ -82,6 +82,12 @@ if virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q 'rx7900xtx\.rom'; then
 else
   echo "  Domain XML: ROM NOT in XML — run: sudo windows11-mode passthrough" >&2
 fi
+if virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<rom bar=.on. file=.*/rx7900xtx\\.rom"; then
+  echo "  WARNING: ROM BAR is on — RX 7900 XTX often needs bar='off' for physical output." >&2
+  echo "  Fix (VM off): sudo windows11-mode passthrough" >&2
+elif virsh dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<rom bar=.off. file=.*/rx7900xtx\\.rom"; then
+  echo "  ROM BAR: off (good for RX 7900 XTX passthrough)"
+fi
 echo ""
 
 echo "## Emulated video (must be absent in passthrough)"
@@ -101,19 +107,12 @@ echo "  Groups: ${groups}"
 grep -oE '(intel_iommu|amd_iommu|iommu)=[^[:space:]]+' /proc/cmdline 2>/dev/null | sed 's/^/  /' || echo "  (no iommu on cmdline)" >&2
 echo ""
 
-echo "## Watchdog"
-if [[ -f /run/windows11-watchdog.pid ]]; then
-  echo "  Active pid=$(cat /run/windows11-watchdog.pid) — cancel: windows11-watchdog-cancel"
-else
-  echo "  Not running"
-fi
-echo ""
-
 echo "## Likely causes of black RX 7900"
 echo "  1. Monitor on Intel iGPU port (move cable to RX 7900)"
 echo "  2. Wrong GPU output (try another DP/HDMI on the card)"
 echo "  3. Bad/old VBIOS dump — re-dump with VM off, GPU on amdgpu"
-echo "  4. BIOS: Above 4G Decoding + Re-Size BAR off"
-echo "  5. Windows never got AMD driver (use console mode + VNC first)"
+echo "  4. IOMMU disabled in BIOS/kernel cmdline (no iommu_groups)"
+echo "  5. RX 7900 XTX ROM BAR still on — run: sudo windows11-mode passthrough"
+echo "  6. Windows never got AMD driver (use console mode + VNC first)"
 echo ""
-echo "Recover host desktop: windows11-watchdog-cancel && windows11-revert-host"
+echo "Recover host desktop: windows11-force-stop && sudo windows11-revert-host"

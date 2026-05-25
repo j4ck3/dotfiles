@@ -26,7 +26,6 @@ CONSOLE_USER="${CONSOLE_USER:-jacke}"
 DETACH_SLEEP="${DETACH_SLEEP:-3}"
 SKIP_EFI_FB="${SKIP_EFI_FB:-0}"
 UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
-WATCHDOG_SECONDS="${WATCHDOG_SECONDS:-900}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
 ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
@@ -166,9 +165,9 @@ require_iommu() {
   fi
   echo "ERROR: IOMMU is not active (no /sys/kernel/iommu_groups)." >&2
   if grep -q AuthenticAMD /proc/cpuinfo 2>/dev/null; then
-    echo "  AMD CPU: add amd_iommu=on iommu=pt to kernel cmdline, then reboot." >&2
+    echo "  AMD CPU: add amd_iommu=on to kernel cmdline, then reboot." >&2
   else
-    echo "  Intel CPU: add intel_iommu=on iommu=pt to kernel cmdline, then reboot." >&2
+    echo "  Intel CPU: add intel_iommu=on to kernel cmdline, then reboot." >&2
   fi
   echo "  Helper: sudo vfio-limine-enable" >&2
   grep -oE '(intel_iommu|amd_iommu|iommu)=[^[:space:]]+' /proc/cmdline 2>/dev/null \
@@ -357,39 +356,6 @@ reattach_gpu_to_host() {
   reattach_pci_node "${GPU_NODE}" "${GPU_PCI}"
 }
 
-cancel_watchdog() {
-  local PID_FILE="/run/windows11-watchdog.pid"
-  if [[ ! -f "${PID_FILE}" ]]; then
-    return 0
-  fi
-  local pid
-  pid="$(cat "${PID_FILE}" 2>/dev/null || true)"
-  [[ -n "${pid}" ]] && kill "${pid}" 2>/dev/null || true
-  rm -f "${PID_FILE}"
-  echo "STEP: cancelled watchdog pid=${pid:-none}"
-}
-
-start_watchdog() {
-  local PID_FILE="/run/windows11-watchdog.pid"
-  rm -f "${PID_FILE}"
-  if ! [[ "${WATCHDOG_SECONDS}" =~ ^[0-9]+$ ]] || [[ "${WATCHDOG_SECONDS}" -le 0 ]]; then
-    echo "STEP: watchdog disabled"
-    return 0
-  fi
-  if [[ ! -x /usr/local/bin/windows11-watchdog-revert ]]; then
-    echo "STEP: watchdog skipped (windows11-watchdog-revert missing)"
-    return 0
-  fi
-  local watchdog_pid
-  nohup env DOMAIN="${DOMAIN}" PID_FILE="${PID_FILE}" \
-    bash -c 'sleep "$1"; exec /usr/local/bin/windows11-watchdog-revert' \
-    _ "${WATCHDOG_SECONDS}" </dev/null >/dev/null 2>&1 &
-  watchdog_pid=$!
-  disown -h "${watchdog_pid}" 2>/dev/null || disown "${watchdog_pid}" 2>/dev/null || true
-  echo "${watchdog_pid}" > "${PID_FILE}"
-  echo "STEP: watchdog started pid=${watchdog_pid} seconds=${WATCHDOG_SECONDS}"
-}
-
 gpu_handoff_prepare_begin() {
   passthrough_enabled || {
     echo "Passthrough disabled (${ENABLE_FILE} missing). Hook skipped."
@@ -406,7 +372,6 @@ gpu_handoff_prepare_begin() {
 
   unload_amdgpu_modules
   detach_gpu_from_host
-  start_watchdog
   echo "STEP: prepare/begin complete — libvirt may start QEMU now"
 }
 
@@ -416,7 +381,6 @@ gpu_handoff_release_end() {
     return 0
   fi
 
-  cancel_watchdog
   reattach_gpu_to_host
   load_amdgpu_modules
   echo "STEP: bind_vtconsoles 1"
@@ -431,7 +395,6 @@ gpu_handoff_rollback() {
   local exit_code=$?
   set +e
   echo "ROLLBACK: prepare failed (exit=${exit_code})"
-  cancel_watchdog
   reattach_gpu_to_host
   load_amdgpu_modules
   bind_vtconsoles 1

@@ -7,9 +7,7 @@ export LANG=C
 
 CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 DOMAIN="${DOMAIN:-windows11}"
-WATCHDOG_SECONDS="${WATCHDOG_SECONDS:-900}"
 assume_yes=0
-no_watchdog=0
 
 host_ip() {
   ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1
@@ -17,7 +15,7 @@ host_ip() {
 
 usage() {
   cat <<EOF
-Usage: ${0##*/} [--yes] [--no-watchdog] [--watchdog-seconds N]
+Usage: ${0##*/} [--yes]
 
 Starts ${DOMAIN} in GPU passthrough mode.
 
@@ -27,13 +25,10 @@ IMPORTANT — single monitor on the AMD GPU:
 
   Before starting, use ONE of:
     • SSH from phone/laptop:  ssh YOU@HOST 'windows11-force-stop'
-    • Auto-stop timer (default ${WATCHDOG_SECONDS}s)
     • Second monitor on Intel motherboard HDMI (host rescue screen)
 
 Options:
   --yes, -y             Start without confirmation prompt
-  --no-watchdog         Disable auto-stop timer
-  --watchdog-seconds N  Auto-stop after N seconds (default: ${WATCHDOG_SECONDS})
 
 If Windows appears: shut down from Start menu (do not hard power-off the PC).
 EOF
@@ -42,11 +37,6 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes|-y) assume_yes=1; shift ;;
-    --no-watchdog) no_watchdog=1; shift ;;
-    --watchdog-seconds)
-      WATCHDOG_SECONDS="${2:?}"
-      shift 2
-      ;;
     -h|--help) usage; exit 0 ;;
     *)
       echo "Unknown option: $1" >&2
@@ -83,9 +73,8 @@ cat <<EOF
 
 === Passthrough start checklist ===
   Monitor:     cable on RX 7900 only (Intel/iGPU will stay black — not Windows)
-  BIOS:        Above 4G + Re-Size BAR on
+  BIOS:        IOMMU/VT-d + Above 4G on
   Recovery:    ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-force-stop'
-                 ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-watchdog-cancel'
                  (if display broken after stop) ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'sudo windows11-revert-host'
 EOF
 
@@ -93,14 +82,6 @@ if systemctl is-active --quiet sshd 2>/dev/null; then
   echo "  SSH:         active"
 else
   echo "  SSH:         NOT RUNNING — enable sshd before passthrough!" >&2
-fi
-
-if [[ "${no_watchdog}" -eq 0 ]]; then
-  echo "  Watchdog:    auto-stop in ${WATCHDOG_SECONDS}s (cancel via SSH)"
-  export WINDOWS11_WATCHDOG_SECONDS="${WATCHDOG_SECONDS}"
-else
-  echo "  Watchdog:    disabled"
-  export WINDOWS11_WATCHDOG_SECONDS=0
 fi
 
 if [[ "${assume_yes}" -eq 0 ]]; then

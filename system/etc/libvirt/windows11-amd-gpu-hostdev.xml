@@ -3,7 +3,8 @@
 
   Install VBIOS once: sudo windows11-dump-vbios
 
-  BIOS for passthrough: Above 4G Decoding + Re-Size BAR enabled.
+  BIOS for passthrough: IOMMU + Above 4G Decoding enabled.
+  RX 7900 XTX black-screen fix: keep explicit VBIOS file, but hide ROM BAR.
 
   NOTE: <rom> must be a direct child of <hostdev>, NOT inside <driver>.
 -->
@@ -12,7 +13,7 @@
   <source>
     <address domain="0x0000" bus="0x03" slot="0x00" function="0x0"/>
   </source>
-  <rom bar="on" file="/var/lib/libvirt/vbios/rx7900xtx.rom"/>
+  <rom bar="off" file="/var/lib/libvirt/vbios/rx7900xtx.rom"/>
 </hostdev>
 <hostdev mode="subsystem" type="pci" managed="yes">
   <source>

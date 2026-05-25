@@ -30,6 +30,7 @@ Hook log: `/var/log/windows11-passthrough-hook.log`
 | `windows11-console`               | **Daily** — VNC/QXL; host keeps GPU + Hyprland   |
 | `sudo windows11-mode console`     | Switch domain to VNC                             |
 | `sudo windows11-mode passthrough` | GPU passthrough XML + enable hook file           |
+| `sudo windows11-mode passthrough-evdev` | GPU + evdev keyboard/mouse passthrough    |
 | `windows11-start --yes`           | Start passthrough (runs **prepare** hook first)  |
 | `windows11-stop`                  | Shutdown VM → **release** hook restores Hyprland |
 | `windows11-force-stop`            | Kill QEMU if stuck                               |
@@ -48,8 +49,7 @@ prepare/begin/start.sh
     ├─ systemctl stop display-manager
     ├─ unbind vtconsoles / EFI fb
     ├─ modprobe -r amdgpu       (optional, gpu-handoff.conf)
-    ├─ virsh nodedev-detach GPU + audio
-    └─ start 15 min watchdog
+    └─ virsh nodedev-detach GPU + audio
     │
     ▼
 QEMU starts → Windows on RX 7900 monitor
@@ -59,7 +59,6 @@ windows11-stop  (or Start menu shutdown in Windows)
     │
     ▼
 release/end/revert.sh
-    ├─ cancel watchdog
     ├─ virsh nodedev-reattach audio + GPU
     ├─ modprobe amdgpu
     └─ systemctl start display-manager  → Hyprland login
@@ -69,11 +68,11 @@ release/end/revert.sh
 
 ## First-time passthrough checklist
 
-1. BIOS: Above 4G Decoding, Re-Size BAR, **VT-d** (Intel) or **IOMMU / AMD-Vi** (AMD) **enabled**
+1. BIOS: Above 4G Decoding, **VT-d** (Intel) or **IOMMU / AMD-Vi** (AMD) **enabled**
 2. Kernel: `sudo vfio-limine-enable --iommu-only` then reboot (must see IOMMU groups > 0)
 3. `sudo windows11-dump-vbios`
 4. Windows in **console mode** first: AMD driver, Fast Startup off, clean shutdown
-5. `sudo windows11-mode passthrough`
+5. `sudo windows11-mode passthrough` or `sudo windows11-mode passthrough-evdev`
 6. `windows11-start --yes`
 7. Recovery: SSH → `windows11-force-stop` then `windows11-revert-host` (auto-sudo)
 
@@ -86,7 +85,8 @@ Your board has **Intel iGPU + RX 7900**. During passthrough the **7900 goes to t
 1. Plug the monitor into the **RX 7900** (not ASUS rear HDMI from Intel).
 2. Run `windows11-passthrough-doctor` while the VM is running (GPU driver should be `vfio-pci`).
 3. First-time Windows: use **console mode** (`windows11-console`) and install the AMD driver via VNC before relying on passthrough output.
-4. Re-dump VBIOS if the 7900 stays black with the cable on the card: `sudo windows11-dump-vbios` (VM off, GPU on host).
+4. Re-apply passthrough XML if the 7900 stays black with the cable on the card: `sudo windows11-mode passthrough` (keeps explicit VBIOS, disables ROM BAR).
+5. Re-dump VBIOS if still black: `sudo windows11-dump-vbios` (VM off, GPU on host).
 
 ## VNC (no passthrough)
 
@@ -128,7 +128,6 @@ Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
 | `DETACH_SLEEP`     | 3       | Pause after stopping DM                                  |
 | `SKIP_EFI_FB`      | 0       | Set `1` to skip EFI framebuffer unbind (some AMD boards) |
 | `UNLOAD_AMGPU`     | 1       | `modprobe -r amdgpu` before detach                       |
-| `WATCHDOG_SECONDS` | 900     | Auto `windows11-watchdog-revert` if VM left running      |
 
 
 ## References
@@ -144,4 +143,5 @@ Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
 | ------------------------------- | ---------------------------- |
 | `windows11-amd-gpu-hostdev.xml` | GPU + HDMI audio + VBIOS ROM |
 | `windows11-passthrough-usb.xml` | Optional USB HID passthrough |
+| `windows11-passthrough-evdev.xml` | Optional evdev keyboard/mouse passthrough |
 | `windows11/gpu-handoff.sh`      | Shared pre/post logic        |

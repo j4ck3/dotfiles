@@ -20,12 +20,6 @@ for pid in $(pgrep -f '/hooks/qemu.d/windows11/prepare/begin/start.sh' 2>/dev/nu
   kill -KILL "${pid}" 2>/dev/null || true
 done
 
-if [[ -f /run/windows11-watchdog.pid ]]; then
-  wp="$(cat /run/windows11-watchdog.pid 2>/dev/null || true)"
-  [[ -n "${wp}" ]] && kill "${wp}" 2>/dev/null || true
-  rm -f /run/windows11-watchdog.pid
-fi
-
 if command -v timeout >/dev/null; then
   if timeout 5 virsh domstate "${DOMAIN}" 2>/dev/null | grep -q running; then
     echo "Stopping running VM..."

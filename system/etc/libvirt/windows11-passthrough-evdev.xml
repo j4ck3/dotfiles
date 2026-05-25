@@ -1,0 +1,15 @@
+<!--
+  Evdev inputs for passthrough gaming.
+  Uses stable /dev/input/by-id paths so event numbers may change safely.
+
+  Keyboard: Keychron Q1
+  Mouse: Razer Viper Ultimate wired (1532:007a)
+
+  Merged by: sudo windows11-mode passthrough-evdev
+-->
+<input type="evdev">
+  <source dev="/dev/input/by-id/usb-Keychron_Keychron_Q1-event-kbd" grab="all" repeat="on"/>
+</input>
+<input type="evdev">
+  <source dev="/dev/input/by-id/usb-Razer_Razer_Viper_Ultimate_000000000000-event-mouse"/>
+</input>

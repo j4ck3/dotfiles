@@ -40,6 +40,7 @@ Commands:
   status            Show current mode and pending VM/device changes
   console           VNC/QXL; host keeps GPU and USB keyboard/mouse (daily use)
   passthrough       GPU + audio; enables pre/post hooks (monitor on RX 7900)
+  passthrough-evdev GPU + audio + evdev keyboard/mouse to VM
   passthrough-usb   GPU + audio + USB keyboard/mouse to VM
   network           Fix networking only (user-mode NAT)
 
@@ -333,7 +334,11 @@ cmd_status() {
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && ! has_looking_glass && ! has_evdev_input; then
     echo "Mode:        passthrough (expected)"
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && (has_looking_glass || has_evdev_input); then
-    echo "Mode:        passthrough + legacy LG/evdev (run: sudo $0 passthrough to clean up)"
+    if has_evdev_input && ! has_looking_glass; then
+      echo "Mode:        passthrough+evdev (expected)"
+    else
+      echo "Mode:        passthrough + legacy LG/evdev (run: sudo $0 passthrough to clean up)"
+    fi
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && has_usb_hostdev; then
     echo "Mode:        passthrough+usb"
   else
@@ -390,6 +395,7 @@ for hostdev in devices.findall("hostdev"):
         ET.SubElement(hostdev, "driver", name="vfio")
         changed = True
     # <rom> must be under <hostdev>, not <driver> — libvirt drops it otherwise.
+    # RX 7900 XTX often needs an explicit VBIOS file with ROM BAR hidden.
     driver = hostdev.find("driver")
     if driver is not None:
         wrong_rom = driver.find("rom")
@@ -398,10 +404,10 @@ for hostdev in devices.findall("hostdev"):
             changed = True
     rom = hostdev.find("rom")
     if rom is None:
-        rom = ET.SubElement(hostdev, "rom", bar="on", file=rom_path)
+        rom = ET.SubElement(hostdev, "rom", bar="off", file=rom_path)
         changed = True
-    elif rom.get("file") != rom_path or rom.get("bar") != "on":
-        rom.set("bar", "on")
+    elif rom.get("file") != rom_path or rom.get("bar") != "off":
+        rom.set("bar", "off")
         rom.set("file", rom_path)
         changed = True
 tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
@@ -444,6 +450,56 @@ add_usb_hostdevs() {
   merge_hostdev_fragment "${DOTFILES_LIBVIRT}/windows11-passthrough-usb.xml"
 }
 
+add_evdev_inputs() {
+  [[ -f "${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml" ]] || {
+    echo "Missing ${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml" >&2
+    exit 1
+  }
+  local xml tmp fragment
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  fragment="${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${fragment}" "${tmp}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+domain_path, fragment_path, out_path = sys.argv[1:4]
+domain = ET.parse(domain_path)
+root = domain.getroot()
+devices = root.find("devices")
+if devices is None:
+    sys.exit("no <devices> in domain XML")
+
+fragment = ET.fromstring(f"<devices>{open(fragment_path, encoding='utf-8').read()}</devices>")
+existing = {
+    source.get("dev")
+    for inp in devices.findall("input")
+    if inp.get("type") == "evdev"
+    for source in [inp.find("source")]
+    if source is not None
+}
+changed = False
+for inp in fragment.findall("input"):
+    source = inp.find("source")
+    if source is None:
+        continue
+    dev = source.get("dev")
+    if not dev or dev in existing:
+        continue
+    devices.append(inp)
+    existing.add(dev)
+    changed = True
+
+domain.write(out_path, encoding="unicode", xml_declaration=True)
+sys.exit(0)
+PY
+  if ! cmp -s "${xml}" "${tmp}"; then
+    virsh_cmd define "${tmp}"
+  fi
+  rm -f "${xml}" "${tmp}"
+}
+
 apply_console_devices() {
   while has_graphics; do
     virt_xml --remove-device --graphics 1 --define 2>/dev/null || break
@@ -479,6 +535,7 @@ cmd_console() {
 
 apply_passthrough_devices() {
   local with_usb="${1:-0}"
+  local with_evdev="${2:-0}"
   while has_graphics; do
     virt_xml --remove-device --graphics 1 --define 2>/dev/null || break
   done
@@ -495,10 +552,13 @@ apply_passthrough_devices() {
     add_pci_hostdevs
   fi
   ensure_gpu_vbios_in_xml || true
+  apply_domain_mode_patch passthrough
   if [[ "${with_usb}" -eq 1 ]]; then
     add_usb_hostdevs
   else
-    apply_domain_mode_patch passthrough
+    if [[ "${with_evdev}" -eq 1 ]]; then
+      add_evdev_inputs
+    fi
   fi
 }
 
@@ -517,18 +577,20 @@ verify_passthrough_xml() {
 
 cmd_passthrough() {
   local with_usb=0
+  local with_evdev=0
   [[ "${1:-}" == "--usb" ]] && with_usb=1
+  [[ "${1:-}" == "--evdev" ]] && with_evdev=1
   require_shutoff
   enable_hook
   # Network first: virt-xml --edit --network can drop <hostdev>/<rom> if run after merge.
   cmd_network
-  apply_passthrough_devices "${with_usb}"
+  apply_passthrough_devices "${with_usb}" "${with_evdev}"
   ensure_gpu_vbios_in_xml || true
   verify_passthrough_xml
   echo ""
   echo "Passthrough ready. Before start, confirm:"
   echo "  - Monitor cable on the AMD RX 7900 (not Intel motherboard HDMI)"
-  echo "  - BIOS: Above 4G Decoding + Re-Size BAR enabled"
+  echo "  - BIOS: IOMMU/VT-d + Above 4G Decoding enabled"
   echo "  - VBIOS: sudo windows11-dump-vbios  (if not done)"
   echo "  - Disk:  sudo windows11-disk check"
   echo ""
@@ -537,7 +599,13 @@ cmd_passthrough() {
   echo "  Stop:  ssh to host → windows11-stop"
   if [[ "${1:-}" == "--usb" ]]; then
     echo "  USB is passed to the VM — host has no keyboard/mouse on Linux."
+  elif [[ "${1:-}" == "--evdev" ]]; then
+    echo "  Evdev input is passed to the VM from /dev/input/by-id."
   fi
+}
+
+cmd_passthrough_evdev() {
+  cmd_passthrough --evdev
 }
 
 cmd_passthrough_usb() {
@@ -551,7 +619,7 @@ main() {
     status)
       cmd_status
       ;;
-    console|passthrough|passthrough-usb|network)
+    console|passthrough|passthrough-evdev|passthrough-usb|network)
       if [[ "${EUID}" -ne 0 ]]; then
         echo "Run as root: sudo $0 ${cmd}" >&2
         exit 1
@@ -559,6 +627,7 @@ main() {
       case "${cmd}" in
         console) cmd_console ;;
         passthrough) cmd_passthrough ;;
+        passthrough-evdev) cmd_passthrough_evdev ;;
         passthrough-usb) cmd_passthrough_usb ;;
         network) cmd_network ;;
       esac
