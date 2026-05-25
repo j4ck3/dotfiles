@@ -1,13 +1,22 @@
 # CapsLock to Escape
 
-This directory keeps the root-owned files needed to make `CapsLock` behave like `Escape` across both graphical sessions and Linux virtual consoles.
+This directory keeps the root-owned files needed to make `CapsLock` behave like `Escape` across Linux graphical sessions, Linux virtual consoles, and native Windows.
 
 ## Files
+
+### Linux
 
 - `etc/X11/xorg.conf.d/00-keyboard.conf`: persistent XKB defaults for graphical sessions.
 - `etc/vconsole.conf`: points the Linux console at the custom keymap.
 - `usr/local/share/kbd/keymaps/capsescape.map`: remaps `CapsLock` to `Escape` for TTYs.
 - `install-capsescape.sh`: installs the tracked files into `/etc` and `/usr/local/share`.
+
+### Windows
+
+- `windows/install-capsescape.ps1`: registry Scancode Map (`CapsLock` → `Escape`).
+- `windows/remove-capsescape.ps1`: removes the Scancode Map.
+- `windows/install-disable-win-space.ps1`: blocks `Win+Space` (input language flyout) via AutoHotkey.
+- `windows/remove-disable-win-space.ps1`: removes the block.
 
 ## Account lockout (`faillock`)
 
@@ -29,17 +38,52 @@ sudo stow -v -R --adopt -t / faillock
 
 ## Install
 
+### Linux
+
 From the repo root, run:
 
 ```sh
 bash system/install-capsescape.sh
 ```
 
+### Windows
+
+From an elevated PowerShell session:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-capsescape.ps1"
+```
+
+Sign out or reboot after installing. To undo:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\remove-capsescape.ps1"
+```
+
+Block `Win+Space` (no built-in Windows off switch):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-disable-win-space.ps1"
+```
+
+Undo:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\remove-disable-win-space.ps1"
+```
+
 ## Verify
+
+### Linux
 
 - In Hyprland or another graphical session, press `CapsLock` and confirm it sends `Escape`.
 - In a TTY, press `CapsLock` and confirm it sends `Escape`.
 - Check the installed files in `/etc/X11/xorg.conf.d/00-keyboard.conf` and `/etc/vconsole.conf`.
+
+### Windows
+
+- After sign-out or reboot, press `CapsLock` and confirm it sends `Escape`.
+- Registry value: `HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout\Scancode Map` (binary should end with `01003a00`, not `3a000100`).
 
 ## GPU undervolt + fan curve (XFX Merc RX 7900 XTX)
 
