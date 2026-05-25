@@ -15,8 +15,8 @@ This directory keeps the root-owned files needed to make `CapsLock` behave like 
 
 - `windows/install-capsescape.ps1`: registry Scancode Map (`CapsLock` → `Escape`).
 - `windows/remove-capsescape.ps1`: removes the Scancode Map.
-- `windows/install-disable-win-space.ps1`: blocks `Win+Space` (input language flyout) via AutoHotkey.
-- `windows/remove-disable-win-space.ps1`: removes the block.
+- `../winget-packages.txt`: winget package IDs (one per line).
+- `windows/install-apps.ps1`: installs packages from `winget-packages.txt`.
 
 ## Account lockout (`faillock`)
 
@@ -60,17 +60,19 @@ Sign out or reboot after installing. To undo:
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\remove-capsescape.ps1"
 ```
 
-Block `Win+Space` (no built-in Windows off switch):
+Install apps from `winget-packages.txt` (no elevation required):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-disable-win-space.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-apps.ps1"
 ```
 
-Undo:
+Preview only:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\remove-disable-win-space.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-apps.ps1" -DryRun
 ```
+
+Not in winget (install separately): AMD drivers, Autodesk Fusion, Steam games (e.g. Apex Legends).
 
 ## Verify
 
@@ -83,7 +85,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windo
 ### Windows
 
 - After sign-out or reboot, press `CapsLock` and confirm it sends `Escape`.
-- Registry value: `HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout\Scancode Map` (binary should end with `01003a00`, not `3a000100`).
+- Registry value: `HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layout\Scancode Map`.
 
 ## GPU undervolt + fan curve (XFX Merc RX 7900 XTX)
 

@@ -14,6 +14,8 @@ Personal configs for **CachyOS** (Arch-based).
 
 **Network / infra:** Docker, Netbird.
 
+**Windows:** `winget-packages.txt` + `system/windows/install-apps.ps1` for bulk winget installs on a native Windows setup or VM.
+
 ## Hyprland keybinds
 
 Source of truth: `[hypr/.config/hypr/bindings.conf](hypr/.config/hypr/bindings.conf)`. Below matches the descriptions in that file. Workspace keys use `odiaeresis` (ö on a Swedish layout) and `code:14`–`code:18` for 5–9; those map to physical keys depending on your layout.

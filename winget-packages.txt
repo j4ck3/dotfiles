@@ -1,0 +1,34 @@
+# Windows packages (winget). One PackageIdentifier per line.
+# Install:
+#   powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\dotfiles\system\windows\install-apps.ps1"
+#
+# Search:  winget search <name>
+# Export:   winget export -o install-list.json --include-versions
+
+# Dev & editors
+Git.Git
+Anysphere.Cursor
+ZedIndustries.Zed
+T3Tools.T3Code
+
+# Shell & launcher
+AutoHotkey.AutoHotkey
+Flow-Launcher.Flow-Launcher
+
+# Desktop tweaks
+valinet.ExplorerPatcher
+RamenSoftware.Windhawk
+JasperDevs.OddSnap
+
+# Apps
+Discord.Discord
+Spotify.Spotify
+Valve.Steam
+ElectronicArts.EADesktop
+ImputNet.Helium
+
+# Network & remote
+Netbird.Netbird
+
+# Utilities
+REALiX.HWiNFO
