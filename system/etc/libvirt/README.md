@@ -95,6 +95,34 @@ sudo windows11-mode console
 windows11-console
 ```
 
+## VM detection hardening
+
+Passthrough mode applies only the anti-detection XML needed by the current pafish
+run:
+
+- hide KVM with `<kvm><hidden state="on"/></kvm>`
+- disable the CPUID hypervisor feature bit
+- spoof the Hyper-V vendor ID from `KVM Hv` to `GenuineIntel`
+- provide SMBIOS sysinfo so Windows does not report a BOCHS BIOS version
+
+It deliberately does **not** change VirtIO storage/network, MAC address, USB
+devices, or QEMU itself. Pafish already passed those checks, and changing them
+would add driver and boot risk without evidence.
+
+After applying passthrough XML, rerun pafish in Windows and expect these to
+change to OK:
+
+- `Checking hypervisor bit in cpuid feature bits`
+- `Bochs detection: SystemBiosVersion`
+- the CPU header should no longer show `Hypervisor: KVM Hv`
+
+Expected remaining pafish traces:
+
+- `rdtsc forcing VM exit` — timing-level VM behavior, not fixed by safe XML
+  changes
+- mouse/dialog checks — rerun after real mouse clicks and dialog interaction
+- uptime — rerun after the VM has been running longer
+
 ## LAN access from other PCs
 
 Use a real Linux bridge, not libvirt `default` NAT, when the Windows VM should be reachable from other machines on the LAN:

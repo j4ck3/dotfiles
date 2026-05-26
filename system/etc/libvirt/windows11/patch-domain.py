@@ -164,6 +164,142 @@ def normalize_amd_gpu_hostdev_topology(devices: ET.Element) -> bool:
     return changed
 
 
+def ensure_child(parent: ET.Element, tag: str, **attrs: str) -> tuple[ET.Element, bool]:
+    child = parent.find(tag)
+    if child is None:
+        return ET.SubElement(parent, tag, **attrs), True
+
+    changed = False
+    for key, value in attrs.items():
+        if child.get(key) != value:
+            child.set(key, value)
+            changed = True
+    return child, changed
+
+
+def ensure_passthrough_cpu(root: ET.Element) -> bool:
+    changed = False
+    cpu = root.find("cpu")
+    if cpu is None:
+        cpu = ET.SubElement(root, "cpu", mode="host-passthrough", check="none", migratable="off")
+        changed = True
+    else:
+        wanted = {
+            "mode": "host-passthrough",
+            "check": "none",
+            "migratable": "off",
+        }
+        for key, value in wanted.items():
+            if cpu.get(key) != value:
+                cpu.set(key, value)
+                changed = True
+
+    hypervisor = None
+    for feature in cpu.findall("feature"):
+        if feature.get("name") == "hypervisor":
+            hypervisor = feature
+            break
+    if hypervisor is None:
+        ET.SubElement(cpu, "feature", policy="disable", name="hypervisor")
+        changed = True
+    elif hypervisor.get("policy") != "disable":
+        hypervisor.set("policy", "disable")
+        changed = True
+
+    return changed
+
+
+def ensure_passthrough_features(root: ET.Element) -> bool:
+    changed = False
+    features, did_change = ensure_child(root, "features")
+    changed |= did_change
+
+    kvm, did_change = ensure_child(features, "kvm")
+    changed |= did_change
+    hidden, did_change = ensure_child(kvm, "hidden", state="on")
+    changed |= did_change
+    for child in list(kvm.findall("hidden")):
+        if child is not hidden:
+            kvm.remove(child)
+            changed = True
+
+    hyperv, did_change = ensure_child(features, "hyperv", mode="custom")
+    changed |= did_change
+    vendor_id, did_change = ensure_child(
+        hyperv, "vendor_id", state="on", value="GenuineIntel"
+    )
+    changed |= did_change
+    for child in list(hyperv.findall("vendor_id")):
+        if child is not vendor_id:
+            hyperv.remove(child)
+            changed = True
+
+    return changed
+
+
+def set_entry(parent: ET.Element, name: str, value: str) -> bool:
+    for entry in parent.findall("entry"):
+        if entry.get("name") == name:
+            if (entry.text or "") != value:
+                entry.text = value
+                return True
+            return False
+    entry = ET.SubElement(parent, "entry", name=name)
+    entry.text = value
+    return True
+
+
+def ensure_smbios_sysinfo(root: ET.Element) -> bool:
+    changed = False
+    os_el = root.find("os")
+    if os_el is None:
+        os_el = ET.Element("os")
+        root.insert(0, os_el)
+        changed = True
+    smbios, did_change = ensure_child(os_el, "smbios", mode="sysinfo")
+    changed |= did_change
+    for child in list(os_el.findall("smbios")):
+        if child is not smbios:
+            os_el.remove(child)
+            changed = True
+
+    sysinfo = root.find("sysinfo")
+    if sysinfo is None:
+        sysinfo = ET.Element("sysinfo", type="smbios")
+        root.insert(list(root).index(os_el) + 1, sysinfo)
+        changed = True
+    elif sysinfo.get("type") != "smbios":
+        sysinfo.set("type", "smbios")
+        changed = True
+
+    values = {
+        "bios": {
+            "vendor": "American Megatrends International, LLC.",
+            "version": "2802",
+            "date": "10/27/2023",
+        },
+        "system": {
+            "manufacturer": "ASUSTeK COMPUTER INC.",
+            "product": "ROG STRIX Z790-E GAMING WIFI",
+            "version": "Rev 1.xx",
+            "serial": "System Serial Number",
+        },
+        "baseBoard": {
+            "manufacturer": "ASUSTeK COMPUTER INC.",
+            "product": "ROG STRIX Z790-E GAMING WIFI",
+            "version": "Rev 1.xx",
+            "serial": "Base Board Serial Number",
+        },
+    }
+    for section_name, entries in values.items():
+        section, did_change = ensure_child(sysinfo, section_name)
+        changed |= did_change
+        for key, value in entries.items():
+            changed |= set_entry(section, key, value)
+
+    return changed
+
+
 def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
     root = tree.getroot()
     devices = root.find("devices")
@@ -181,6 +317,9 @@ def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
         changed |= add_console_inputs(devices)
         changed |= set_memballoon(devices, "none")
         changed |= normalize_amd_gpu_hostdev_topology(devices)
+        changed |= ensure_passthrough_cpu(root)
+        changed |= ensure_passthrough_features(root)
+        changed |= ensure_smbios_sysinfo(root)
     elif mode == "console":
         changed |= remove_emulated_inputs(devices)
         changed |= add_console_inputs(devices)

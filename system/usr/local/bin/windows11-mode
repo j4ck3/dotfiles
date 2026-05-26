@@ -116,6 +116,35 @@ has_virtual_sound() {
   virsh_cmd dumpxml "${DOMAIN}" | grep -q "<sound "
 }
 
+has_kvm_hidden() {
+  virsh_cmd dumpxml "${DOMAIN}" | awk '
+    /<kvm>/ { in_kvm=1 }
+    in_kvm && /<hidden state=.on./ { found=1 }
+    /<\/kvm>/ { in_kvm=0 }
+    END { exit !found }
+  '
+}
+
+has_hypervisor_disabled() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<feature policy='disable' name='hypervisor'"
+}
+
+has_hyperv_vendor_spoof() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<vendor_id state='on' value='GenuineIntel'"
+}
+
+has_smbios_sysinfo() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<smbios mode='sysinfo'"
+}
+
+has_clean_bios_strings() {
+  ! virsh_cmd dumpxml "${DOMAIN}" | awk '
+    /<sysinfo / { in_sysinfo=1 }
+    in_sysinfo && /<\/sysinfo>/ { in_sysinfo=0 }
+    in_sysinfo { print }
+  ' | grep -qiE 'BOCHS|QEMU|SeaBIOS|Tianocore|EDK II|Virt-Manager|KVM'
+}
+
 has_gpu_vbios_rom() {
   virsh_cmd dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'
 }
@@ -325,6 +354,11 @@ cmd_status() {
   echo "Evdev:       $(has_evdev_input && echo yes || echo no)"
   echo "LookingGlass:$(has_looking_glass && echo yes || echo no) (should be no)"
   echo "Virt sound:  $(has_virtual_sound && echo yes || echo no) (should be no in passthrough)"
+  echo "KVM hidden:  $(has_kvm_hidden && echo yes || echo no) (should be yes in passthrough)"
+  echo "CPU hv off:  $(has_hypervisor_disabled && echo yes || echo no) (should be yes in passthrough)"
+  echo "HV vendor:   $(has_hyperv_vendor_spoof && echo GenuineIntel || echo not-spoofed) (should be GenuineIntel)"
+  echo "SMBIOS:      $(has_smbios_sysinfo && echo sysinfo || echo default) (should be sysinfo)"
+  echo "BIOS strings:$(has_clean_bios_strings && echo clean || echo vm-like) (should be clean)"
   echo "NIC count:   $(network_count)"
   if has_gpu_audio_only; then
     echo "WARNING:     GPU audio passed through but NOT the GPU — broken; run: sudo $0 passthrough"
@@ -570,6 +604,26 @@ verify_passthrough_xml() {
   fi
   if ! has_gpu_vbios_rom; then
     echo "ERROR: GPU VBIOS ROM missing from domain XML." >&2
+    exit 1
+  fi
+  if ! has_kvm_hidden; then
+    echo "ERROR: KVM hidden flag missing from domain XML." >&2
+    exit 1
+  fi
+  if ! has_hypervisor_disabled; then
+    echo "ERROR: CPU hypervisor feature is not disabled in domain XML." >&2
+    exit 1
+  fi
+  if ! has_hyperv_vendor_spoof; then
+    echo "ERROR: Hyper-V vendor_id is not spoofed to GenuineIntel." >&2
+    exit 1
+  fi
+  if ! has_smbios_sysinfo; then
+    echo "ERROR: SMBIOS sysinfo mode missing from domain XML." >&2
+    exit 1
+  fi
+  if ! has_clean_bios_strings; then
+    echo "ERROR: Domain XML still contains VM-like BIOS strings." >&2
     exit 1
   fi
   echo "Verified: GPU hostdev + VBIOS ROM in domain XML."
