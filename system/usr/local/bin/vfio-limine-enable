@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Enable kernel cmdline options required for VFIO/IOMMU passthrough on Limine.
+set -euo pipefail
+
+iommu_only=0
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} [--iommu-only]
+
+Adds the correct IOMMU kernel parameter to /etc/default/limine and runs
+limine-update. Reboot after this, then verify:
+
+  windows11-passthrough-doctor
+
+Options:
+  --iommu-only    Accepted for compatibility; this helper only edits IOMMU args
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --iommu-only) iommu_only=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Run as root: sudo ${0##*/} --iommu-only" >&2
+  exit 1
+fi
+
+if grep -q AuthenticAMD /proc/cpuinfo 2>/dev/null; then
+  iommu_arg="amd_iommu=on"
+else
+  iommu_arg="intel_iommu=on"
+fi
+args=("${iommu_arg}" "iommu=pt")
+limine_file="/etc/default/limine"
+
+install -d -m 0755 /etc/default /etc/modprobe.d
+if [[ ! -f "${limine_file}" ]]; then
+  printf 'KERNEL_CMDLINE[default]+="%s"\n' "${args[*]}" > "${limine_file}"
+else
+  tmp="$(mktemp)"
+  python3 - "${limine_file}" "${tmp}" "${args[@]}" <<'PY'
+import re
+import sys
+
+src, dst, *args = sys.argv[1:]
+text = open(src, encoding="utf-8").read()
+lines = text.splitlines()
+pattern = re.compile(r'^(KERNEL_CMDLINE\[default\]\+?=)(["\'])(.*)(\2)\s*$')
+changed = False
+out = []
+
+for line in lines:
+    match = pattern.match(line)
+    if not match:
+        out.append(line)
+        continue
+    prefix, quote, body, _ = match.groups()
+    tokens = body.split()
+    for arg in args:
+        if arg not in tokens:
+            tokens.append(arg)
+    out.append(f"{prefix}{quote}{' '.join(tokens)}{quote}")
+    changed = True
+
+if not changed:
+    out.append(f'KERNEL_CMDLINE[default]+="{" ".join(args)}"')
+
+open(dst, "w", encoding="utf-8").write("\n".join(out) + "\n")
+PY
+  install -m 0644 "${tmp}" "${limine_file}"
+  rm -f "${tmp}"
+fi
+
+cat > /etc/modprobe.d/vfio-windows11.conf <<'EOF'
+# AMD RX 7900 passthrough helpers
+options vfio-pci disable_idle_d3=1
+EOF
+
+if command -v limine-update >/dev/null; then
+  limine-update
+else
+  echo "limine-update not found; regenerate Limine entries manually." >&2
+  exit 1
+fi
+
+echo "IOMMU args enabled: ${args[*]}"
+echo "Reboot, then run: windows11-passthrough-doctor"

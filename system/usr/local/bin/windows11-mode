@@ -129,8 +129,8 @@ has_hypervisor_disabled() {
   virsh_cmd dumpxml "${DOMAIN}" | grep -q "<feature policy='disable' name='hypervisor'"
 }
 
-has_hyperv_vendor_spoof() {
-  virsh_cmd dumpxml "${DOMAIN}" | grep -q "<vendor_id state='on' value='GenuineIntel'"
+has_no_hyperv_features() {
+  ! virsh_cmd dumpxml "${DOMAIN}" | grep -q "<hyperv "
 }
 
 has_smbios_sysinfo() {
@@ -356,7 +356,7 @@ cmd_status() {
   echo "Virt sound:  $(has_virtual_sound && echo yes || echo no) (should be no in passthrough)"
   echo "KVM hidden:  $(has_kvm_hidden && echo yes || echo no) (should be yes in passthrough)"
   echo "CPU hv off:  $(has_hypervisor_disabled && echo yes || echo no) (should be yes in passthrough)"
-  echo "HV vendor:   $(has_hyperv_vendor_spoof && echo GenuineIntel || echo not-spoofed) (should be GenuineIntel)"
+  echo "Hyper-V:     $(has_no_hyperv_features && echo off || echo on) (should be off in passthrough)"
   echo "SMBIOS:      $(has_smbios_sysinfo && echo sysinfo || echo default) (should be sysinfo)"
   echo "BIOS strings:$(has_clean_bios_strings && echo clean || echo vm-like) (should be clean)"
   echo "NIC count:   $(network_count)"
@@ -614,8 +614,8 @@ verify_passthrough_xml() {
     echo "ERROR: CPU hypervisor feature is not disabled in domain XML." >&2
     exit 1
   fi
-  if ! has_hyperv_vendor_spoof; then
-    echo "ERROR: Hyper-V vendor_id is not spoofed to GenuineIntel." >&2
+  if ! has_no_hyperv_features; then
+    echo "ERROR: Hyper-V enlightenments are still present in domain XML." >&2
     exit 1
   fi
   if ! has_smbios_sysinfo; then

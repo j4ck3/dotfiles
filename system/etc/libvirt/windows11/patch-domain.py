@@ -223,15 +223,15 @@ def ensure_passthrough_features(root: ET.Element) -> bool:
             kvm.remove(child)
             changed = True
 
-    hyperv, did_change = ensure_child(features, "hyperv", mode="custom")
+    for hyperv in list(features.findall("hyperv")):
+        features.remove(hyperv)
+        changed = True
+
+    vmport, did_change = ensure_child(features, "vmport", state="off")
     changed |= did_change
-    vendor_id, did_change = ensure_child(
-        hyperv, "vendor_id", state="on", value="GenuineIntel"
-    )
-    changed |= did_change
-    for child in list(hyperv.findall("vendor_id")):
-        if child is not vendor_id:
-            hyperv.remove(child)
+    for child in list(features.findall("vmport")):
+        if child is not vmport:
+            features.remove(child)
             changed = True
 
     return changed

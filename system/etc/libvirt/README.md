@@ -69,14 +69,14 @@ release/end/revert.sh
 ## First-time passthrough checklist
 
 1. BIOS: Above 4G Decoding, **VT-d** (Intel) or **IOMMU / AMD-Vi** (AMD) **enabled**
-2. Kernel: `sudo vfio-limine-enable --iommu-only` then reboot (must see IOMMU groups > 0)
+2. Kernel: `sudo ~/dotfiles/system/usr/local/bin/vfio-limine-enable --iommu-only` then reboot (must see IOMMU groups > 0)
 3. `sudo windows11-dump-vbios`
 4. Windows in **console mode** first: AMD driver, Fast Startup off, clean shutdown
 5. `sudo windows11-mode passthrough` or `sudo windows11-mode passthrough-evdev`
 6. `windows11-start --yes`
 7. Recovery: SSH → `windows11-force-stop` then `windows11-revert-host` (auto-sudo)
 
-If `virsh nodedev-detach` says VFIO is not supported: confirm IOMMU groups exist (`find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 | head`), fix cmdline (`sudo vfio-limine-enable` — uses `amd_iommu=on` on Ryzen, `intel_iommu=on` on Intel), reboot, reinstall hooks, retry.
+If `virsh nodedev-detach` says VFIO is not supported: confirm IOMMU groups exist (`find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 | head`), fix cmdline (`sudo ~/dotfiles/system/usr/local/bin/vfio-limine-enable --iommu-only` — uses `amd_iommu=on` on Ryzen, `intel_iommu=on` on Intel), reboot, reinstall hooks, retry.
 
 ### Black screen / picture on Intel iGPU only
 
@@ -102,7 +102,7 @@ run:
 
 - hide KVM with `<kvm><hidden state="on"/></kvm>`
 - disable the CPUID hypervisor feature bit
-- spoof the Hyper-V vendor ID from `KVM Hv` to `GenuineIntel`
+- remove Hyper-V enlightenments so Windows does not see `KVM Hv`
 - provide SMBIOS sysinfo so Windows does not report a BOCHS BIOS version
 
 It deliberately does **not** change VirtIO storage/network, MAC address, USB
