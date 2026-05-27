@@ -13,6 +13,19 @@ docker compose up -d
 
 Requires `netbird status` → Management: Connected, with DNS enabled (do not use `--disable-dns`).
 
+### Netbird broken on LAN (`LoginFailed` / gRPC 403)
+
+Cloudflare blocks management gRPC. On this LAN, point `netbird.hjacke.com` at Traefik (`10.0.0.25`), then connect:
+
+```bash
+sudo ~/dotfiles/system/install-netbird-hosts.sh   # must show 10.0.0.25
+netbird up --management-url https://netbird.hjacke.com:443
+```
+
+Or Pi-hole → Local DNS: `netbird.hjacke.com` → `10.0.0.25` (same as `cachyos-jacke.netbird.hjacke.com` already has).
+
+After fix: `getent ahostsv4 netbird.hjacke.com` must be `10.0.0.25`, not Cloudflare IPv6.
+
 ## Dockhand (tower)
 
 TCP listener so Dockhand on tower can manage this host’s Docker over Netbird:

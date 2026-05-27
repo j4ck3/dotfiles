@@ -13,11 +13,27 @@ export const SHORTCUT_TABS: ShortcutTab[] = [
           { keys: "Super Space", desc: "App launcher (Walker)" },
           { keys: "Super Return", desc: "Terminal (16:9)" },
           { keys: "Super Backspace", desc: "File manager" },
-          { keys: "Super C", desc: "Clipboard history" },
           { keys: "Super Shift N", desc: "Cursor editor" },
           { keys: "Super N", desc: "SSH devbox (Ghostty)" },
           { keys: "Super Shift D", desc: "Docker (lazydocker)" },
           { keys: "Super Shift O", desc: "Open project (tmux + nvim + opencode)" },
+        ],
+      },
+      {
+        title: "Clipboard (Super C)",
+        items: [
+          { keys: "Super C", desc: "Clipboard history (Walker)" },
+          { keys: "j / Down", desc: "Next entry" },
+          { keys: "k / Up", desc: "Previous entry" },
+          { keys: "Enter / l", desc: "Copy selected entry" },
+          { keys: "Ctrl D", desc: "Remove entry" },
+          { keys: "Ctrl Shift D", desc: "Clear all history" },
+          { keys: "Ctrl I", desc: "Toggle images only / text only / all" },
+          { keys: "Ctrl Shift P", desc: "Pause / unpause recording" },
+          { keys: "Ctrl P", desc: "Pin / unpin entry" },
+          { keys: "Ctrl O", desc: "Edit entry" },
+          { keys: "Ctrl Shift L", desc: "LocalSend" },
+          { keys: "Esc", desc: "Close clipboard history" },
         ],
       },
       {
@@ -96,11 +112,22 @@ export const SHORTCUT_TABS: ShortcutTab[] = [
         ],
       },
       {
-        title: "Voice & text",
+        title: "Speech to text (Super V)",
         items: [
-          { keys: "Super V", desc: "Live dictation" },
+          { keys: "Super V", desc: "Toggle live dictation (type as you speak)" },
+          { keys: "Esc", desc: "Stop dictation while active" },
+        ],
+      },
+      {
+        title: "Text to speech (Super Alt V)",
+        items: [
+          { keys: "Super Alt V", desc: "Read clipboard aloud (Piper TTS)" },
+        ],
+      },
+      {
+        title: "OCR & capture",
+        items: [
           { keys: "Super Shift V", desc: "OCR region → clipboard" },
-          { keys: "Super Alt V", desc: "Text to speech" },
         ],
       },
       {

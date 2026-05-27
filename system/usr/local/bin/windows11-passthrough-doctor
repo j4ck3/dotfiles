@@ -104,7 +104,22 @@ echo ""
 echo "## IOMMU"
 groups="$(find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
 echo "  Groups: ${groups}"
-grep -oE '(intel_iommu|amd_iommu|iommu)=[^[:space:]]+' /proc/cmdline 2>/dev/null | sed 's/^/  /' || echo "  (no iommu on cmdline)" >&2
+if [[ "${groups}" -eq 0 ]]; then
+  echo "  ERROR: IOMMU inactive — passthrough cannot start." >&2
+  if command -v vfio-limine-enable >/dev/null; then
+    echo "  Fix: sudo vfio-limine-enable --iommu-only && reboot" >&2
+  elif [[ -x "$HOME/dotfiles/system/usr/local/bin/vfio-limine-enable" ]]; then
+    echo "  Fix: sudo $HOME/dotfiles/system/usr/local/bin/vfio-limine-enable --iommu-only && reboot" >&2
+  else
+    echo "  Fix: add intel_iommu=on iommu=pt to /etc/default/limine, run sudo limine-update, reboot" >&2
+  fi
+fi
+cmdline_iommu="$(grep -oE '(intel_iommu|amd_iommu|iommu)=[^[:space:]]+' /proc/cmdline 2>/dev/null || true)"
+if [[ -n "${cmdline_iommu}" ]]; then
+  sed 's/^/  /' <<< "${cmdline_iommu}"
+else
+  echo "  (no iommu on cmdline)" >&2
+fi
 echo ""
 
 echo "## Likely causes of black RX 7900"

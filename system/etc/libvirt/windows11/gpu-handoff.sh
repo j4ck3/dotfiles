@@ -381,6 +381,9 @@ gpu_handoff_prepare_begin() {
     return 0
   }
 
+  require_iommu || return 1
+  load_vfio_modules
+
   stop_display_stack
   echo "STEP: bind_vtconsoles 0"
   bind_vtconsoles 0

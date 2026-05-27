@@ -13,6 +13,40 @@ host_ip() {
   ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1
 }
 
+iommu_group_count() {
+  find /sys/kernel/iommu_groups -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l
+}
+
+require_iommu() {
+  local groups cmdline
+  groups="$(iommu_group_count)"
+  [[ "${groups}" -gt 0 ]] && return 0
+
+  cmdline="$(< /proc/cmdline)"
+  echo "IOMMU is inactive: /sys/kernel/iommu_groups is empty." >&2
+  echo "Current kernel cmdline has no active IOMMU params:" >&2
+  echo "  ${cmdline}" >&2
+  echo "Fix, then reboot:" >&2
+  if command -v vfio-limine-enable >/dev/null; then
+    echo "  sudo vfio-limine-enable --iommu-only" >&2
+  elif [[ -x "$HOME/dotfiles/system/usr/local/bin/vfio-limine-enable" ]]; then
+    echo "  sudo $HOME/dotfiles/system/usr/local/bin/vfio-limine-enable --iommu-only" >&2
+  else
+    echo "  add intel_iommu=on iommu=pt to /etc/default/limine, run sudo limine-update, reboot" >&2
+  fi
+  exit 1
+}
+
+require_vfio_available() {
+  [[ -d /sys/bus/pci/drivers/vfio-pci ]] && return 0
+  if command -v modprobe >/dev/null && modprobe -n -v vfio-pci >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "vfio-pci is unavailable for running kernel $(uname -r)." >&2
+  echo "Reboot into a kernel with matching /lib/modules, then retry." >&2
+  exit 1
+}
+
 usage() {
   cat <<EOF
 Usage: ${0##*/} [--yes]
@@ -65,6 +99,8 @@ if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'; t
   echo "GPU VBIOS ROM not in domain XML. Run: sudo windows11-mode passthrough" >&2
   exit 1
 fi
+require_vfio_available
+require_iommu
 
 ip_addr="$(host_ip || true)"
 user="$(id -un)"
