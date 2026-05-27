@@ -37,6 +37,8 @@ brightnessctl
 polkit
 polkit-gnome
 hyprpolkitagent
+gnome-keyring
+libsecret
 
 xdg-desktop-portal-gtk
 
