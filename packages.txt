@@ -2,7 +2,7 @@
 #  grep -v '^#' packages.txt | grep -v '^$' | xargs -r sudo pacman -S --needed --noconfirm --
 #
 # cd ~/dotfiles
-# stow -v -R -t "$HOME" bash nvim hypr zed
+# stow -v -R -t "$HOME" bash nvim hypr zed theme dunst
 
 paru
 flatpak
@@ -41,6 +41,7 @@ gnome-keyring
 libsecret
 
 xdg-desktop-portal-gtk
+gnome-themes-extra
 
 jq
 ripgrep
@@ -67,6 +68,8 @@ tesseract-data-swe
 
 mpv
 
+dunst
+inter-font
 libnotify
 
 nautilus

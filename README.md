@@ -6,6 +6,10 @@ Hyprland desktop alternate view
 
 Personal configs for **CachyOS** (Arch-based).
 
+**Dark mode:** `theme` stow package + Hypr `envs.conf` — see [`theme/README.md`](theme/README.md).
+
+**Notifications:** Dunst — [`dunst/README.md`](dunst/README.md).
+
 **Desktop:** Hyprland, Waybar, UWSM, Walker + Elephant, Helium Browser, AGS (volume/media/power popups). Optional **hypr_htpc** profile for HTPC. Helium optional flags and notes on omnibox vs page fonts live in `[hypr/.config/helium-browser-flags.conf](hypr/.config/helium-browser-flags.conf)`.
 
 **Shell & prompt:** Bash, Starship.

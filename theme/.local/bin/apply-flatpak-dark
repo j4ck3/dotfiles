@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Apply dark GTK env to Flatpak apps (run after flatpak install / stow theme).
+set -euo pipefail
+
+apps=(
+  com.spotify.Client
+  com.discordapp.Discord
+  org.telegram.desktop
+  com.bitwarden.desktop
+)
+
+for app in "${apps[@]}"; do
+  if ! flatpak info "$app" &>/dev/null; then
+    echo "skip $app (not installed)" >&2
+    continue
+  fi
+  flatpak override --user "$app" \
+    --env=GTK_THEME=Adwaita-dark \
+    --env=COLOR_SCHEME=prefer-dark
+  echo "ok $app"
+done

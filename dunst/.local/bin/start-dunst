@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Start Dunst once (safe on hyprctl reload). Free DBus name from xfce4-notifyd if needed.
+set -euo pipefail
+
+dunst_running() {
+  pgrep -x dunst >/dev/null 2>&1 && dunstctl count &>/dev/null
+}
+
+if dunst_running; then
+  dunstctl reload 2>/dev/null || true
+  exit 0
+fi
+
+# Xfce (and others) can own org.freedesktop.Notifications before Dunst starts.
+if pgrep -x xfce4-notifyd &>/dev/null; then
+  pkill -x xfce4-notifyd 2>/dev/null || true
+  sleep 0.2
+fi
+
+pkill -x dunst 2>/dev/null || true
+
+# Background — never exec; dunst would block the caller's terminal.
+dunst &
+for _ in $(seq 1 30); do
+  if dunst_running; then
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "start-dunst: dunst failed to start" >&2
+exit 1

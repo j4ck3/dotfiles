@@ -28,6 +28,17 @@ UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
 ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
+RECOVER_INPUT="${RECOVER_INPUT:-1}"
+RECOVER_NETWORK="${RECOVER_NETWORK:-1}"
+
+if ! declare -p USB_HID_IDS >/dev/null 2>&1; then
+  # Razer Viper receiver/wired + Keychron Q1 from windows11-passthrough-usb.xml.
+  USB_HID_IDS=(1532:007a 3434:0108 1532:007b)
+fi
+
+if ! declare -p NETWORK_CONNECTIONS >/dev/null 2>&1; then
+  NETWORK_CONNECTIONS=(br0 eno1 "Wired connection 1")
+fi
 
 if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
   DISPLAY_MANAGER_UNITS=("${DISPLAY_MANAGER:-display-manager.service}")
@@ -144,13 +155,68 @@ stop_display_stack() {
 settle_console_input() {
   echo "STEP: settle console/input"
   udevadm trigger --subsystem-match=input 2>/dev/null || true
+  udevadm trigger --subsystem-match=usb 2>/dev/null || true
   udevadm settle 2>/dev/null || true
   systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
+}
+
+recover_usb_hid() {
+  [[ "${RECOVER_INPUT}" == "1" ]] || return 0
+  echo "STEP: recover USB HID input"
+  modprobe usbhid 2>/dev/null || true
+
+  local dev vendor product id auth
+  shopt -s nullglob
+  for dev in /sys/bus/usb/devices/*; do
+    [[ -r "${dev}/idVendor" && -r "${dev}/idProduct" ]] || continue
+    vendor="$(< "${dev}/idVendor")"
+    product="$(< "${dev}/idProduct")"
+    id="${vendor}:${product}"
+    if [[ " ${USB_HID_IDS[*]} " == *" ${id} "* ]]; then
+      auth="${dev}/authorized"
+      if [[ -w "${auth}" ]]; then
+        echo "STEP: USB re-authorize ${id} (${dev##*/})"
+        echo 0 > "${auth}" 2>/dev/null || true
+        sleep 0.2
+        echo 1 > "${auth}" 2>/dev/null || true
+      fi
+    fi
+  done
+  shopt -u nullglob
+
+  udevadm trigger --subsystem-match=input 2>/dev/null || true
+  udevadm trigger --subsystem-match=usb 2>/dev/null || true
+  udevadm settle 2>/dev/null || true
+  loginctl flush-devices 2>/dev/null || true
+}
+
+recover_network() {
+  [[ "${RECOVER_NETWORK}" == "1" ]] || return 0
+  command -v nmcli >/dev/null || return 0
+  echo "STEP: recover NetworkManager"
+  nmcli general reload 2>/dev/null || true
+  nmcli networking on 2>/dev/null || true
+
+  local con dev
+  for con in "${NETWORK_CONNECTIONS[@]}"; do
+    [[ -n "${con}" ]] || continue
+    nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${con}" || continue
+    echo "STEP: nmcli connection up ${con}"
+    nmcli connection up "${con}" 2>/dev/null || true
+  done
+
+  while IFS=: read -r dev; do
+    [[ -n "${dev}" ]] || continue
+    echo "STEP: nmcli device connect ${dev}"
+    nmcli device connect "${dev}" 2>/dev/null || true
+  done < <(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2 ~ /^(ethernet|wifi|bridge)$/ {print $1}')
 }
 
 start_display_stack() {
   local unit
   settle_console_input
+  recover_usb_hid
+  recover_network
   for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
     [[ -n "${unit}" ]] || continue
     echo "STEP: start ${unit}"

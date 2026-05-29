@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Portal + GNOME/GTK apps read gsettings when available (Nautilus, etc.).
+set -euo pipefail
+
+if ! command -v gsettings &>/dev/null; then
+  echo "gsettings not found" >&2
+  exit 1
+fi
+
+gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark' 2>/dev/null || true
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
+gsettings set org.gnome.desktop.interface prefer-dark-theme true 2>/dev/null || true
+
+echo "gsettings dark applied"

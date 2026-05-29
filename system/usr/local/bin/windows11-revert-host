@@ -32,7 +32,18 @@ export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 virsh nodedev-reattach pci_0000_03_00_1 2>/dev/null || true
 virsh nodedev-reattach pci_0000_03_00_0 2>/dev/null || true
 modprobe amdgpu 2>/dev/null || true
+modprobe usbhid 2>/dev/null || true
 udevadm trigger --subsystem-match=input 2>/dev/null || true
+udevadm trigger --subsystem-match=usb 2>/dev/null || true
 udevadm settle 2>/dev/null || true
 systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
+loginctl flush-devices 2>/dev/null || true
+if command -v nmcli >/dev/null; then
+  nmcli general reload 2>/dev/null || true
+  nmcli networking on 2>/dev/null || true
+  for con in br0 eno1 "Wired connection 1"; do
+    nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${con}" || continue
+    nmcli connection up "${con}" 2>/dev/null || true
+  done
+fi
 systemctl start ly@tty1.service ly@tty2.service 2>/dev/null || true

@@ -1,0 +1,17 @@
+#!/usr/bin/env fish
+# Clear stuck modifiers (often after Razer dongle USB reset / hyprctl reload).
+
+wtype -m shift -m ctrl -m alt 2>/dev/null
+
+set -l razer_kbd \
+    razer-razer-viper-ultimate-dongle-keyboard \
+    razer-razer-viper-ultimate-dongle-1 \
+    razer-razer-viper-ultimate-keyboard \
+    razer-razer-viper-ultimate
+
+for name in $razer_kbd
+    hyprctl keyword "device[$name]:enabled" false 2>/dev/null
+end
+
+echo "Modifiers released; Razer HID keyboards disabled for this session."
+echo "If Shift still stuck: tap Left+Right Shift, then: hyprctl dispatch reload"
