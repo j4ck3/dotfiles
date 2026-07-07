@@ -89,6 +89,27 @@ function PowerMenu() {
           </box>
 
           <box class="power-list" orientation={Gtk.Orientation.VERTICAL}>
+            <label class="section-label" xalign={0} label="Virtual Machines" />
+            <PowerButton
+              icon="󰖳"
+              label="Windows 11"
+              className="vm"
+              action={() =>
+                powerAction("xdg-terminal-exec -- windows11-start --yes")
+              }
+            />
+            <PowerButton
+              icon="󰖳"
+              label="Windows 11 Stealth"
+              className="vm stealth"
+              action={() =>
+                powerAction(
+                  "xdg-terminal-exec -- windows11-stealth-start --yes",
+                )
+              }
+            />
+
+            <label class="section-label" xalign={0} label="Session" />
             <PowerButton
               icon="󰌾"
               label="Lock Screen"

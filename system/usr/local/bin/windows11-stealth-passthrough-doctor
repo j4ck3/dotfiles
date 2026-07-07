@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Diagnose black screen / failed passthrough for the stealth clone.
+set -u
+
+export DOMAIN="windows11-stealth"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+
+exec /usr/local/bin/windows11-passthrough-doctor "$@"

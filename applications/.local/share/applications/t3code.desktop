@@ -4,6 +4,7 @@ Version=1.0
 Name=T3 Code
 Comment=Code editor
 Exec=t3code %U
+Environment=PATH=/home/jacke/.local/bin:/usr/local/bin:/usr/bin:/bin
 Path=/home/jacke/work
 TryExec=t3code
 Terminal=false

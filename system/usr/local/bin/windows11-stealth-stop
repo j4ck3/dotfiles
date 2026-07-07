@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stop the stealth clone, falling back to a direct QEMU kill if libvirt wedges.
+set -euo pipefail
+
+export DOMAIN="windows11-stealth"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+export FORCE_STOP="${FORCE_STOP:-/usr/local/bin/windows11-stealth-force-stop}"
+
+exec /usr/local/bin/windows11-stop "$@"

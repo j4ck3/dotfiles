@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Switch to workspace, or cycle windows if already there.
+# Usage: workspace-or-cycle <workspace>
+
+set -u
+
+WS="${1:-}"
+if [[ -z "$WS" ]]; then
+    echo "usage: $0 <workspace>" >&2
+    exit 1
+fi
+
+ACTIVE_WORKSPACE=$(hyprctl monitors -j 2>/dev/null | jq -r '
+    .[] | select(.focused == true) | .activeWorkspace.id
+')
+
+if [[ "$ACTIVE_WORKSPACE" == "$WS" ]]; then
+    exec ~/.config/hypr/scripts/smart-cycle
+fi
+
+hyprctl dispatch focusworkspaceoncurrentmonitor "$WS" >/dev/null 2>&1

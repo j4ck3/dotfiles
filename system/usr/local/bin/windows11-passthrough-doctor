@@ -122,6 +122,24 @@ else
 fi
 echo ""
 
+echo "## Host desktop restore"
+hypr="$(pgrep -x Hyprland >/dev/null && echo running || echo stopped)"
+gpu_drv="$(pci_driver "${GPU_PCI}")"
+echo "  Hyprland: ${hypr}"
+echo "  GPU driver (host): ${gpu_drv}"
+if [[ "${state}" != "running" && "${gpu_drv}" == "amdgpu" && "${hypr}" == "stopped" ]]; then
+  echo "  NOTE: VM off, GPU on host, but no Hyprland — run: sudo windows11-stealth-revert-host" >&2
+fi
+if ! grep -q 'restore_hyprland_session' /etc/libvirt/windows11/gpu-handoff.sh 2>/dev/null; then
+  echo "  ERROR: /etc gpu-handoff.sh outdated (no Hyprland auto-restore after VM stop)" >&2
+  echo "  Fix: sudo ~/dotfiles/system/stow-system.sh" >&2
+fi
+if ! grep -q '^AUTO_RESTORE_HYPRLAND=1' /etc/libvirt/windows11/gpu-handoff.conf 2>/dev/null; then
+  echo "  ERROR: AUTO_RESTORE_HYPRLAND not enabled in /etc/libvirt/windows11/gpu-handoff.conf" >&2
+  echo "  Fix: sudo ~/dotfiles/system/stow-system.sh" >&2
+fi
+echo ""
+
 echo "## Likely causes of black RX 7900"
 echo "  1. Monitor on Intel iGPU port (move cable to RX 7900)"
 echo "  2. Wrong GPU output (try another DP/HDMI on the card)"

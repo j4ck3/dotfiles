@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch windows11 libvirt domain XML for passthrough vs console modes."""
+"""Patch windows11 libvirt domain XML for passthrough, console, and stealth modes."""
 from __future__ import annotations
 
 import sys
@@ -150,6 +150,10 @@ def normalize_amd_gpu_hostdev_topology(devices: ET.Element) -> bool:
             driver.set("name", "vfio")
             changed = True
 
+        if hostdev.get("display") is not None:
+            del hostdev.attrib["display"]
+            changed = True
+
         addr = hostdev.find("address")
         if addr is None:
             ET.SubElement(hostdev, "address", **wanted)
@@ -235,6 +239,210 @@ def ensure_passthrough_features(root: ET.Element) -> bool:
             changed = True
 
     return changed
+
+
+def remove_leaky_devices(devices: ET.Element) -> bool:
+    changed = False
+    for tag in ("serial", "console", "parallel", "channel"):
+        for el in list(devices.findall(tag)):
+            devices.remove(el)
+            changed = True
+    for inp in list(devices.findall("input")):
+        if inp.get("type") in ("mouse", "keyboard") and inp.get("bus") == "ps2":
+            devices.remove(inp)
+            changed = True
+        if inp.get("type") == "tablet":
+            devices.remove(inp)
+            changed = True
+    for g in list(devices.findall("graphics")):
+        devices.remove(g)
+        changed = True
+    for audio in list(devices.findall("audio")):
+        if audio.get("type") == "spice":
+            devices.remove(audio)
+            changed = True
+    for video in list(devices.findall("video")):
+        devices.remove(video)
+        changed = True
+    for ctrl in list(devices.findall("controller")):
+        if ctrl.get("type") == "usb" and ctrl.get("model") == "qemu-xhci":
+            ctrl.set("model", "nec-xhci")
+            changed = True
+    return changed
+
+
+def ensure_stealth_clock(root: ET.Element) -> bool:
+    changed = False
+    clock = root.find("clock")
+    if clock is None:
+        clock = ET.SubElement(root, "clock", offset="localtime")
+        changed = True
+    timers = {
+        "rtc": {"tickpolicy": "catchup"},
+        "pit": {"tickpolicy": "delay"},
+        "hpet": {"present": "no"},
+        "kvmclock": {"present": "no"},
+        "hypervclock": {"present": "no"},
+        "tsc": {"present": "yes", "mode": "native"},
+    }
+    existing = {t.get("name"): t for t in clock.findall("timer")}
+    for name, attrs in timers.items():
+        timer = existing.get(name)
+        if timer is None:
+            ET.SubElement(clock, "timer", name=name, **attrs)
+            changed = True
+            continue
+        for key, value in attrs.items():
+            if timer.get(key) != value:
+                timer.set(key, value)
+                changed = True
+    return changed
+
+
+def ensure_stealth_firmware(os_el: ET.Element) -> bool:
+    changed = False
+    # Use distro secure-boot OVMF CODE: matches May NVRAM backups and avoids
+    # 0 disk I/O hangs seen with mismatched AutoVirt CODE + old vars.
+    code = "/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
+    vars_tpl = "/usr/share/edk2/x64/OVMF_VARS.4m.fd"
+    nvram_path = "/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
+
+    for fw in list(os_el.findall("firmware")):
+        os_el.remove(fw)
+        changed = True
+
+    loader = os_el.find("loader")
+    if loader is None:
+        loader = ET.SubElement(
+            os_el,
+            "loader",
+            readonly="yes",
+            secure="yes",
+            type="pflash",
+            format="raw",
+        )
+        changed = True
+    for key, value in {
+        "readonly": "yes",
+        "secure": "yes",
+        "type": "pflash",
+        "format": "raw",
+    }.items():
+        if loader.get(key) != value:
+            loader.set(key, value)
+            changed = True
+    if (loader.text or "") != code:
+        loader.text = code
+        changed = True
+
+    nvram = os_el.find("nvram")
+    if nvram is None:
+        nvram = ET.SubElement(
+            os_el,
+            "nvram",
+            template=vars_tpl,
+            templateFormat="raw",
+            format="raw",
+        )
+        changed = True
+    if nvram.get("template") != vars_tpl:
+        nvram.set("template", vars_tpl)
+        changed = True
+    for key, value in {"templateFormat": "raw", "format": "raw"}.items():
+        if nvram.get(key) != value:
+            nvram.set(key, value)
+            changed = True
+    if (nvram.text or "") != nvram_path:
+        nvram.text = nvram_path
+        changed = True
+    return changed
+
+
+def remove_cpu_vmx(cpu: ET.Element) -> bool:
+    changed = False
+    for feature in list(cpu.findall("feature")):
+        if feature.get("name") in ("vmx", "invtsc") and feature.get("policy") == "require":
+            cpu.remove(feature)
+            changed = True
+    return changed
+
+
+def ensure_smm_on(root: ET.Element) -> bool:
+    features = root.find("features")
+    if features is None:
+        return False
+    smm, changed = ensure_child(features, "smm", state="on")
+    return changed
+
+
+def read_sysinfo_entries(root: ET.Element) -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    sysinfo = root.find("sysinfo")
+    if sysinfo is None:
+        return out
+    for section in sysinfo:
+        out[section.tag] = {
+            (e.get("name") or ""): (e.text or "")
+            for e in section.findall("entry")
+        }
+    return out
+
+
+def ensure_qemu_commandline(root: ET.Element) -> bool:
+    cmdline = root.find(f"{{{NS_QEMU}}}commandline")
+    if cmdline is not None:
+        root.remove(cmdline)
+    cmdline = ET.SubElement(root, f"{{{NS_QEMU}}}commandline")
+    info = read_sysinfo_entries(root)
+    bios = info.get("bios", {})
+    system = info.get("system", {})
+    board = info.get("baseBoard", {})
+
+    def add_arg(value: str) -> None:
+        ET.SubElement(cmdline, f"{{{NS_QEMU}}}arg", value=value)
+
+    # Do not pass -cpu here: libvirt already builds -cpu from <cpu>; a second -cpu
+    # breaks OVMF boot (0 disk I/O) on QEMU 10.2.x.
+    smbios_pairs = [
+        (
+            "type=0,version="
+            f"{bios.get('version', '2802')},"
+            f"date={bios.get('date', '10/27/2023')}"
+        ),
+        (
+            "type=1,manufacturer="
+            f"{system.get('manufacturer', 'ASUSTeK COMPUTER INC.')},"
+            f"product={system.get('product', 'ROG STRIX Z790-E GAMING WIFI')},"
+            f"version={system.get('version', 'Rev 1.xx')},"
+            f"serial={system.get('serial', 'To be filled by O.E.M.')}"
+        ),
+        (
+            "type=2,manufacturer="
+            f"{board.get('manufacturer', 'ASUSTeK COMPUTER INC.')},"
+            f"product={board.get('product', 'ROG STRIX Z790-E GAMING WIFI')},"
+            f"version={board.get('version', 'Rev 1.xx')},"
+            f"serial={board.get('serial', 'To be filled by O.E.M.')}"
+        ),
+        "type=3,manufacturer=Default string",
+        "type=4,manufacturer=Intel,max-speed=6000,current-speed=3200",
+        "type=17,manufacturer=KINGSTON,loc_pfx=DDR5,speed=6000,serial=00000000,part=KHX3000",
+    ]
+    for pair in smbios_pairs:
+        add_arg("-smbios")
+        add_arg(pair)
+    return True
+
+
+def ensure_emulator_path(devices: ET.Element) -> bool:
+    path = "/opt/AutoVirt/emulator/bin/qemu-system-x86_64"
+    emu = devices.find("emulator")
+    if emu is None:
+        ET.SubElement(devices, "emulator").text = path
+        return True
+    if (emu.text or "") != path:
+        emu.text = path
+        return True
+    return False
 
 
 def set_entry(parent: ET.Element, name: str, value: str) -> bool:
@@ -324,6 +532,24 @@ def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
         changed |= remove_emulated_inputs(devices)
         changed |= add_console_inputs(devices)
         changed |= set_memballoon(devices, "virtio")
+    elif mode == "stealth":
+        changed |= remove_virtual_sound(devices)
+        changed |= remove_leaky_devices(devices)
+        changed |= set_memballoon(devices, "none")
+        changed |= normalize_amd_gpu_hostdev_topology(devices)
+        changed |= ensure_passthrough_cpu(root)
+        changed |= ensure_passthrough_features(root)
+        changed |= ensure_smbios_sysinfo(root)
+        changed |= ensure_smm_on(root)
+        cpu = root.find("cpu")
+        if cpu is not None:
+            changed |= remove_cpu_vmx(cpu)
+        changed |= ensure_stealth_clock(root)
+        os_el = root.find("os")
+        if os_el is not None:
+            changed |= ensure_stealth_firmware(os_el)
+        changed |= ensure_emulator_path(devices)
+        changed |= ensure_qemu_commandline(root)
     else:
         print(f"unknown mode: {mode}", file=sys.stderr)
         sys.exit(1)
@@ -338,7 +564,7 @@ def main() -> None:
     tree = ET.parse(in_path)
     ensure_qemu_ns(tree.getroot())
     changed = apply_mode(tree, mode)
-    if changed or mode == "passthrough":
+    if changed or mode in ("passthrough", "stealth"):
         tree.write(out_path, encoding="unicode", xml_declaration=True)
     else:
         Path(out_path).write_text(Path(in_path).read_text(encoding="utf-8"), encoding="utf-8")

@@ -11,11 +11,11 @@
   padding: 14px;
   background: linear-gradient(
     180deg,
-    rgba(34, 38, 64, 0.52) 0%,
-    rgba(18, 21, 36, 0.44) 100%
+    rgba(34, 38, 64, 0.88) 0%,
+    rgba(18, 21, 36, 0.82) 100%
   );
   color: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 16px;
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.30);
 }
@@ -30,9 +30,9 @@
 }
 
 .close-button {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.18);
   color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
   padding: 4px 8px;
 }
@@ -41,26 +41,57 @@
   margin-top: 4px;
 }
 
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 10px 4px 4px;
+}
+
+.section-label:first-child {
+  margin-top: 0;
+}
+
+.power-button.vm {
+  background: rgba(0, 120, 215, 0.34);
+  border: 1px solid rgba(0, 120, 215, 0.42);
+}
+
+.power-button.vm:hover {
+  background: rgba(0, 120, 215, 0.48);
+}
+
+.power-button.vm.stealth {
+  background: rgba(80, 80, 90, 0.42);
+  border: 1px solid rgba(180, 180, 200, 0.32);
+}
+
+.power-button.vm.stealth:hover {
+  background: rgba(100, 100, 115, 0.54);
+}
+
 .power-button {
   padding: 10px 12px;
   margin: 2px 0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.92);
 }
 
 .power-button:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .power-button.shutdown {
-  background: rgba(220, 50, 50, 0.2);
-  border: 1px solid rgba(220, 50, 50, 0.2);
+  background: rgba(220, 50, 50, 0.38);
+  border: 1px solid rgba(220, 50, 50, 0.38);
 }
 
 .power-button.shutdown:hover {
-  background: rgba(220, 50, 50, 0.35);
+  background: rgba(220, 50, 50, 0.52);
 }
 
 .power-icon {

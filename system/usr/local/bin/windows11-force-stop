@@ -26,9 +26,35 @@ kill_qemu() {
   done
 }
 
+ensure_host_gpu_restored() {
+  local drv hook
+  sleep 2
+  drv="$(lspci -nnk -s 03:00.0 2>/dev/null | awk '/Kernel driver in use/{print $5}')"
+  if [[ "${drv}" == "vfio-pci" ]] || ! pgrep -x Hyprland >/dev/null; then
+    if [[ "${drv}" == "vfio-pci" ]]; then
+      echo "GPU still on vfio-pci — running revert hook..."
+    else
+      echo "Hyprland not running — running revert hook..."
+    fi
+    if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+      hook="/etc/libvirt/hooks/qemu.d/windows11-stealth/release/end/revert.sh"
+    else
+      hook="/etc/libvirt/hooks/qemu.d/windows11/release/end/revert.sh"
+    fi
+    if [[ -x "${hook}" ]]; then
+      GPU_HANDOFF_FORCE=1 DOMAIN="${DOMAIN}" "${hook}" "${DOMAIN}" release end -
+    elif command -v windows11-stealth-revert-host >/dev/null && [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+      sudo windows11-stealth-revert-host
+    elif command -v windows11-revert-host >/dev/null; then
+      sudo windows11-revert-host
+    fi
+  fi
+}
+
 state="$(virsh domstate "${DOMAIN}" 2>/dev/null || true)"
 if [[ "${state}" == "shut off" || -z "${state}" ]]; then
   echo "${DOMAIN} is already shut off."
+  ensure_host_gpu_restored
   exit 0
 fi
 
@@ -37,11 +63,13 @@ echo "Stopping ${DOMAIN} (${state})..."
 if command -v timeout >/dev/null; then
   if timeout "${STOP_TIMEOUT}" virsh destroy "${DOMAIN}" 2>/dev/null; then
     echo "Stopped via virsh destroy."
+    ensure_host_gpu_restored
     exit 0
   fi
 else
   if virsh destroy "${DOMAIN}" 2>/dev/null; then
     echo "Stopped via virsh destroy."
+    ensure_host_gpu_restored
     exit 0
   fi
 fi
@@ -53,9 +81,11 @@ sleep 1
 state="$(virsh domstate "${DOMAIN}" 2>/dev/null || true)"
 if [[ "${state}" == "shut off" || -z "${state}" ]]; then
   echo "VM is shut off."
+  ensure_host_gpu_restored
   exit 0
 fi
 
 echo "VM still reports state: ${state:-unknown}" >&2
-echo "If the host display is still broken, run: sudo systemctl restart display-manager" >&2
+echo "If the host display is still broken, run: sudo windows11-stealth-revert-host" >&2
+ensure_host_gpu_restored
 exit 1

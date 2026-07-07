@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Fix UEFI boot for windows11-stealth (restore NVRAM or add Windows Boot Manager entry).
+set -euo pipefail
+
+export LC_ALL=C
+export LANG=C
+
+DOMAIN="${DOMAIN:-windows11-stealth}"
+NVRAM="/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
+NVRAM_DIR="/var/lib/libvirt/qemu/nvram"
+GOOD_CACHE="${HOME}/.cache/windows11-stealth-debug/windows11-stealth_VARS.fd.good"
+KNOWN_BAK="/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd.bak-20260528-000437"
+BOOT_EFI='\\EFI\\Microsoft\\Boot\\bootmgfw.efi'
+
+state="$(virsh -c qemu:///system domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is running. Stop it before changing NVRAM." >&2
+  exit 1
+fi
+
+run_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+cache_good_nvram() {
+  mkdir -p "$(dirname "${GOOD_CACHE}")"
+  if [[ "${EUID}" -eq 0 ]]; then
+    cp -f "${NVRAM}" "${GOOD_CACHE}"
+    chown "${SUDO_USER:-root}:${SUDO_USER:-root}" "${GOOD_CACHE}" 2>/dev/null || true
+  else
+    sudo cp -f "${NVRAM}" "${GOOD_CACHE}"
+    sudo chown "${USER}:${USER}" "${GOOD_CACHE}" 2>/dev/null || true
+  fi
+  chmod 0644 "${GOOD_CACHE}" 2>/dev/null || sudo chmod 0644 "${GOOD_CACHE}"
+  echo "Cached good NVRAM: ${GOOD_CACHE}"
+}
+
+src=""
+if [[ -n "${1:-}" ]]; then
+  src="$1"
+elif [[ -f "${KNOWN_BAK}" ]]; then
+  src="${KNOWN_BAK}"
+elif latest="$(ls -1t "${NVRAM_DIR}"/windows11-stealth_VARS.fd.bak-* 2>/dev/null | head -1)"; then
+  src="${latest}"
+elif [[ -f "${NVRAM_DIR}/windows11_VARS.fd" ]]; then
+  src="${NVRAM_DIR}/windows11_VARS.fd"
+fi
+
+if [[ -n "${src}" ]]; then
+  [[ -f "${src}" ]] || { echo "Missing ${src}" >&2; exit 1; }
+  echo "Restoring NVRAM from ${src}"
+  run_root cp -f "${src}" "${NVRAM}"
+  run_root chown libvirt-qemu:libvirt-qemu "${NVRAM}"
+  run_root chmod 0644 "${NVRAM}"
+  if cmp -s "${NVRAM}" "${src}"; then
+    echo "Verified: ${NVRAM} matches backup"
+  else
+    echo "WARNING: restore verify failed" >&2
+    exit 1
+  fi
+  cache_good_nvram
+  echo "Done. Start: DOMAIN=${DOMAIN} windows11-stealth-start --yes"
+  exit 0
+fi
+
+echo "No known backup; appending Windows boot entry to ${NVRAM}"
+run_root virt-fw-vars --inplace "${NVRAM}" --append-boot-filepath "${BOOT_EFI}"
+run_root chown libvirt-qemu:libvirt-qemu "${NVRAM}"
+run_root chmod 0644 "${NVRAM}"
+cache_good_nvram
+echo "Done. Start: DOMAIN=${DOMAIN} windows11-stealth-start --yes"

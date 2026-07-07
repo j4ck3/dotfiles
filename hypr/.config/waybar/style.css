@@ -1,5 +1,5 @@
 /* macOS-style menu bar */
-@define-color background rgba(0, 0, 0, 0.25);
+@define-color background rgba(0, 0, 0, 0.58);
 @define-color foreground rgba(255, 255, 255, 0.9);
 @define-color foreground-dim rgba(255, 255, 255, 0.55);
 @define-color accent #ffffff;

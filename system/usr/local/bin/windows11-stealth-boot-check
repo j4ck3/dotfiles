@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Report whether windows11-stealth guest is actually booting (disk I/O) vs stuck in UEFI.
+set -euo pipefail
+
+export LC_ALL=C
+export LANG=C
+
+DOMAIN="${DOMAIN:-windows11-stealth}"
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+WAIT_SEC="${WAIT_SEC:-20}"
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" != "running" ]]; then
+  echo "Domain ${DOMAIN} is not running (state=${state:-unknown})."
+  exit 1
+fi
+
+sleep "${WAIT_SEC}"
+rd="$(virsh -c "${CONNECT_URI}" domstats "${DOMAIN}" --block 2>/dev/null \
+  | awk -F= '/block\.0\.rd\.bytes/{print $2; exit}')"
+wr="$(virsh -c "${CONNECT_URI}" domstats "${DOMAIN}" --block 2>/dev/null \
+  | awk -F= '/block\.0\.wr\.bytes/{print $2; exit}')"
+gpu_drv="$(lspci -nnk -s 03:00.0 2>/dev/null | awk '/Kernel driver in use/{print $5}')"
+
+echo "=== ${DOMAIN} boot check (${WAIT_SEC}s) ==="
+echo "  block.0.rd.bytes=${rd:-?}"
+echo "  block.0.wr.bytes=${wr:-?}"
+echo "  GPU driver:     ${gpu_drv:-?}"
+
+if [[ -n "${rd}" && "${rd}" != "0" ]]; then
+  echo ""
+  echo "Guest IS reading disk — Windows is booting."
+  echo "Black RX 7900 usually means:"
+  echo "  • cable on motherboard Intel port (move to RX 7900)"
+  echo "  • wrong GPU output (try other DP/HDMI on the card)"
+  echo "  • wait 2–3 min for first AMD driver boot after UEFI"
+  echo "  • re-dump VBIOS: sudo windows11-dump-vbios (VM off, GPU on amdgpu)"
+  exit 0
+fi
+
+echo ""
+echo "Guest NOT reading disk — UEFI/boot broken (not a GPU cable issue)."
+echo "Fix: virsh -c ${CONNECT_URI} destroy ${DOMAIN}"
+echo "     sudo windows11-stealth-fix-boot"
+echo "     DOMAIN=${DOMAIN} windows11-stealth-start --yes"
+exit 2

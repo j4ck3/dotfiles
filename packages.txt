@@ -2,7 +2,7 @@
 #  grep -v '^#' packages.txt | grep -v '^$' | xargs -r sudo pacman -S --needed --noconfirm --
 #
 # cd ~/dotfiles
-# stow -v -R -t "$HOME" bash nvim hypr zed theme dunst
+# stow -v -R -t "$HOME" bash nvim hypr zed theme dunst wireplumber
 
 paru
 flatpak

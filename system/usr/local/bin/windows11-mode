@@ -145,6 +145,26 @@ has_clean_bios_strings() {
   ' | grep -qiE 'BOCHS|QEMU|SeaBIOS|Tianocore|EDK II|Virt-Manager|KVM'
 }
 
+has_stealth_ovmf() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q '/opt/AutoVirt/firmware/OVMF_CODE.fd'
+}
+
+has_stealth_qemu() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q '/opt/AutoVirt/emulator/bin/qemu-system-x86_64'
+}
+
+has_hypervclock_off() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q "name='hypervclock' present='no'"
+}
+
+has_qemu_commandline() {
+  virsh_cmd dumpxml "${DOMAIN}" | grep -q 'qemu:commandline'
+}
+
+has_no_qemu_xhci() {
+  ! virsh_cmd dumpxml "${DOMAIN}" | grep -q "model='qemu-xhci'"
+}
+
 has_gpu_vbios_rom() {
   virsh_cmd dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'
 }
@@ -360,6 +380,13 @@ cmd_status() {
   echo "SMBIOS:      $(has_smbios_sysinfo && echo sysinfo || echo default) (should be sysinfo)"
   echo "BIOS strings:$(has_clean_bios_strings && echo clean || echo vm-like) (should be clean)"
   echo "NIC count:   $(network_count)"
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    echo "Stealth OVMF: $(has_stealth_ovmf && echo yes || echo no)"
+    echo "Stealth QEMU: $(has_stealth_qemu && echo yes || echo no)"
+    echo "Hv clock off: $(has_hypervclock_off && echo yes || echo no)"
+    echo "QEMU cmdline: $(has_qemu_commandline && echo yes || echo no)"
+    echo "No qemu-xhci: $(has_no_qemu_xhci && echo yes || echo no)"
+  fi
   if has_gpu_audio_only; then
     echo "WARNING:     GPU audio passed through but NOT the GPU — broken; run: sudo $0 passthrough"
   fi

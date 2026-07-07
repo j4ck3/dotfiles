@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# One-shot tuning for windows11-stealth: evdev, full CPU, disk size, /opt QEMU.
+set -euo pipefail
+
+export LC_ALL=C
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11-stealth}"
+DOTFILES_ROOT="${DOTFILES_ROOT:-$HOME/dotfiles}"
+DOTFILES_LIBVIRT="${DOTFILES_LIBVIRT:-$DOTFILES_ROOT/system/etc/libvirt}"
+DISK_GB="${DISK_GB:-512}"
+QEMU_BIN="${QEMU_BIN:-/opt/AutoVirt/emulator/bin/qemu-system-x86_64}"
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is running. Stop it first." >&2
+  exit 1
+fi
+
+disk_path="$(virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | awk -F"'" '/<source file=.*qcow2/ {print $2; exit}')"
+if [[ -z "${disk_path}" || ! -f "${disk_path}" ]]; then
+  echo "Could not find qcow2 disk for ${DOMAIN}" >&2
+  exit 1
+fi
+
+vcpu="$(nproc)"
+# libvirt: sockets * dies * cores * threads >= vcpu. 32 logical CPUs as 32 cores.
+cores="${vcpu}"
+threads_per_core="1"
+
+xml="$(mktemp)"
+trap 'rm -f "${xml}"' EXIT
+virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" > "${xml}"
+
+python3 - "${xml}" "${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml" "${QEMU_BIN}" "${vcpu}" "${cores}" "${threads_per_core}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+xml_path, evdev_path, qemu_bin, vcpu, cores, tpc = sys.argv[1:7]
+vcpu, cores, tpc = int(vcpu), int(cores), int(tpc)
+
+tree = ET.parse(xml_path)
+root = tree.getroot()
+devices = root.find("devices")
+if devices is None:
+    sys.exit("no <devices>")
+
+# QEMU emulator path
+emu = devices.find("emulator")
+if emu is not None:
+    emu.text = qemu_bin
+elif (emu := root.find("devices/emulator")) is None:
+    ET.SubElement(devices, "emulator").text = qemu_bin
+
+# Full host CPU
+v = root.find("vcpu")
+if v is not None:
+    v.text = str(vcpu)
+    v.set("placement", "static")
+cpu = root.find("cpu")
+if cpu is None:
+    cpu = ET.SubElement(root, "cpu", mode="host-passthrough", check="none", migratable="off")
+for topo in list(cpu.findall("topology")):
+    cpu.remove(topo)
+ET.SubElement(
+    cpu,
+    "topology",
+    sockets="1",
+    dies="1",
+    clusters="1",
+    cores=str(cores),
+    threads=str(tpc),
+)
+
+# Only evdev for pointer/keyboard (no PS/2 / USB tablet)
+for inp in list(devices.findall("input")):
+    if inp.get("type") != "evdev":
+        devices.remove(inp)
+
+for inp in list(devices.findall("input")):
+    if inp.get("type") == "evdev":
+        devices.remove(inp)
+
+fragment = ET.fromstring(
+    f"<devices>{open(evdev_path, encoding='utf-8').read()}</devices>"
+)
+for inp in fragment.findall("input"):
+    devices.append(inp)
+
+tree.write(xml_path, encoding="unicode", xml_declaration=True)
+PY
+
+echo "Defining ${DOMAIN} (evdev + ${vcpu} vCPU, ${cores}c/${threads_per_core}t)..."
+virsh -c "${CONNECT_URI}" define "${xml}"
+
+if [[ "${DISK_GB}" -gt 0 ]]; then
+  echo "Disk: ${disk_path}"
+  if [[ "${EUID}" -eq 0 ]]; then
+    qemu-img resize "${disk_path}" "${DISK_GB}G"
+  else
+    echo "Resizing disk to ${DISK_GB}G (sudo)..."
+    sudo qemu-img resize "${disk_path}" "${DISK_GB}G"
+  fi
+fi
+
+if [[ -x "${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-harden" ]] \
+  && [[ -f /opt/AutoVirt/firmware/OVMF_CODE.fd ]]; then
+  "${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-harden"
+fi
+
+echo "Done. Start: DOMAIN=${DOMAIN} windows11-stealth-start --yes"

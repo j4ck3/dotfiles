@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Reattach the GPU after a stealth-clone passthrough failure.
+set -u
+
+export DOMAIN="windows11-stealth"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+export HOOK="${HOOK:-/etc/libvirt/hooks/qemu.d/windows11-stealth/release/end/revert.sh}"
+
+exec /usr/local/bin/windows11-revert-host "$@"

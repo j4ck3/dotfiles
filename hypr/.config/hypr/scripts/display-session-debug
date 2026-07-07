@@ -17,7 +17,7 @@ tr '\0' '\n' <"/proc/$(pgrep -x Hyprland 2>/dev/null || echo 0)/environ" 2>/dev/
 echo
 echo "== AMDGPU DP mode (modetest) =="
 if command -v modetest >/dev/null; then
-	modetest -M amdgpu -c 2>/dev/null | grep -F -A18 'DP-2' | head -22
+	modetest -M amdgpu -c 2>/dev/null | grep -F -A18 'DP-1' | head -22
 else
 	echo "(install libdrm modetest for this block)"
 fi

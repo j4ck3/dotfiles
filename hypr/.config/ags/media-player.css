@@ -11,12 +11,11 @@
   padding: 18px;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.06) 55%,
-    rgba(0, 0, 0, 0.22) 100%
+    rgba(34, 38, 56, 0.90) 0%,
+    rgba(18, 20, 32, 0.84) 100%
   );
   color: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 22px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.50);
 }
@@ -25,7 +24,7 @@
 .art-frame {
   border-radius: 16px;
   margin-bottom: 18px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.16);
   box-shadow: 0 10px 36px rgba(0, 0, 0, 0.38);
 }
 
@@ -90,8 +89,8 @@ scale.progress-bar slider {
 .transport {
   margin: 10px 0 16px;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
 }
 
@@ -121,8 +120,8 @@ scale.progress-bar slider {
 .media-vol-row {
   margin: 0 2px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
 }
 

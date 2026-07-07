@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Apply VMAware stealth XML to windows11-stealth (shut off).
+set -euo pipefail
+
+export LC_ALL=C
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11-stealth}"
+DOTFILES_ROOT="${DOTFILES_ROOT:-$HOME/dotfiles}"
+PATCH_PY="${DOTFILES_ROOT}/system/etc/libvirt/windows11/patch-domain.py"
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is running. Stop first." >&2
+  exit 1
+fi
+
+for f in \
+  /opt/AutoVirt/emulator/bin/qemu-system-x86_64 \
+  /usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd \
+  /usr/share/edk2/x64/OVMF_VARS.4m.fd; do
+  [[ -f "$f" ]] || {
+    echo "Missing $f — run autovirt-build-ovmf-noninteractive.sh and sync QEMU to /opt first." >&2
+    exit 1
+  }
+done
+
+xml="$(mktemp)"
+out="$(mktemp)"
+trap 'rm -f "${xml}" "${out}"' EXIT
+
+virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" > "${xml}"
+python3 "${PATCH_PY}" stealth "${xml}" "${out}"
+virsh -c "${CONNECT_URI}" define "${out}"
+
+echo "Stealth hardening applied to ${DOMAIN}."
+echo "  OVMF:  /usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
+echo "  QEMU:  /opt/AutoVirt/emulator/bin/qemu-system-x86_64"
+echo "Next: windows11-stealth-regen-nvram (if not done), then windows11-stealth-start --yes"

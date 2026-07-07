@@ -15,7 +15,7 @@ Installs:
 | ------------------------------------------------------ | ---------------------------------------------- |
 | `/etc/libvirt/hooks/qemu`                              | VFIO-Tools dispatcher                          |
 | `hooks/qemu.d/windows11/prepare/begin/start.sh`        | **Pre:** stop Hyprland → detach GPU            |
-| `hooks/qemu.d/windows11/release/end/revert.sh`         | **Post:** reattach GPU → recover input/network → start display-manager |
+| `hooks/qemu.d/windows11/release/end/revert.sh`         | **Post:** reattach GPU → start display-manager |
 | `/etc/libvirt/windows11/gpu-handoff.conf`              | PCI addresses, user, timings                   |
 | `/etc/libvirt/hooks/windows11-gpu-passthrough.enabled` | Created by `windows11-mode passthrough`        |
 
@@ -61,8 +61,6 @@ windows11-stop  (or Start menu shutdown in Windows)
 release/end/revert.sh
     ├─ virsh nodedev-reattach audio + GPU
     ├─ modprobe amdgpu
-    ├─ re-trigger USB/input udev + logind devices
-    ├─ bring NetworkManager connections back up
     └─ systemctl start display-manager  → Hyprland login
 ```
 
@@ -150,10 +148,6 @@ Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
 | `DETACH_SLEEP`     | 3       | Pause after stopping DM                                  |
 | `SKIP_EFI_FB`      | 0       | Set `1` to skip EFI framebuffer unbind (some AMD boards) |
 | `UNLOAD_AMGPU`     | 1       | `modprobe -r amdgpu` before detach                       |
-| `RECOVER_INPUT`    | 1       | Re-authorize passed USB HID and refresh input after stop  |
-| `USB_HID_IDS`      | host-specific | USB keyboard/mouse vendor:product IDs to recover   |
-| `RECOVER_NETWORK`  | 1       | Reload NetworkManager and bring LAN connections up        |
-| `NETWORK_CONNECTIONS` | host-specific | NM connection names to prefer during recovery    |
 
 
 ## References

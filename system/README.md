@@ -18,6 +18,22 @@ This directory keeps the root-owned files needed to make `CapsLock` behave like 
 - `../winget-packages.txt`: winget package IDs (one per line).
 - `windows/install-apps.ps1`: installs packages from `winget-packages.txt`.
 
+## Stow `system/` to `/`
+
+Tracked host files live under `system/etc/` and `system/usr/` (mirrors `/`). Install
+scripts at `system/install-*.sh` are **not** stowed.
+
+```sh
+cd ~/dotfiles
+sudo bash system/stow-system.sh
+```
+
+Re-run after editing repo copies. Symlinks point into `~/dotfiles/system/...` — edit
+there, not `/usr/local/bin` or `/etc/libvirt` directly.
+
+`install-windows11-stealth-bin.sh` and `install-windows11-gpu-handoff.sh` are thin
+wrappers around `stow-system.sh`.
+
 ## Account lockout (`faillock`)
 
 `faillock/etc/security/faillock.conf` — softer defaults than stock (5 tries / 2 min window / 5 min lock).

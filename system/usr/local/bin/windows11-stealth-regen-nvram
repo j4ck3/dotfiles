@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Backup and reseed windows11-stealth NVRAM from patched OVMF_VARS.fd.
+set -euo pipefail
+
+DOMAIN="${DOMAIN:-windows11-stealth}"
+NVRAM="/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
+TEMPLATE="/opt/AutoVirt/firmware/OVMF_VARS.fd"
+CACHE="${HOME}/.cache/windows11-stealth-debug"
+TS="$(date +%Y%m%d-%H%M%S)"
+
+[[ -f "${TEMPLATE}" ]] || {
+  echo "Missing ${TEMPLATE}. Build OVMF first." >&2
+  exit 1
+}
+
+state="$(virsh -c qemu:///system domstate "${DOMAIN}" 2>/dev/null || true)"
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is running. Stop first." >&2
+  exit 1
+fi
+
+mkdir -p "${CACHE}"
+if [[ -f "${NVRAM}" ]]; then
+  if [[ "${EUID}" -eq 0 ]]; then
+    cp -a "${NVRAM}" "${CACHE}/windows11-stealth_VARS.fd.bak.${TS}"
+  else
+    sudo cp -a "${NVRAM}" "${CACHE}/windows11-stealth_VARS.fd.bak.${TS}"
+  fi
+  echo "Backed up NVRAM to ${CACHE}/windows11-stealth_VARS.fd.bak.${TS}"
+fi
+
+if [[ "${EUID}" -eq 0 ]]; then
+  cp -f "${TEMPLATE}" "${NVRAM}"
+  chmod 0644 "${NVRAM}"
+  chown libvirt-qemu:libvirt-qemu "${NVRAM}" 2>/dev/null || true
+else
+  sudo cp -f "${TEMPLATE}" "${NVRAM}"
+  sudo chmod 0644 "${NVRAM}"
+  sudo chown libvirt-qemu:libvirt-qemu "${NVRAM}" 2>/dev/null || true
+fi
+
+echo "NVRAM reseeded from ${TEMPLATE}"
+echo ""
+echo "NOTE: Fresh vars remove Windows Boot Manager. Restore boot entries if needed:"
+echo "  sudo cp /var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd.bak-* /var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
+echo "  # or: sudo cp /var/lib/libvirt/qemu/nvram/windows11_VARS.fd /var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
+echo "  sudo chown libvirt-qemu:libvirt-qemu /var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"

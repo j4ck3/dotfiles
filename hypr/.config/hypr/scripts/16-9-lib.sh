@@ -120,9 +120,11 @@ sixteen_nine_apply_to_address() {
 
 	if [[ -z "$group_addr" ]]; then
 		hyprctl --batch \
-			"${hide} ; dispatch settiled address:${addr} ; dispatch focuswindow address:${addr} ; dispatch togglegroup ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}"
+			"${hide} ; dispatch settiled address:${addr} ; dispatch focuswindow address:${addr} ; dispatch togglegroup ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}" \
+			>/dev/null 2>&1 || true
 	else
 		hyprctl --batch \
-			"${hide} ; dispatch settiled address:${group_addr} ; dispatch focuswindow address:${addr} ; dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}"
+			"${hide} ; dispatch settiled address:${group_addr} ; dispatch focuswindow address:${addr} ; dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}" \
+			>/dev/null 2>&1 || true
 	fi
 }

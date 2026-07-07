@@ -167,4 +167,64 @@ export const SHORTCUT_TABS: ShortcutTab[] = [
       },
     ],
   },
+  {
+    id: "pacman",
+    label: "Pacman",
+    sections: [
+      {
+        title: "Sync & upgrade",
+        items: [
+          { keys: "pacman -Sy", desc: "Refresh package databases only" },
+          { keys: "pacman -Sy pkg", desc: "Refresh DB and install or upgrade one package only" },
+          { keys: "pacman -Sy --needed pkg", desc: "Same; skip if already at latest version" },
+          { keys: "pacman -Syu", desc: "Refresh databases and upgrade all packages" },
+          { keys: "pacman -Syuu", desc: "Upgrade; allow package downgrades" },
+        ],
+      },
+      {
+        title: "Install",
+        items: [
+          { keys: "pacman -S pkg", desc: "Install a package" },
+          { keys: 'pacman -S "pkg>=ver"', desc: "Install with version constraint" },
+          { keys: "pacman -S group", desc: "Install package group (interactive)" },
+          { keys: "pacman -S repo/pkg", desc: "Install from named repository" },
+          { keys: "pacman -U file.tar.zst", desc: "Install or upgrade local package file" },
+        ],
+      },
+      {
+        title: "Remove",
+        items: [
+          { keys: "pacman -R pkg", desc: "Remove package; keep config as .pacsave" },
+          { keys: "pacman -Rs pkg", desc: "Remove package and unneeded dependencies" },
+          { keys: "pacman -Rns pkg", desc: "Remove package, deps, and config files" },
+        ],
+      },
+      {
+        title: "Search repositories",
+        items: [
+          { keys: "pacman -Ss regex", desc: "Search package names and descriptions in repos" },
+          { keys: "pacman -F /path", desc: "Which repo package provides a file path" },
+          { keys: "pacman -Fl pkg", desc: "List files from sync database for package" },
+        ],
+      },
+      {
+        title: "Query installed",
+        items: [
+          { keys: "pacman -Q", desc: "List all installed packages" },
+          { keys: "pacman -Qi pkg", desc: "Detailed info: description, deps, install date" },
+          { keys: "pacman -Ql pkg", desc: "List files owned by installed package" },
+          { keys: "pacman -Qo /path", desc: "Which installed package owns a file" },
+          { keys: "pacman -Qs regex", desc: "Search locally installed packages" },
+          { keys: "pacman -Qdt", desc: "List orphaned dependencies (unused)" },
+        ],
+      },
+      {
+        title: "Database marks",
+        items: [
+          { keys: "pacman -D --asdeps pkg", desc: "Mark package as dependency" },
+          { keys: "pacman -D --asexplicit pkg", desc: "Mark package as explicitly installed" },
+        ],
+      },
+    ],
+  },
 ]

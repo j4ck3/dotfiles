@@ -57,11 +57,20 @@ while IFS= read -r addr; do
 	[[ -z "$addr" ]] && continue
 	handle_openwindow "$addr" &
 done < <(python3 - "$SOCKET" <<'PY'
-import sys, socket
+import sys, socket, time
 
 sock_path = sys.argv[1]
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect(sock_path)
+s = None
+for _ in range(30):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(sock_path)
+        break
+    except (ConnectionRefusedError, FileNotFoundError, OSError):
+        time.sleep(0.2)
+else:
+    sys.exit(0)
+
 buf = b""
 while True:
     data = s.recv(4096)

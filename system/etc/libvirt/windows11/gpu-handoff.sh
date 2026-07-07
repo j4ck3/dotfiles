@@ -28,20 +28,14 @@ UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
 ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
-RECOVER_INPUT="${RECOVER_INPUT:-1}"
-RECOVER_NETWORK="${RECOVER_NETWORK:-1}"
-
-if ! declare -p USB_HID_IDS >/dev/null 2>&1; then
-  # Razer Viper receiver/wired + Keychron Q1 from windows11-passthrough-usb.xml.
-  USB_HID_IDS=(1532:007a 3434:0108 1532:007b)
-fi
-
-if ! declare -p NETWORK_CONNECTIONS >/dev/null 2>&1; then
-  NETWORK_CONNECTIONS=(br0 eno1 "Wired connection 1")
-fi
+AUTO_RESTORE_HYPRLAND="${AUTO_RESTORE_HYPRLAND:-1}"
 
 if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
   DISPLAY_MANAGER_UNITS=("${DISPLAY_MANAGER:-display-manager.service}")
+fi
+
+if ! declare -p USB_HID_IDS >/dev/null 2>&1; then
+  USB_HID_IDS=(1532:007a 3434:0108 1532:007b 361d:0100)
 fi
 
 passthrough_enabled() {
@@ -155,73 +149,114 @@ stop_display_stack() {
 settle_console_input() {
   echo "STEP: settle console/input"
   udevadm trigger --subsystem-match=input 2>/dev/null || true
-  udevadm trigger --subsystem-match=usb 2>/dev/null || true
   udevadm settle 2>/dev/null || true
   systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
 }
 
-recover_usb_hid() {
-  [[ "${RECOVER_INPUT}" == "1" ]] || return 0
-  echo "STEP: recover USB HID input"
-  modprobe usbhid 2>/dev/null || true
-
-  local dev vendor product id auth
-  shopt -s nullglob
-  for dev in /sys/bus/usb/devices/*; do
-    [[ -r "${dev}/idVendor" && -r "${dev}/idProduct" ]] || continue
-    vendor="$(< "${dev}/idVendor")"
-    product="$(< "${dev}/idProduct")"
-    id="${vendor}:${product}"
-    if [[ " ${USB_HID_IDS[*]} " == *" ${id} "* ]]; then
-      auth="${dev}/authorized"
-      if [[ -w "${auth}" ]]; then
-        echo "STEP: USB re-authorize ${id} (${dev##*/})"
-        echo 0 > "${auth}" 2>/dev/null || true
-        sleep 0.2
-        echo 1 > "${auth}" 2>/dev/null || true
-      fi
-    fi
+start_ly_units() {
+  local unit
+  for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
+    [[ -n "${unit}" ]] || continue
+    echo "STEP: start ${unit} (ly login fallback)"
+    systemctl start "${unit}" 2>/dev/null || true
+    break
   done
-  shopt -u nullglob
-
-  udevadm trigger --subsystem-match=input 2>/dev/null || true
-  udevadm trigger --subsystem-match=usb 2>/dev/null || true
-  udevadm settle 2>/dev/null || true
-  loginctl flush-devices 2>/dev/null || true
+  chvt 1 2>/dev/null || true
 }
 
-recover_network() {
-  [[ "${RECOVER_NETWORK}" == "1" ]] || return 0
-  command -v nmcli >/dev/null || return 0
-  echo "STEP: recover NetworkManager"
-  nmcli general reload 2>/dev/null || true
-  nmcli networking on 2>/dev/null || true
+restore_hyprland_session() {
+  [[ "${AUTO_RESTORE_HYPRLAND:-1}" == "1" ]] || return 1
+  if pgrep -x Hyprland >/dev/null; then
+    echo "STEP: Hyprland already running"
+    chvt 1 2>/dev/null || true
+    return 0
+  fi
 
-  local con dev
-  for con in "${NETWORK_CONNECTIONS[@]}"; do
-    [[ -n "${con}" ]] || continue
-    nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${con}" || continue
-    echo "STEP: nmcli connection up ${con}"
-    nmcli connection up "${con}" 2>/dev/null || true
+  local unit uid runtime log dbus_addr home
+  log="${WINDOWS11_HOOK_LOG:-/var/log/windows11-passthrough-hook.log}"
+  echo "STEP: restore Hyprland session (${CONSOLE_USER})"
+  for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
+    [[ -n "${unit}" ]] || continue
+    systemctl stop "${unit}" 2>/dev/null || true
   done
+  sleep 1
+  chvt 1 2>/dev/null || true
 
-  while IFS=: read -r dev; do
-    [[ -n "${dev}" ]] || continue
-    echo "STEP: nmcli device connect ${dev}"
-    nmcli device connect "${dev}" 2>/dev/null || true
-  done < <(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2 ~ /^(ethernet|wifi|bridge)$/ {print $1}')
+  uid="$(id -u "${CONSOLE_USER}" 2>/dev/null)" || return 1
+  runtime="/run/user/${uid}"
+  if [[ ! -d "${runtime}" ]]; then
+    loginctl enable-linger "${CONSOLE_USER}" 2>/dev/null || true
+    systemctl start "user@${uid}.service" 2>/dev/null || true
+    sleep 2
+  fi
+  [[ -d "${runtime}" ]] || {
+    echo "WARN: missing ${runtime}; cannot start Hyprland" >&2
+    return 1
+  }
+
+  home="$(getent passwd "${CONSOLE_USER}" | cut -d: -f6)"
+  dbus_addr="unix:path=${runtime}/bus"
+  if [[ ! -S "${runtime}/bus" ]]; then
+    echo "STEP: dbus-run-session (no user bus yet)"
+    dbus_addr=""
+  fi
+
+  if command -v uwsm >/dev/null; then
+    echo "STEP: uwsm start hyprland.desktop"
+    if [[ -n "${dbus_addr}" ]]; then
+      nohup runuser -u "${CONSOLE_USER}" -- env \
+        XDG_RUNTIME_DIR="${runtime}" \
+        HOME="${home}" \
+        DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
+        uwsm start -D Hyprland hyprland.desktop \
+        </dev/null >>"${log}" 2>&1 &
+    else
+      nohup runuser -u "${CONSOLE_USER}" -- env \
+        XDG_RUNTIME_DIR="${runtime}" \
+        HOME="${home}" \
+        dbus-run-session -- uwsm start -D Hyprland hyprland.desktop \
+        </dev/null >>"${log}" 2>&1 &
+    fi
+  elif [[ -x /usr/bin/start-hyprland ]]; then
+    echo "STEP: start-hyprland"
+    if [[ -n "${dbus_addr}" ]]; then
+      nohup runuser -u "${CONSOLE_USER}" -- env \
+        XDG_RUNTIME_DIR="${runtime}" \
+        HOME="${home}" \
+        DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
+        /usr/bin/start-hyprland \
+        </dev/null >>"${log}" 2>&1 &
+    else
+      nohup runuser -u "${CONSOLE_USER}" -- env \
+        XDG_RUNTIME_DIR="${runtime}" \
+        HOME="${home}" \
+        dbus-run-session -- /usr/bin/start-hyprland \
+        </dev/null >>"${log}" 2>&1 &
+    fi
+  else
+    echo "WARN: uwsm/start-hyprland missing; falling back to ly" >&2
+    return 1
+  fi
+
+  local i
+  for ((i = 1; i <= 60; i++)); do
+    if pgrep -x Hyprland >/dev/null; then
+      echo "STEP: Hyprland running after restore"
+      chvt 1 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "WARN: Hyprland did not start within 30s (see ${log})" >&2
+  return 1
 }
 
 start_display_stack() {
-  local unit
   settle_console_input
-  recover_usb_hid
-  recover_network
-  for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
-    [[ -n "${unit}" ]] || continue
-    echo "STEP: start ${unit}"
-    systemctl start "${unit}" 2>/dev/null || true
-  done
+  if restore_hyprland_session; then
+    return 0
+  fi
+  start_ly_units
 }
 
 pci_sysfs_dir() {

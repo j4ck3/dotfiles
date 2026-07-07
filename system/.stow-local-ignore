@@ -1,0 +1,5 @@
+# Not system paths — keep install helpers and docs out of `stow -t / system`.
+^README\.md$
+^install-.*\.sh$
+^stow-system\.sh$
+^windows$

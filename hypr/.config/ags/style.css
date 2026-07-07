@@ -11,12 +11,11 @@
   padding: 18px;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.06) 55%,
-    rgba(0, 0, 0, 0.20) 100%
+    rgba(34, 38, 56, 0.90) 0%,
+    rgba(18, 20, 32, 0.84) 100%
   );
   color: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 22px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
 }
@@ -32,7 +31,7 @@
 }
 
 .close-btn {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.20);
   color: rgba(255, 255, 255, 0.7);
   border: none;
   border-radius: 999px;
@@ -42,14 +41,14 @@
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .vol-section {
   margin: 10px 0;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
 }
 
@@ -70,7 +69,7 @@
 }
 
 .mute-btn {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.18);
   border: none;
   border-radius: 10px;
   min-width: 32px;
@@ -81,7 +80,7 @@
 }
 
 .mute-btn:hover {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
 }
 
 .slider-label {
@@ -123,8 +122,8 @@ scale.vol-slider slider {
 .mixer-btn {
   margin-top: 14px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
   font-size: 13px;
   font-weight: 500;
@@ -132,5 +131,5 @@ scale.vol-slider slider {
 }
 
 .mixer-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.28);
 }

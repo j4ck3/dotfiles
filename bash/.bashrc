@@ -146,3 +146,4 @@ eval "$(starship init bash)"
 export PATH="$PATH:/home/jacke/.lmstudio/bin"
 # End of LM Studio CLI section
 
+. "$HOME/.cargo/env"

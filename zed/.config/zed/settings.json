@@ -3,10 +3,16 @@
   "ssh_connections": [
     {
       "host": "tower",
+      "args": [],
       "projects": [
         {
           "paths": [
             "/mnt/user/documents/compose"
+          ]
+        },
+        {
+          "paths": [
+            "/mnt/user/documents/work"
           ]
         },
         {
@@ -19,6 +25,7 @@
     },
     {
       "host": "web",
+      "args": [],
       "projects": [
         {
           "paths": [
@@ -35,6 +42,7 @@
     },
     {
       "host": "htpc",
+      "args": [],
       "projects": []
     }
   ],

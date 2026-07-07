@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Force-stop the stealth clone when passthrough leaves libvirt wedged.
+set -u
+
+export DOMAIN="windows11-stealth"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+
+exec /usr/local/bin/windows11-force-stop "$@"

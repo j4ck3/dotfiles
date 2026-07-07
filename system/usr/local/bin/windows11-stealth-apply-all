@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Full stealth apply: NVRAM (sudo) + tune + harden. VM must be off.
+set -euo pipefail
+
+DOTFILES_ROOT="${DOTFILES_ROOT:-$HOME/dotfiles}"
+export DOMAIN="${DOMAIN:-windows11-stealth}"
+export DISK_GB="${DISK_GB:-0}"
+
+"${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-regen-nvram"
+"${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-tune"
+"${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-harden"
+
+echo "All stealth steps applied. Start with: DOMAIN=${DOMAIN} windows11-stealth-start --yes"
