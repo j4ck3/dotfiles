@@ -51,7 +51,7 @@
     "exec": "/home/jacke/.config/waybar/scripts/media.sh",
     "return-type": "json",
     "restart-interval": 5,
-    "on-click": "~/.config/waybar/scripts/media-player-toggle.sh",
+    "on-click": "qs ipc call shell toggleMedia",
     "on-click-right": "playerctl --player=spotify play-pause",
     "on-scroll-up": "playerctl --player=spotify volume 0.02+",
     "on-scroll-down": "playerctl --player=spotify volume 0.02-",
@@ -144,7 +144,7 @@
   "pulseaudio": {
     "format": "<span size=\"x-small\">VOL</span>\n{volume}%",
     "format-muted": "<span size=\"x-small\">VOL</span>\nMUT",
-    "on-click": "~/.config/waybar/scripts/volume-popup-toggle.sh",
+    "on-click": "qs ipc call shell toggleVolume",
     "on-click-right": "pavucontrol",
     "tooltip-format": "Output at {volume}%",
     "scroll-step": 5,
@@ -152,7 +152,7 @@
   "custom/power": {
     "format": "󰐥",
     "tooltip": false,
-    "on-click": "~/.config/waybar/scripts/power-menu-toggle.sh",
+    "on-click": "qs ipc call shell togglePower",
   },
   "tray": { "icon-size": 12, "spacing": 17 },
 }

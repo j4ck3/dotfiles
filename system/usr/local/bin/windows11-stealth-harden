@@ -5,8 +5,9 @@ set -euo pipefail
 export LC_ALL=C
 CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 DOMAIN="${DOMAIN:-windows11-stealth}"
-DOTFILES_ROOT="${DOTFILES_ROOT:-$HOME/dotfiles}"
-PATCH_PY="${DOTFILES_ROOT}/system/etc/libvirt/windows11/patch-domain.py"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+PATCH_PY="${PATCH_DOMAIN_PY}"
 
 state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
 if [[ "${state}" == "running" ]]; then

@@ -238,6 +238,14 @@ def ensure_passthrough_features(root: ET.Element) -> bool:
             features.remove(child)
             changed = True
 
+    # NOTE: do NOT disable the PS/2 controller (i8042). QEMU input-linux evdev
+    # passthrough delivers keyboard/mouse events through the guest PS/2 devices;
+    # libvirt auto-adds implicit PS/2 inputs which act as that sink. Disabling
+    # i8042 leaves evdev with nowhere to deliver -> dead keyboard and mouse.
+    for child in list(features.findall("ps2")):
+        features.remove(child)
+        changed = True
+
     return changed
 
 
@@ -433,6 +441,86 @@ def ensure_qemu_commandline(root: ET.Element) -> bool:
     return True
 
 
+def ensure_lan_bridge_network(
+    devices: ET.Element,
+    *,
+    bridge: str = "br0",
+    model: str = "e1000e",
+    mac: str = "02:74:72:32:e0:03",
+) -> bool:
+    """Single NIC on an existing host bridge (NetworkManager br0; managed=no)."""
+    changed = False
+    ifaces = devices.findall("interface")
+
+    keep = ifaces[0] if ifaces else None
+    for extra in ifaces[1:]:
+        devices.remove(extra)
+        changed = True
+
+    if keep is None:
+        keep = ET.SubElement(devices, "interface", type="bridge")
+        changed = True
+    elif keep.get("type") != "bridge":
+        keep.set("type", "bridge")
+        changed = True
+
+    for child in list(keep.findall("portForward")):
+        keep.remove(child)
+        changed = True
+    for child in list(keep.findall("source")):
+        if child.get("network") is not None:
+            keep.remove(child)
+            changed = True
+
+    src = keep.find("source")
+    if src is None:
+        src = ET.SubElement(keep, "source")
+        changed = True
+    wanted_src = {"bridge": bridge, "managed": "no"}
+    for key in list(src.attrib):
+        if key not in wanted_src:
+            del src.attrib[key]
+            changed = True
+    for key, value in wanted_src.items():
+        if src.get(key) != value:
+            src.set(key, value)
+            changed = True
+
+    mac_el = keep.find("mac")
+    if mac_el is None:
+        ET.SubElement(keep, "mac", address=mac)
+        changed = True
+    elif mac_el.get("address") != mac:
+        mac_el.set("address", mac)
+        changed = True
+
+    model_el = keep.find("model")
+    if model_el is None:
+        ET.SubElement(keep, "model", type=model)
+        changed = True
+    elif model_el.get("type") != model:
+        model_el.set("type", model)
+        changed = True
+
+    addr_wanted = {
+        "type": "pci",
+        "domain": "0x0000",
+        "bus": "0x01",
+        "slot": "0x00",
+        "function": "0x0",
+    }
+    addr = keep.find("address")
+    if addr is None:
+        ET.SubElement(keep, "address", **addr_wanted)
+        changed = True
+    elif dict(addr.attrib) != addr_wanted:
+        addr.attrib.clear()
+        addr.attrib.update(addr_wanted)
+        changed = True
+
+    return changed
+
+
 def ensure_emulator_path(devices: ET.Element) -> bool:
     path = "/opt/AutoVirt/emulator/bin/qemu-system-x86_64"
     emu = devices.find("emulator")
@@ -533,6 +621,7 @@ def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
         changed |= add_console_inputs(devices)
         changed |= set_memballoon(devices, "virtio")
     elif mode == "stealth":
+        changed |= ensure_lan_bridge_network(devices)
         changed |= remove_virtual_sound(devices)
         changed |= remove_leaky_devices(devices)
         changed |= set_memballoon(devices, "none")

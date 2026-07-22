@@ -1,0 +1,392 @@
+#!/usr/bin/env bash
+# Fix or switch windows11 networking (requires VM shut off for --apply).
+set -euo pipefail
+
+CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+DOMAIN="${DOMAIN:-windows11}"
+MAC="${MAC:-52:54:00:1a:5e:fe}"
+LAN_BRIDGE="${LAN_BRIDGE:-br0}"
+LAN_IFACE="${LAN_IFACE:-}"
+NIC_MODEL="${NIC_MODEL:-}"
+
+export LC_ALL=C
+export LANG=C
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} <command>
+
+Commands:
+  status     Show VM NIC type and guest IP (if running + guest agent up)
+  user       Print how to use QEMU user NAT (10.0.2.15 — reliable DHCP)
+  nat        Print how to use libvirt "default" NAT (192.168.122.x)
+  bridge     Print how to use a real LAN bridge (${LAN_BRIDGE})
+  apply-user   Shut off VM and switch to user networking
+  apply-nat    Shut off VM and switch to libvirt default NAT
+  apply-bridge Create/use ${LAN_BRIDGE} and put the VM directly on the LAN
+  fix-bridge     Attach running VM tap to ${LAN_BRIDGE} (no VM restart)
+
+User mode: guest 10.0.2.15 — inbound from host blocked except RDP via 127.0.0.1:33389 (after apply-user)
+NAT mode: guest 192.168.122.x — host can ping/RDP the guest IP directly, other PCs cannot
+Bridge mode: guest gets a 10.0.0.x LAN address — reachable from other PCs on your network
+EOF
+}
+
+virsh_cmd() { virsh -c "${CONNECT_URI}" "$@"; }
+
+require_shutoff() {
+  local state
+  state="$(virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true)"
+  [[ "${state}" == "shut off" || -z "${state}" ]] || {
+    echo "Shut off ${DOMAIN} first (state: ${state})" >&2
+    exit 1
+  }
+}
+
+apply_user() {
+  require_shutoff
+  local xml out
+  xml="$(mktemp)"
+  out="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${out}" "${MAC}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+tree = ET.parse(sys.argv[1])
+mac = sys.argv[3]
+devices = tree.getroot().find("devices")
+for iface in list(devices.findall("interface")):
+    devices.remove(iface)
+iface = ET.SubElement(devices, "interface", type="user")
+# Allow RDP from host: connect to 127.0.0.1:33389 (forwards to guest :3389).
+pf = ET.SubElement(iface, "portForward")
+ET.SubElement(pf, "proto", name="tcp", hostport="33389", guestport="3389")
+ET.SubElement(iface, "mac", address=mac)
+ET.SubElement(iface, "model", type="virtio")
+ET.SubElement(
+    iface, "address", type="pci",
+    domain="0x0000", bus="0x08", slot="0x00", function="0x0",
+)
+tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
+PY
+  virsh_cmd define "${out}"
+  rm -f "${xml}" "${out}"
+  echo "Applied user networking. Start VM: windows11-console"
+  echo "Guest: 10.0.2.15 (gateway 10.0.2.2) — guest can reach internet; host cannot ping 10.0.2.15."
+  echo "RDP from this host: xfreerdp /v:127.0.0.1:33389 /u:YOUR_USER   (forwards to guest :3389)"
+}
+
+ensure_default_network() {
+  if virsh_cmd net-info default &>/dev/null; then
+    virsh_cmd net-start default 2>/dev/null || true
+    return 0
+  fi
+  local net_xml="/etc/libvirt/qemu/networks/default.xml"
+  [[ -f "${net_xml}" ]] || {
+    echo "Missing ${net_xml}. Install libvirt or create the default network." >&2
+    exit 1
+  }
+  echo "Defining libvirt network 'default' from ${net_xml}..."
+  virsh_cmd net-define "${net_xml}"
+  virsh_cmd net-autostart default
+  virsh_cmd net-start default
+}
+
+apply_nat() {
+  require_shutoff
+  ensure_default_network
+  local xml out
+  xml="$(mktemp)"
+  out="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${out}" "${MAC}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+tree = ET.parse(sys.argv[1])
+mac = sys.argv[3]
+devices = tree.getroot().find("devices")
+if devices is None:
+    sys.exit("no <devices> in domain XML")
+for iface in list(devices.findall("interface")):
+    devices.remove(iface)
+iface = ET.SubElement(devices, "interface", type="network")
+ET.SubElement(iface, "source", network="default")
+ET.SubElement(iface, "mac", address=mac)
+ET.SubElement(iface, "model", type="virtio")
+ET.SubElement(
+    iface, "address", type="pci",
+    domain="0x0000", bus="0x08", slot="0x00", function="0x0",
+)
+tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
+PY
+  virsh_cmd define "${out}"
+  rm -f "${xml}" "${out}"
+  echo "Applied libvirt 'default' NAT (virbr0 / 192.168.122.0/24)."
+  echo "Use: virsh -c qemu:///system net-dhcp-leases default   (not bare virsh)"
+  echo "Start VM, then in Windows: ipconfig  →  RDP to 192.168.122.x from the host."
+}
+
+detect_lan_iface() {
+  if [[ -n "${LAN_IFACE}" ]]; then
+    printf '%s\n' "${LAN_IFACE}"
+    return 0
+  fi
+  ip -4 route show default | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") {print $(i + 1); exit}}'
+}
+
+detect_bridge_iface() {
+  local iface
+  iface="$(bridge link show 2>/dev/null | awk -v br="${LAN_BRIDGE}" '$0 ~ "master " br { sub(":", "", $2); print $2; exit }')"
+  if [[ -n "${iface}" ]]; then
+    printf '%s\n' "${iface}"
+    return 0
+  fi
+
+  local uuid type master
+  while IFS=: read -r uuid type; do
+    [[ "${type}" == "802-3-ethernet" ]] || continue
+    master="$(nmcli -g connection.master connection show uuid "${uuid}" 2>/dev/null || true)"
+    if [[ "${master}" == "${LAN_BRIDGE}" ]]; then
+      nmcli -g connection.interface-name connection show uuid "${uuid}" 2>/dev/null
+      return 0
+    fi
+  done < <(nmcli -t -f UUID,TYPE connection show)
+}
+
+disable_competing_wired_profiles() {
+  local iface="$1"
+  local keep="$2"
+  local uuid type ifname
+
+  while IFS=: read -r uuid type; do
+    [[ "${type}" == "802-3-ethernet" ]] || continue
+    ifname="$(nmcli -g connection.interface-name connection show uuid "${uuid}" 2>/dev/null || true)"
+    [[ "${ifname}" == "${iface}" ]] || continue
+    [[ "${uuid}" == "${keep}" ]] && continue
+    nmcli connection modify uuid "${uuid}" connection.autoconnect no || true
+  done < <(nmcli -t -f UUID,TYPE connection show)
+}
+
+ensure_host_bridge() {
+  command -v nmcli >/dev/null || {
+    echo "NetworkManager/nmcli is required to create ${LAN_BRIDGE} automatically." >&2
+    echo "Create a Linux bridge manually, then retry with LAN_BRIDGE=<bridge>." >&2
+    exit 1
+  }
+
+  if [[ -d "/sys/class/net/${LAN_BRIDGE}/bridge" ]]; then
+    local existing_iface existing_slave_uuid
+    existing_iface="$(detect_bridge_iface || true)"
+    if [[ -n "${existing_iface}" ]]; then
+      if nmcli connection show "${LAN_BRIDGE}" &>/dev/null; then
+        nmcli connection modify "${LAN_BRIDGE}" ifname "${LAN_BRIDGE}" \
+          connection.autoconnect yes connection.autoconnect-priority 100 \
+          connection.autoconnect-slaves 1 ipv4.method auto ipv6.method auto \
+          bridge.stp no
+      else
+        nmcli connection add type bridge ifname "${LAN_BRIDGE}" con-name "${LAN_BRIDGE}" \
+          connection.autoconnect yes connection.autoconnect-priority 100 \
+          connection.autoconnect-slaves 1 ipv4.method auto ipv6.method auto \
+          bridge.stp no
+      fi
+      if nmcli connection show "${LAN_BRIDGE}-${existing_iface}" &>/dev/null; then
+        nmcli connection modify "${LAN_BRIDGE}-${existing_iface}" ifname "${existing_iface}" \
+          connection.master "${LAN_BRIDGE}" connection.slave-type bridge \
+          connection.autoconnect yes connection.autoconnect-priority 100
+      else
+        nmcli connection add type ethernet ifname "${existing_iface}" con-name "${LAN_BRIDGE}-${existing_iface}" \
+          master "${LAN_BRIDGE}" slave-type bridge \
+          connection.autoconnect yes connection.autoconnect-priority 100
+      fi
+      existing_slave_uuid="$(nmcli -g connection.uuid connection show "${LAN_BRIDGE}-${existing_iface}")"
+      disable_competing_wired_profiles "${existing_iface}" "${existing_slave_uuid}"
+      nmcli connection up "${LAN_BRIDGE}-${existing_iface}" 2>/dev/null || true
+    fi
+    nmcli connection up "${LAN_BRIDGE}" 2>/dev/null || true
+    return 0
+  fi
+
+  local iface active slave slave_uuid
+  iface="$(detect_lan_iface)"
+  [[ -n "${iface}" ]] || {
+    echo "Could not detect LAN interface. Retry with LAN_IFACE=eno1 sudo $0 apply-bridge" >&2
+    exit 1
+  }
+  [[ -e "/sys/class/net/${iface}" ]] || {
+    echo "LAN interface does not exist: ${iface}" >&2
+    exit 1
+  }
+  [[ ! -d "/sys/class/net/${iface}/wireless" ]] || {
+    echo "${iface} is Wi-Fi. Client-mode Wi-Fi generally cannot be enslaved to a Linux bridge." >&2
+    echo "Use wired Ethernet or configure routed/NAT port forwards instead." >&2
+    exit 1
+  }
+
+  active="$(nmcli -g GENERAL.CONNECTION device show "${iface}" 2>/dev/null || true)"
+  slave="${LAN_BRIDGE}-${iface}"
+
+  echo "Creating NetworkManager bridge ${LAN_BRIDGE} over ${iface}."
+  echo "This may briefly reconnect the host network while DHCP moves from ${iface} to ${LAN_BRIDGE}."
+
+  if nmcli connection show "${LAN_BRIDGE}" &>/dev/null; then
+    nmcli connection modify "${LAN_BRIDGE}" ifname "${LAN_BRIDGE}" \
+      ipv4.method auto ipv6.method auto \
+      connection.autoconnect yes connection.autoconnect-priority 100 \
+      connection.autoconnect-slaves 1 bridge.stp no
+  else
+    nmcli connection add type bridge ifname "${LAN_BRIDGE}" con-name "${LAN_BRIDGE}" \
+      ipv4.method auto ipv6.method auto \
+      connection.autoconnect yes connection.autoconnect-priority 100 \
+      connection.autoconnect-slaves 1 bridge.stp no
+  fi
+  if nmcli connection show "${slave}" &>/dev/null; then
+    nmcli connection modify "${slave}" ifname "${iface}" \
+      connection.master "${LAN_BRIDGE}" connection.slave-type bridge \
+      connection.autoconnect yes connection.autoconnect-priority 100
+  else
+    nmcli connection add type ethernet ifname "${iface}" con-name "${slave}" \
+      master "${LAN_BRIDGE}" slave-type bridge \
+      connection.autoconnect yes connection.autoconnect-priority 100
+  fi
+  slave_uuid="$(nmcli -g connection.uuid connection show "${slave}")"
+
+  if [[ -n "${active}" && "${active}" != "--" ]]; then
+    nmcli connection modify "${active}" connection.autoconnect no || true
+    nmcli connection down "${active}" || true
+  fi
+  disable_competing_wired_profiles "${iface}" "${slave_uuid}"
+  nmcli connection up "${LAN_BRIDGE}" || true
+  nmcli connection up "${slave}"
+  nmcli connection up "${LAN_BRIDGE}"
+}
+
+apply_bridge() {
+  require_shutoff
+  ensure_host_bridge
+  local xml out
+  xml="$(mktemp)"
+  out="$(mktemp)"
+  virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
+  python3 - "${xml}" "${out}" "${MAC}" "${LAN_BRIDGE}" "${DOMAIN}" "${NIC_MODEL}" <<'PY'
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+tree = ET.parse(sys.argv[1])
+mac = sys.argv[3]
+bridge = sys.argv[4]
+domain = sys.argv[5]
+nic_model = sys.argv[6] or os.environ.get("NIC_MODEL", "")
+if not nic_model:
+    nic_model = "e1000e" if domain == "windows11-stealth" else "virtio"
+devices = tree.getroot().find("devices")
+if devices is None:
+    sys.exit("no <devices> in domain XML")
+for iface in devices.findall("interface"):
+    mac_el = iface.find("mac")
+    if mac_el is not None and mac_el.get("address"):
+        mac = mac_el.get("address")
+        break
+for iface in list(devices.findall("interface")):
+    devices.remove(iface)
+iface = ET.SubElement(devices, "interface", type="bridge")
+src = ET.SubElement(iface, "source", bridge=bridge)
+src.set("managed", "no")
+ET.SubElement(iface, "mac", address=mac)
+ET.SubElement(iface, "model", type=nic_model)
+pci_bus = "0x01" if domain == "windows11-stealth" else "0x08"
+ET.SubElement(
+    iface, "address", type="pci",
+    domain="0x0000", bus=pci_bus, slot="0x00", function="0x0",
+)
+tree.write(sys.argv[2], encoding="unicode", xml_declaration=True)
+PY
+  virsh_cmd define "${out}"
+  rm -f "${xml}" "${out}"
+  echo "Applied LAN bridge ${LAN_BRIDGE} (managed=no, model=${NIC_MODEL:-auto})."
+  echo "Start the VM, leave Windows on DHCP, then use ipconfig or your router leases to find its LAN IP."
+  echo "Other PCs on the LAN should RDP/ping the Windows address directly if Windows Firewall allows it."
+}
+
+fix_live_bridge() {
+  # shellcheck source=/dev/null
+  source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+  # shellcheck source=/dev/null
+  source "${BRIDGE_LIB}"
+  LAN_BRIDGE="${LAN_BRIDGE}" bridge_ensure_for_domain "${DOMAIN}"
+}
+
+cmd_status() {
+  echo "URI: ${CONNECT_URI}"
+  virsh_cmd domstate "${DOMAIN}" 2>/dev/null || true
+  virsh_cmd dumpxml "${DOMAIN}" 2>/dev/null | grep -A6 "<interface" || true
+  echo "--- host LAN bridge ---"
+  ip -4 addr show "${LAN_BRIDGE}" 2>/dev/null | grep -E "${LAN_BRIDGE}|inet " || true
+  bridge link show 2>/dev/null | grep -E "master ${LAN_BRIDGE}" || true
+  # shellcheck source=/dev/null
+  source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+  # shellcheck source=/dev/null
+  source "${BRIDGE_LIB}"
+  bridge_status_for_domain "${DOMAIN}" || echo "  WARNING: guest tap is not on ${LAN_BRIDGE}" >&2
+  echo "--- libvirt network default (system URI) ---"
+  virsh_cmd net-info default 2>/dev/null || echo "default network missing — run: sudo $0 apply-nat"
+  virsh_cmd net-dhcp-leases default 2>/dev/null || true
+  ip -4 addr show virbr0 2>/dev/null | grep -E 'virbr0|inet ' || true
+  echo "--- guest addresses (needs guest agent + running VM) ---"
+  virsh_cmd domifaddr "${DOMAIN}" --source agent 2>/dev/null || true
+}
+
+main() {
+  case "${1:-}" in
+    status) cmd_status ;;
+    user)
+      cat <<EOF
+QEMU user NAT — no host virbr0/DHCP required.
+Guest: 10.0.2.15/24  Gateway: 10.0.2.2  DNS: 10.0.2.3
+RDP from host: 127.0.0.1:33389  (not 10.0.2.15 — slirp does not accept inbound to guest IP)
+Apply: sudo ${0##*/} apply-user
+EOF
+      ;;
+    nat)
+      cat <<EOF
+libvirt NAT network "default" on virbr0 (192.168.122.0/24).
+Reachable from this host, not directly from other PCs on your LAN.
+If DHCP fails, check: sudo firewall-cmd --zone=libvirt --list-all
+Apply: sudo ${0##*/} apply-nat
+EOF
+      ;;
+    bridge)
+      cat <<EOF
+Real LAN bridge via NetworkManager.
+Host Ethernet becomes a bridge slave and the VM gets a LAN DHCP address from your router.
+Default bridge: ${LAN_BRIDGE}
+Default physical NIC: ${LAN_IFACE:-auto-detected from default route}
+
+Apply: sudo ${0##*/} apply-bridge
+Override: LAN_IFACE=eno1 LAN_BRIDGE=br0 sudo ${0##*/} apply-bridge
+EOF
+      ;;
+    apply-user)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 apply-user" >&2; exit 1; }
+      apply_user
+      ;;
+    apply-nat)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 apply-nat" >&2; exit 1; }
+      apply_nat
+      ;;
+    apply-bridge)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 apply-bridge" >&2; exit 1; }
+      apply_bridge
+      ;;
+    fix-bridge)
+      [[ "${EUID}" -eq 0 ]] || { echo "sudo $0 fix-bridge" >&2; exit 1; }
+      fix_live_bridge
+      ;;
+    -h|--help|"") usage ;;
+    *) echo "Unknown: $1" >&2; usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

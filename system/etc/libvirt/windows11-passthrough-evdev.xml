@@ -1,12 +1,13 @@
 <!--
   Evdev inputs for passthrough gaming.
-  Uses stable /dev/input/by-id paths so event numbers may change safely.
+  Uses stable /dev/input/by-id paths; globs match any dongle serial.
 
   Keyboard: Keychron Q1 (both HID interfaces — QMK often uses if02 for keys)
-  Mouse: Razer Viper Ultimate wired (1532:007a)
   Mouse: Finalmouse UltralightX dongle / ZeroMouse (361d:0100)
 
   Merged by: sudo windows11-mode passthrough-evdev
+             windows11-stealth-tune
+  Missing paths are skipped automatically.
 -->
 <input type="evdev">
   <source dev="/dev/input/by-id/usb-Keychron_Keychron_Q1-event-kbd" grab="all" repeat="on" grabToggle="shift-shift"/>
@@ -15,8 +16,8 @@
   <source dev="/dev/input/by-id/usb-Keychron_Keychron_Q1-if02-event-kbd" grab="all" repeat="on" grabToggle="shift-shift"/>
 </input>
 <input type="evdev">
-  <source dev="/dev/input/by-id/usb-Razer_Razer_Viper_Ultimate_000000000000-event-mouse" grabToggle="shift-shift"/>
+  <source dev="/dev/input/by-id/usb-Finalmouse_*-event-mouse" grab="all" grabToggle="shift-shift"/>
 </input>
 <input type="evdev">
-  <source dev="/dev/input/by-id/usb-Finalmouse_UltralightX_dongle_6C7C638AAAC7EE26-event-mouse" grabToggle="shift-shift"/>
+  <source dev="/dev/input/by-id/usb-ZeroMouse_*-event-mouse" grab="all" grabToggle="shift-shift"/>
 </input>

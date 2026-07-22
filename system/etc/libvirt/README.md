@@ -5,19 +5,23 @@ Single-GPU passthrough follows [VFIO-Tools libvirt hooks](https://passthroughpo.
 ## Install once
 
 ```sh
-sudo bash ~/dotfiles/system/install-libvirt-windows11.sh
+sudo bash ~/dotfiles/system/ensure-windows11-live.sh
 ```
 
-Installs:
+Points `/etc/libvirt/hooks/qemu` and `/usr/local/bin/windows11*` at `~/dotfiles/system`.
+After that, edit the repo — **no reinstall / no stow**.
+
+Live paths:
 
 
 | Path                                                   | Role                                           |
 | ------------------------------------------------------ | ---------------------------------------------- |
-| `/etc/libvirt/hooks/qemu`                              | VFIO-Tools dispatcher                          |
-| `hooks/qemu.d/windows11/prepare/begin/start.sh`        | **Pre:** stop Hyprland → detach GPU            |
-| `hooks/qemu.d/windows11/release/end/revert.sh`         | **Post:** reattach GPU → start display-manager |
-| `/etc/libvirt/windows11/gpu-handoff.conf`              | PCI addresses, user, timings                   |
-| `/etc/libvirt/hooks/windows11-gpu-passthrough.enabled` | Created by `windows11-mode passthrough`        |
+| `system/etc/libvirt/hooks/qemu`                        | VFIO-Tools dispatcher (via `/etc` symlink)     |
+| `hooks/qemu.d/*/prepare/begin/start.sh`                | **Pre:** stop Hyprland → detach GPU            |
+| `hooks/qemu.d/*/started/begin/bridge-ensure.sh`        | **Started:** attach guest tap to br0           |
+| `hooks/qemu.d/*/release/end/revert.sh`                 | **Post:** reattach GPU → restore Hyprland      |
+| `system/etc/libvirt/windows11/gpu-handoff.conf`        | PCI addresses, user, timings                   |
+| `/etc/libvirt/hooks/windows11-gpu-passthrough.enabled` | Created by bootstrap / `windows11-mode`        |
 
 
 Hook log: `/var/log/windows11-passthrough-hook.log`
@@ -133,13 +137,25 @@ sudo windows11-network apply-bridge
 windows11-console
 ```
 
-`windows11-network apply-bridge` creates a NetworkManager bridge named `br0` over the wired default-route interface, then switches the VM NIC to `<interface type="bridge">`. On this host that means `eno1` becomes a slave of `br0`, and both the host and the Windows VM get normal LAN DHCP addresses from the router.
+`windows11-network apply-bridge` creates a NetworkManager bridge named `br0` over the wired default-route interface, then switches the VM NIC to `<interface type="bridge">` with **`managed="no"`** (required when NetworkManager owns `br0`; without it the guest tap never joins the bridge and Windows has no internet). On this host that means `eno1` becomes a slave of `br0`, and both the host and the Windows VM get normal LAN DHCP addresses from the router.
 
-If Windows was previously pinned to `192.168.122.10`, run `windows11-set-libvirt-ip.ps1` in an elevated PowerShell inside the VM to reset the VirtIO NIC to DHCP. Then use `ipconfig`, your router leases, or `windows11-network status` to find the Windows LAN IP.
+For **windows11-stealth** (Intel `e1000e` NIC, not VirtIO):
+
+```sh
+sudo DOMAIN=windows11-stealth windows11-stealth-ensure-network   # VM shut off
+```
+
+If the VM is already running with no internet:
+
+```sh
+sudo DOMAIN=windows11-stealth windows11-network fix-bridge
+```
+
+If Windows was previously pinned to `192.168.122.10`, run `windows11-set-libvirt-ip.ps1` in an elevated PowerShell inside the VM to reset the NIC to DHCP. Stealth uses **e1000e**, not VirtIO — Windows inbox driver should work; use Device Manager only if the adapter shows with a warning icon.
 
 ## Tune this machine
 
-Edit `/etc/libvirt/windows11/gpu-handoff.conf`:
+Edit `~/dotfiles/system/etc/libvirt/windows11/gpu-handoff.conf` (live — no install):
 
 
 | Variable           | Default | Meaning                                                  |

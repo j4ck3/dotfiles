@@ -1,5 +1,5 @@
-# Not system paths — keep install helpers and docs out of `stow -t / system`.
+# Not system paths — keep install helpers and docs out of accidental tree copies.
 ^README\.md$
 ^install-.*\.sh$
-^stow-system\.sh$
+^ensure-windows11-live\.sh$
 ^windows$

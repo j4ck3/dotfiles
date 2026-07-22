@@ -5,16 +5,7 @@ xdg-terminal-exec
 
 blueberry
 
-elephant-bin
-elephant-clipboard-bin
-elephant-desktopapplications-bin
-
 helium-browser-bin
-
-aylurs-gtk-shell-git
-libastal-git
-libastal-4-git
-libastal-io-git
 
 python-hyprland-config
 python-hyprland-monitors

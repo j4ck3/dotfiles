@@ -11,12 +11,12 @@ HOOK_PID_FILE="${HOOK_PID_FILE:-/run/libvirt/qemu/windows11.prepare.pid}"
 
 echo "=== windows11-unstick ==="
 
-for pid in $(pgrep -f '/hooks/qemu.d/windows11/prepare/begin/start.sh' 2>/dev/null || true); do
+for pid in $(pgrep -f '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' 2>/dev/null || true); do
   echo "Killing stuck passthrough hook pid ${pid}..."
   kill -TERM "${pid}" 2>/dev/null || true
 done
 sleep 1
-for pid in $(pgrep -f '/hooks/qemu.d/windows11/prepare/begin/start.sh' 2>/dev/null || true); do
+for pid in $(pgrep -f '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' 2>/dev/null || true); do
   kill -KILL "${pid}" 2>/dev/null || true
 done
 

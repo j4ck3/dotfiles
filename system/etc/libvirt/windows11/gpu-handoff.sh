@@ -2,13 +2,14 @@
 # Pattern: VFIO-Tools qemu.d + joeknock90 Single-GPU-Passthrough + Hyprland stop.
 set -o pipefail
 
-HOOK_LOG_LIB="${HOOK_LOG_LIB:-/etc/libvirt/windows11/hook-log.sh}"
-# shellcheck source=/etc/libvirt/windows11/hook-log.sh
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/paths.sh"
+# shellcheck source=/dev/null
 [[ -f "${HOOK_LOG_LIB}" ]] && source "${HOOK_LOG_LIB}"
 
-CONF="${GPU_HANDOFF_CONF:-/etc/libvirt/windows11/gpu-handoff.conf}"
+CONF="${GPU_HANDOFF_CONF}"
 if [[ -f "${CONF}" ]]; then
-  # shellcheck source=/etc/libvirt/windows11/gpu-handoff.conf
+  # shellcheck source=/dev/null
   source "${CONF}"
 fi
 
@@ -27,7 +28,6 @@ SKIP_EFI_FB="${SKIP_EFI_FB:-0}"
 UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
-ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
 AUTO_RESTORE_HYPRLAND="${AUTO_RESTORE_HYPRLAND:-1}"
 
 if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
@@ -43,10 +43,23 @@ passthrough_enabled() {
 }
 
 bind_vtconsoles() {
-  local value="$1" vt
+  local value="$1" vt name vt_dir
   shopt -s nullglob
   for vt in /sys/class/vtconsole/vtcon*/bind; do
-    echo "${value}" > "${vt}" 2>/dev/null || true
+    vt_dir="${vt%/bind}"
+    name="$(cat "${vt_dir}/name" 2>/dev/null || true)"
+    # Unbinding the DRM frame buffer vtcon while amdgpu is loaded can block
+    # forever in kernel D-state; amdgpu unload releases it instead.
+    if [[ "${value}" == "0" && "${name}" == *"frame buffer"* ]]; then
+      echo "STEP: skip vtcon unbind for ${name} (release via amdgpu unload)"
+      continue
+    fi
+    if command -v timeout >/dev/null; then
+      timeout 2 sh -c "echo '${value}' > '${vt}'" 2>/dev/null || \
+        echo "WARN: vtcon bind ${value} timed out on ${vt}" >&2
+    else
+      echo "${value}" > "${vt}" 2>/dev/null || true
+    fi
   done
   shopt -u nullglob
 }
@@ -149,8 +162,11 @@ stop_display_stack() {
 settle_console_input() {
   echo "STEP: settle console/input"
   udevadm trigger --subsystem-match=input 2>/dev/null || true
-  udevadm settle 2>/dev/null || true
-  systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
+  udevadm trigger --subsystem-match=usb 2>/dev/null || true
+  timeout 3 udevadm settle 2>/dev/null || true
+  # Never block post-hook on vconsole-setup — it can hang after GPU handoff and
+  # prevents Hyprland restore from running.
+  timeout 3 systemctl try-restart systemd-vconsole-setup.service 2>/dev/null || true
 }
 
 start_ly_units() {
@@ -252,10 +268,11 @@ restore_hyprland_session() {
 }
 
 start_display_stack() {
-  settle_console_input
   if restore_hyprland_session; then
+    settle_console_input
     return 0
   fi
+  settle_console_input
   start_ly_units
 }
 
@@ -358,9 +375,14 @@ unload_amdgpu_modules() {
 }
 
 load_amdgpu_modules() {
+  if [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]]; then
+    echo "STEP: ${GPU_PCI} already on amdgpu"
+    return 0
+  fi
   echo "STEP: modprobe amdgpu"
-  modprobe amdgpu 2>/dev/null || true
-  udevadm settle 2>/dev/null || true
+  timeout 10 modprobe amdgpu 2>/dev/null || true
+  timeout 5 udevadm settle 2>/dev/null || true
+  bind_pci_to_amdgpu "${GPU_PCI}"
 }
 
 load_vfio_modules() {
@@ -486,6 +508,8 @@ gpu_handoff_prepare_begin() {
   load_vfio_modules
 
   stop_display_stack
+  chvt 63 2>/dev/null || chvt 2 2>/dev/null || true
+  release_dri_device_users
   echo "STEP: bind_vtconsoles 0"
   bind_vtconsoles 0
   echo "STEP: bind_efi_framebuffer unbind"

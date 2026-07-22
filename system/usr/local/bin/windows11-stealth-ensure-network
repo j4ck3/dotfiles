@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Ensure windows11-stealth has permanent LAN bridge networking (br0, e1000e).
+set -euo pipefail
+
+export LC_ALL=C
+export DOMAIN="${DOMAIN:-windows11-stealth}"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+export LAN_BRIDGE="${LAN_BRIDGE:-br0}"
+export NIC_MODEL="${NIC_MODEL:-e1000e}"
+export MAC="${MAC:-02:74:72:32:e0:03}"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+
+state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+
+if [[ "${state}" == "running" ]]; then
+  echo "${DOMAIN} is running — attaching tap to ${LAN_BRIDGE}..."
+  if [[ "${EUID}" -ne 0 ]]; then
+    exec sudo -E "$0" "$@"
+  fi
+  exec windows11-network fix-bridge
+fi
+
+if [[ "${state}" != "shut off" && -n "${state}" ]]; then
+  echo "Shut off ${DOMAIN} first (state: ${state})" >&2
+  exit 1
+fi
+
+run_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  else
+    sudo -E "$@"
+  fi
+}
+
+# shellcheck source=/dev/null
+[[ -f "${BRIDGE_LIB}" ]] && source "${BRIDGE_LIB}"
+if domain_xml_has_lan_bridge "${DOMAIN}" "${LAN_BRIDGE}"; then
+  echo "Domain ${DOMAIN} already has bridge NIC on ${LAN_BRIDGE}."
+  exit 0
+fi
+
+echo "Ensuring host bridge ${LAN_BRIDGE} and stealth VM NIC XML..."
+run_root windows11-network apply-bridge
+
+# shellcheck source=/dev/null
+[[ -f "${BRIDGE_LIB}" ]] && source "${BRIDGE_LIB}"
+if ! domain_xml_has_lan_bridge "${DOMAIN}" "${LAN_BRIDGE}"; then
+  echo "ERROR: domain XML still missing bridge NIC on ${LAN_BRIDGE}" >&2
+  exit 1
+fi
+
+echo "Network ready. Start: DOMAIN=${DOMAIN} windows11-stealth-start --yes"

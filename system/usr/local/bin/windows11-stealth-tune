@@ -31,12 +31,17 @@ xml="$(mktemp)"
 trap 'rm -f "${xml}"' EXIT
 virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" > "${xml}"
 
-python3 - "${xml}" "${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml" "${QEMU_BIN}" "${vcpu}" "${cores}" "${threads_per_core}" <<'PY'
+python3 - "${xml}" "${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml" "${DOTFILES_LIBVIRT}/resolve-evdev.py" "${QEMU_BIN}" "${vcpu}" "${cores}" "${threads_per_core}" <<'PY'
+import importlib.util
 import sys
 import xml.etree.ElementTree as ET
 
-xml_path, evdev_path, qemu_bin, vcpu, cores, tpc = sys.argv[1:7]
+xml_path, evdev_path, resolve_py, qemu_bin, vcpu, cores, tpc = sys.argv[1:8]
 vcpu, cores, tpc = int(vcpu), int(cores), int(tpc)
+
+spec = importlib.util.spec_from_file_location("resolve_evdev", resolve_py)
+resolve = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(resolve)
 
 tree = ET.parse(xml_path)
 root = tree.getroot()
@@ -71,20 +76,19 @@ ET.SubElement(
     threads=str(tpc),
 )
 
+# Do NOT disable PS/2 (i8042): input-linux evdev delivers events through the
+# guest PS/2 devices libvirt auto-adds. i8042=off => dead keyboard + mouse.
+features = root.find("features")
+if features is not None:
+    for ps2 in list(features.findall("ps2")):
+        features.remove(ps2)
+
 # Only evdev for pointer/keyboard (no PS/2 / USB tablet)
-for inp in list(devices.findall("input")):
-    if inp.get("type") != "evdev":
-        devices.remove(inp)
-
-for inp in list(devices.findall("input")):
-    if inp.get("type") == "evdev":
-        devices.remove(inp)
-
-fragment = ET.fromstring(
-    f"<devices>{open(evdev_path, encoding='utf-8').read()}</devices>"
-)
-for inp in fragment.findall("input"):
-    devices.append(inp)
+_, skipped = resolve.merge_evdev_inputs(devices, evdev_path, replace=True)
+if skipped:
+    print("Skipped missing evdev devices:", file=sys.stderr)
+    for dev in skipped:
+        print(f"  {dev}", file=sys.stderr)
 
 tree.write(xml_path, encoding="unicode", xml_declaration=True)
 PY

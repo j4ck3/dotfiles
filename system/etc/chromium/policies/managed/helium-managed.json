@@ -7,16 +7,5 @@
   "DefaultSearchProviderName": "Startpage",
   "DefaultSearchProviderKeyword": "startpage.com",
   "DefaultSearchProviderSearchURL": "https://www.startpage.com/sp/search?query={searchTerms}",
-  "DefaultSearchProviderSuggestURL": "https://www.startpage.com/suggestions?q={searchTerms}",
-  "ExtensionInstallForcelist": [
-    "nngceckbapebfimnlniiiahkandclblb;https://clients2.google.com/service/update2/crx",
-    "eimadpbcbfnmbkopoojfekhnkhdbieeh;https://clients2.google.com/service/update2/crx",
-    "ponfpcnoihfmfllpaingbgckeeldkhle;https://clients2.google.com/service/update2/crx",
-    "edibdbjcniadpccecjdfdjjppcpchdlm;https://clients2.google.com/service/update2/crx",
-    "mnjggcdmjocbbbhaepdhchncahnbgone;https://clients2.google.com/service/update2/crx",
-    "fgmjlmbojbkmdpofahffgcpkhkngfpef;https://clients2.google.com/service/update2/crx",
-    "clngdbkpkpeebahjckkjfobafhncgmne;https://clients2.google.com/service/update2/crx",
-    "cjpalhdlnbpafiamejdnhkclphejkhlc;https://clients2.google.com/service/update2/crx",
-    "hfjbmagddngcpeloejdejnfgbamkjaeg;https://clients2.google.com/service/update2/crx"
-  ]
+  "DefaultSearchProviderSuggestURL": "https://www.startpage.com/suggestions?q={searchTerms}"
 }

@@ -4,6 +4,9 @@ set -u
 
 export DOMAIN="windows11-stealth"
 export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
-export HOOK="${HOOK:-/etc/libvirt/hooks/qemu.d/windows11-stealth/release/end/revert.sh}"
 
-exec /usr/local/bin/windows11-revert-host "$@"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+export HOOK="${HOOK:-${WINDOWS11_HOOKS_DIR}/qemu.d/windows11-stealth/release/end/revert.sh}"
+
+exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/windows11-revert-host" "$@"

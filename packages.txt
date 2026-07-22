@@ -2,7 +2,7 @@
 #  grep -v '^#' packages.txt | grep -v '^$' | xargs -r sudo pacman -S --needed --noconfirm --
 #
 # cd ~/dotfiles
-# stow -v -R -t "$HOME" bash nvim hypr zed theme dunst wireplumber
+# stow -v -R -t "$HOME" bash nvim hypr zed theme wireplumber
 
 paru
 flatpak
@@ -14,8 +14,9 @@ hypridle
 hyprlock
 hyprpicker
 waybar
+quickshell
 uwsm
-walker
+cliphist
 ghostty
 
 grim
@@ -68,8 +69,6 @@ tesseract-data-swe
 
 mpv
 
-dunst
-inter-font
 libnotify
 
 nautilus
@@ -89,6 +88,7 @@ fd
 lazydocker
 lazygit
 btop
+ncdu
 fastfetch
 lact
 rocm-smi-lib

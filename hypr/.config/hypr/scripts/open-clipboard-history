@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Clipboard history via Walker (no search bar, vim keys from ~/.config/walker/config.toml).
-set -eu
-
-"${HOME}/.config/hypr/scripts/start-elephant"
-
-exec walker -m clipboard -n -N --width 644 --maxheight 300 --minheight 300

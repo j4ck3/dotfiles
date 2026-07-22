@@ -18,21 +18,22 @@ This directory keeps the root-owned files needed to make `CapsLock` behave like 
 - `../winget-packages.txt`: winget package IDs (one per line).
 - `windows/install-apps.ps1`: installs packages from `winget-packages.txt`.
 
-## Stow `system/` to `/`
+## Windows11 + Helium (live from repo)
 
-Tracked host files live under `system/etc/` and `system/usr/` (mirrors `/`). Install
-scripts at `system/install-*.sh` are **not** stowed.
+**Windows11 passthrough** — one-time:
 
 ```sh
-cd ~/dotfiles
-sudo bash system/stow-system.sh
+sudo bash system/ensure-windows11-live.sh
 ```
 
-Re-run after editing repo copies. Symlinks point into `~/dotfiles/system/...` — edit
-there, not `/usr/local/bin` or `/etc/libvirt` directly.
+Points `/etc/libvirt/hooks/qemu` and `/usr/local/bin/windows11*` at `~/dotfiles/system`.
+Edit the repo afterward — live immediately. `install-windows11-*.sh` wrappers call the same script.
 
-`install-windows11-stealth-bin.sh` and `install-windows11-gpu-handoff.sh` are thin
-wrappers around `stow-system.sh`.
+**Helium extensions** — download + link:
+
+```sh
+sudo bash system/install-helium-extensions.sh
+```
 
 ## Account lockout (`faillock`)
 

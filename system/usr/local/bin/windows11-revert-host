@@ -6,8 +6,10 @@ if [[ "${EUID}" -ne 0 ]]; then
   exec sudo -E "$0" "$@"
 fi
 
-HANDOFF_LIB="${HANDOFF_LIB:-/etc/libvirt/windows11/gpu-handoff.sh}"
-HOOK="${HOOK:-/etc/libvirt/hooks/qemu.d/windows11/release/end/revert.sh}"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+HANDOFF_LIB="${HANDOFF_LIB:-${GPU_HANDOFF_LIB}}"
+HOOK="${HOOK:-${WINDOWS11_HOOKS_DIR}/qemu.d/windows11/release/end/revert.sh}"
 
 if [[ -x "${HOOK}" ]]; then
   echo "Running passthrough revert hook..."
@@ -17,7 +19,7 @@ if [[ -x "${HOOK}" ]]; then
 fi
 
 if [[ -f "${HANDOFF_LIB}" ]]; then
-  # shellcheck source=/etc/libvirt/windows11/gpu-handoff.sh
+  # shellcheck source=/dev/null
   source "${HANDOFF_LIB}"
   export GPU_HANDOFF_FORCE=1
   hook_log_begin "windows11-revert-host (manual)" "$@"

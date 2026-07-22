@@ -7,7 +7,7 @@ export DOMAIN="${DOMAIN:-windows11-stealth}"
 export DISK_GB="${DISK_GB:-0}"
 
 "${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-regen-nvram"
-"${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-tune"
 "${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-harden"
+"${DOTFILES_ROOT}/system/usr/local/bin/windows11-stealth-tune"
 
 echo "All stealth steps applied. Start with: DOMAIN=${DOMAIN} windows11-stealth-start --yes"

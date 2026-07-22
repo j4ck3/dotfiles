@@ -8,9 +8,9 @@ Personal configs for **CachyOS** (Arch-based).
 
 **Dark mode:** `theme` stow package + Hypr `envs.conf` — see [`theme/README.md`](theme/README.md).
 
-**Notifications:** Dunst — [`dunst/README.md`](dunst/README.md).
+**Notifications:** Quickshell (`NotificationOSD`) — replaces Dunst. Test: `notify-send "Hi" "body"`.
 
-**Desktop:** Hyprland, Waybar, UWSM, Walker + Elephant, Helium Browser, AGS (volume/media/power popups). Optional **hypr_htpc** profile for HTPC. Helium optional flags and notes on omnibox vs page fonts live in `[hypr/.config/helium-browser-flags.conf](hypr/.config/helium-browser-flags.conf)`.
+**Desktop:** Hyprland, Quickshell (bar + launcher/clipboard/notifications/volume/media/power/shortcuts), UWSM, Helium Browser. Optional **hypr_htpc** profile still uses Waybar. Helium optional flags and notes on omnibox vs page fonts live in `[hypr/.config/helium-browser-flags.conf](hypr/.config/helium-browser-flags.conf)`.
 
 **Shell & prompt:** Bash, Starship.
 
@@ -53,7 +53,8 @@ Source of truth: `[hypr/.config/hypr/bindings.conf](hypr/.config/hypr/bindings.c
 | Super+F       | Fullscreen                         |
 | Super+←/→/↑/↓ | Move focus                         |
 | Super+T       | Toggle 16:9 group stack            |
-| Super+Space   | Walker app launcher                |
+| Super+Space   | Quickshell app launcher            |
+| Super+C       | Quickshell clipboard history       |
 
 
 ### Screenshots and color

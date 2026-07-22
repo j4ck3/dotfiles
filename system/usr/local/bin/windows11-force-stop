@@ -28,6 +28,8 @@ kill_qemu() {
 
 ensure_host_gpu_restored() {
   local drv hook
+  # shellcheck source=/dev/null
+  source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
   sleep 2
   drv="$(lspci -nnk -s 03:00.0 2>/dev/null | awk '/Kernel driver in use/{print $5}')"
   if [[ "${drv}" == "vfio-pci" ]] || ! pgrep -x Hyprland >/dev/null; then
@@ -37,9 +39,9 @@ ensure_host_gpu_restored() {
       echo "Hyprland not running — running revert hook..."
     fi
     if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
-      hook="/etc/libvirt/hooks/qemu.d/windows11-stealth/release/end/revert.sh"
+      hook="${WINDOWS11_HOOKS_DIR}/qemu.d/windows11-stealth/release/end/revert.sh"
     else
-      hook="/etc/libvirt/hooks/qemu.d/windows11/release/end/revert.sh"
+      hook="${WINDOWS11_HOOKS_DIR}/qemu.d/windows11/release/end/revert.sh"
     fi
     if [[ -x "${hook}" ]]; then
       GPU_HANDOFF_FORCE=1 DOMAIN="${DOMAIN}" "${hook}" "${DOMAIN}" release end -

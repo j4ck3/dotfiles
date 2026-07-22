@@ -8,29 +8,12 @@ DOMAIN="${DOMAIN:-windows11}"
 # virsh domstate is localized (e.g. Swedish "avstängd"); use C locale for parsing.
 export LC_ALL=C
 export LANG=C
-ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
 GPU_PCI="${GPU_PCI:-0000:03:00.0}"
 AUDIO_PCI="${AUDIO_PCI:-0000:03:00.1}"
-libvirt_data_dir() {
-  if [[ -n "${DOTFILES_LIBVIRT:-}" ]]; then
-    printf '%s\n' "${DOTFILES_LIBVIRT}"
-    return
-  fi
-  if [[ -f /etc/libvirt/windows11/windows11-amd-gpu-hostdev.xml ]]; then
-    printf '%s\n' "/etc/libvirt/windows11"
-    return
-  fi
-  local u home
-  u="${SUDO_USER:-${USER}}"
-  home="$(getent passwd "${u}" 2>/dev/null | cut -d: -f6)"
-  if [[ -n "${home}" && -f "${home}/dotfiles/system/etc/libvirt/windows11-amd-gpu-hostdev.xml" ]]; then
-    printf '%s\n' "${home}/dotfiles/system/etc/libvirt"
-    return
-  fi
-  printf '%s\n' "/etc/libvirt/windows11"
-}
-
-DOTFILES_LIBVIRT="$(libvirt_data_dir)"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+# XML fragments + resolve-evdev live in etc/libvirt (parent of windows11/).
+DOTFILES_LIBVIRT="${DOTFILES_LIBVIRT:-${WINDOWS11_LIBVIRT_ETC}}"
 
 usage() {
   cat <<EOF
@@ -330,11 +313,10 @@ PY
 
 apply_domain_mode_patch() {
   local mode="$1"
-  local patch_py="${DOTFILES_LIBVIRT}/patch-domain.py"
-  [[ -f "${patch_py}" ]] || patch_py="/etc/libvirt/windows11/patch-domain.py"
+  local patch_py="${PATCH_DOMAIN_PY:-${WINDOWS11_DIR}/patch-domain.py}"
   [[ -x "${patch_py}" ]] || chmod +x "${patch_py}" 2>/dev/null || true
   [[ -f "${patch_py}" ]] || {
-    echo "Missing patch-domain.py (re-run install-libvirt-windows11.sh)" >&2
+    echo "Missing patch-domain.py at ${patch_py}" >&2
     exit 1
   }
   local xml tmp
@@ -521,37 +503,33 @@ add_evdev_inputs() {
   tmp="$(mktemp)"
   fragment="${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml"
   virsh_cmd dumpxml "${DOMAIN}" > "${xml}"
-  python3 - "${xml}" "${fragment}" "${tmp}" <<'PY'
+  python3 - "${xml}" "${fragment}" "${tmp}" "${DOTFILES_LIBVIRT}/resolve-evdev.py" <<'PY'
+import importlib.util
+import os
 import sys
 import xml.etree.ElementTree as ET
 
-domain_path, fragment_path, out_path = sys.argv[1:4]
+domain_path, fragment_path, out_path, resolve_py = sys.argv[1:5]
+spec = importlib.util.spec_from_file_location("resolve_evdev", resolve_py)
+resolve = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(resolve)
+
 domain = ET.parse(domain_path)
 root = domain.getroot()
 devices = root.find("devices")
 if devices is None:
     sys.exit("no <devices> in domain XML")
 
-fragment = ET.fromstring(f"<devices>{open(fragment_path, encoding='utf-8').read()}</devices>")
-existing = {
-    source.get("dev")
-    for inp in devices.findall("input")
-    if inp.get("type") == "evdev"
-    for source in [inp.find("source")]
-    if source is not None
-}
-changed = False
-for inp in fragment.findall("input"):
+for inp in list(devices.findall("input")):
+    if inp.get("type") != "evdev":
+        continue
     source = inp.find("source")
-    if source is None:
-        continue
-    dev = source.get("dev")
-    if not dev or dev in existing:
-        continue
-    devices.append(inp)
-    existing.add(dev)
-    changed = True
+    dev = source.get("dev") if source is not None else None
+    if not dev or not resolve.resolve_dev(dev):
+        devices.remove(inp)
 
+merge_evdev_inputs = resolve.merge_evdev_inputs
+merge_evdev_inputs(devices, fragment_path)
 domain.write(out_path, encoding="unicode", xml_declaration=True)
 sys.exit(0)
 PY

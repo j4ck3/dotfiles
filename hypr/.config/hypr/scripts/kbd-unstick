@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Release stuck modifiers and disable phantom HID keyboards (consumer/system control).
+# Common after USB reset, hyprctl reload, or dongle reconnect.
+
+set -euo pipefail
+
+if ! command -v hyprctl >/dev/null 2>&1; then
+    echo "hyprctl not found" >&2
+    exit 1
+fi
+
+if command -v wtype >/dev/null 2>&1; then
+    for mod in shift ctrl alt logo capslock altgr; do
+        wtype -m "$mod" 2>/dev/null || true
+    done
+fi
+
+is_phantom_keyboard() {
+    local name=$1
+    [[ "$name" == *-keyboard ]] && return 1
+    [[ "$name" == *consumer-control* ]] && return 0
+    [[ "$name" == *system-control* ]] && return 0
+    [[ "$name" == razer-* ]] && return 0
+    case "$name" in
+        keychron-keychron-q1 | zsa-technology-labs-voyager) return 0 ;;
+    esac
+    return 1
+}
+
+disable_device() {
+    hyprctl keyword "device[$1]:enabled" false 2>/dev/null || true
+}
+
+if command -v jq >/dev/null 2>&1; then
+    while IFS= read -r name; do
+        if is_phantom_keyboard "$name"; then
+            disable_device "$name"
+        fi
+    done < <(hyprctl devices -j | jq -r '.keyboards[].name')
+else
+  while IFS= read -r name; do
+        if is_phantom_keyboard "$name"; then
+            disable_device "$name"
+        fi
+    done < <(hyprctl devices | awk '/^\t\t[^ \t]/ {gsub(/^[ \t]+/, ""); print}')
+fi
+
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -t 3000 "Keyboard" "Modifiers released; phantom HID keyboards disabled."
+fi
+
+echo "Modifiers released; phantom HID keyboards disabled for this session."
+echo "Still stuck? Tap both Ctrl keys, then: hyprctl dispatch reload"

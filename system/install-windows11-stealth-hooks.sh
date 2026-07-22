@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Deploy windows11-stealth libvirt qemu.d hooks + GPU handoff (host restore after VM).
+# Deprecated wrapper — windows11 is live from the repo (see ensure-windows11-live.sh).
 set -euo pipefail
-
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-exec "${repo_root}/system/stow-system.sh"
+exec "${repo_root}/system/ensure-windows11-live.sh"

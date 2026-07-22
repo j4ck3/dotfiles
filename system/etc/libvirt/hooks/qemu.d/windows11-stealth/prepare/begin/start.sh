@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# VFIO-Tools path: /etc/libvirt/hooks/qemu.d/windows11-stealth/prepare/begin/start.sh
+# VFIO-Tools path: qemu.d/windows11-stealth/prepare/begin/start.sh
 # Single-GPU passthrough for the stealth clone.
 set -Eeuo pipefail
 
-HANDOFF_LIB="${HANDOFF_LIB:-/etc/libvirt/windows11/gpu-handoff.sh}"
-# shellcheck source=/etc/libvirt/windows11/gpu-handoff.sh
-source "${HANDOFF_LIB}"
+_here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=/dev/null
+source "$(cd "${_here}/../../../../.." && pwd)/windows11/paths.sh"
+# shellcheck source=/dev/null
+source "${GPU_HANDOFF_LIB}"
 
 export DOMAIN="windows11-stealth"
 

@@ -1,0 +1,12 @@
+VolumePopup 1.0 VolumePopup.qml
+MediaPopup 1.0 MediaPopup.qml
+PowerMenu 1.0 PowerMenu.qml
+ShortcutsPopup 1.0 ShortcutsPopup.qml
+LauncherPopup 1.0 LauncherPopup.qml
+ClipboardPopup 1.0 ClipboardPopup.qml
+NotificationOSD 1.0 NotificationOSD.qml
+LauncherCard 1.0 LauncherCard.qml
+PopupCard 1.0 PopupCard.qml
+M3Slider 1.0 M3Slider.qml
+M3IconButton 1.0 M3IconButton.qml
+M3Section 1.0 M3Section.qml

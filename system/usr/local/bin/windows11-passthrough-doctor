@@ -9,7 +9,8 @@ export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 DOMAIN="${DOMAIN:-windows11}"
 GPU_PCI="${GPU_PCI:-0000:03:00.0}"
 AUDIO_PCI="${AUDIO_PCI:-0000:03:00.1}"
-ENABLE_FILE="${ENABLE_FILE:-/etc/libvirt/hooks/windows11-gpu-passthrough.enabled}"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
 
 pci_driver() {
   local pci="$1" link
@@ -130,14 +131,27 @@ echo "  GPU driver (host): ${gpu_drv}"
 if [[ "${state}" != "running" && "${gpu_drv}" == "amdgpu" && "${hypr}" == "stopped" ]]; then
   echo "  NOTE: VM off, GPU on host, but no Hyprland — run: sudo windows11-stealth-revert-host" >&2
 fi
-if ! grep -q 'restore_hyprland_session' /etc/libvirt/windows11/gpu-handoff.sh 2>/dev/null; then
-  echo "  ERROR: /etc gpu-handoff.sh outdated (no Hyprland auto-restore after VM stop)" >&2
-  echo "  Fix: sudo ~/dotfiles/system/stow-system.sh" >&2
+if ! grep -q 'restore_hyprland_session' "${GPU_HANDOFF_LIB}" 2>/dev/null; then
+  echo "  ERROR: gpu-handoff.sh missing Hyprland auto-restore (${GPU_HANDOFF_LIB})" >&2
 fi
-if ! grep -q '^AUTO_RESTORE_HYPRLAND=1' /etc/libvirt/windows11/gpu-handoff.conf 2>/dev/null; then
-  echo "  ERROR: AUTO_RESTORE_HYPRLAND not enabled in /etc/libvirt/windows11/gpu-handoff.conf" >&2
-  echo "  Fix: sudo ~/dotfiles/system/stow-system.sh" >&2
+if ! grep -q '^AUTO_RESTORE_HYPRLAND=1' "${GPU_HANDOFF_CONF}" 2>/dev/null; then
+  echo "  ERROR: AUTO_RESTORE_HYPRLAND not enabled in ${GPU_HANDOFF_CONF}" >&2
 fi
+echo ""
+
+echo "## LAN bridge (guest internet on br0)"
+# shellcheck source=/dev/null
+source "${BRIDGE_LIB}"
+if domain_xml_has_lan_bridge "${DOMAIN}" "${LAN_BRIDGE:-br0}"; then
+  echo "  Domain XML: bridge on ${LAN_BRIDGE:-br0} (good)"
+else
+  echo "  ERROR: domain XML missing bridge NIC on ${LAN_BRIDGE:-br0}" >&2
+  echo "  Fix: sudo windows11-stealth-ensure-network" >&2
+fi
+bridge_status_for_domain "${DOMAIN}" || {
+  echo "  ERROR: guest tap not enslaved to br0 — no LAN/internet in Windows" >&2
+  echo "  Fix (VM running): sudo DOMAIN=${DOMAIN} windows11-network fix-bridge" >&2
+}
 echo ""
 
 echo "## Likely causes of black RX 7900"

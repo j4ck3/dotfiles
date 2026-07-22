@@ -9,19 +9,44 @@ export FORCE_STOP="${FORCE_STOP:-/usr/local/bin/windows11-stealth-force-stop}"
 NVRAM="/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
 GOOD_CACHE="${HOME}/.cache/windows11-stealth-debug/windows11-stealth_VARS.fd.good"
 
+cache_good_nvram() {
+  mkdir -p "$(dirname "${GOOD_CACHE}")"
+  cp -f "${NVRAM}" "${GOOD_CACHE}"
+  chmod 0644 "${GOOD_CACHE}"
+}
+
 verify_nvram() {
   [[ -f "${NVRAM}" ]] || {
     echo "Missing ${NVRAM}. Run: sudo windows11-stealth-fix-boot" >&2
     exit 1
   }
   if [[ -f "${GOOD_CACHE}" ]] && ! cmp -s "${NVRAM}" "${GOOD_CACHE}"; then
-    echo "NVRAM no longer matches known-good boot copy." >&2
-    echo "  live:  ${NVRAM}" >&2
-    echo "  good:  ${GOOD_CACHE}" >&2
-    echo "Fix: sudo windows11-stealth-fix-boot" >&2
-    exit 1
+    echo "NVRAM changed since last boot (normal after Windows runs). Refreshing good cache." >&2
+    cache_good_nvram
+  elif [[ ! -f "${GOOD_CACHE}" ]]; then
+    echo "Seeding NVRAM good cache." >&2
+    cache_good_nvram
   fi
 }
 
+verify_network_xml() {
+  # shellcheck source=/dev/null
+  source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+  # shellcheck source=/dev/null
+  source "${BRIDGE_LIB}"
+
+  if domain_xml_has_lan_bridge "${DOMAIN}" "${LAN_BRIDGE:-br0}"; then
+    return 0
+  fi
+  echo "Stealth VM network XML outdated (missing bridge NIC on br0)." >&2
+  echo "Applying bridge fix..." >&2
+  if command -v windows11-stealth-ensure-network >/dev/null; then
+    windows11-stealth-ensure-network
+    return
+  fi
+  "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network"
+}
+
 verify_nvram
+verify_network_xml
 exec /usr/local/bin/windows11-start "$@"

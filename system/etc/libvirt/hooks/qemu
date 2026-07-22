@@ -4,14 +4,16 @@
 # https://github.com/PassthroughPOST/VFIO-Tools
 # https://passthroughpo.st/simple-per-vm-libvirt-hooks-with-the-vfio-tools-hook-helper/
 #
-# Per-VM hooks: /etc/libvirt/hooks/qemu.d/$GUEST/$HOOK/$STATE/
+# Per-VM hooks: <hooks>/qemu.d/$GUEST/$HOOK/$STATE/
+# Resolve through /etc symlink so repo qemu.d (incl. started/) is used without re-stow.
 #
 GUEST_NAME="$1"
 HOOK_NAME="$2"
 STATE_NAME="$3"
 MISC="${@:4}"
 
-BASEDIR="$(dirname "$0")"
+SCRIPT_PATH="$(readlink -f "$0")"
+BASEDIR="$(dirname "${SCRIPT_PATH}")"
 HOOKPATH="$BASEDIR/qemu.d/$GUEST_NAME/$HOOK_NAME/$STATE_NAME"
 
 STDIN=$(cat)
