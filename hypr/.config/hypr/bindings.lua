@@ -1,0 +1,179 @@
+-- Application bindings
+-- See https://wiki.hypr.land/Configuring/Basics/Binds/
+
+local terminal = "uwsm-app -- xdg-terminal-exec"
+local browser = "helium-browser"
+local scripts = os.getenv("HOME") .. "/.config/hypr/scripts"
+
+local function bind(keys, dispatcher, opts)
+  hl.bind(keys, dispatcher, opts)
+end
+
+local function desc(text)
+  return { description = text }
+end
+
+local function desc_release(text)
+  return { description = text }
+end
+
+local function desc_release_inhibit(text)
+  return { description = text, dont_inhibit = true }
+end
+
+local function desc_locked(text)
+  return { description = text, locked = true }
+end
+
+local function desc_locked_repeat(text)
+  return { description = text, locked = true, repeating = true }
+end
+
+-- Apps
+bind("SUPER + RETURN", hl.dsp.exec_cmd(scripts .. "/launch-terminal-16-9"), desc_release("Terminal"))
+bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- dolphin"), desc_release("File manager"))
+bind("SUPER + SHIFT + ALT + B", hl.dsp.exec_cmd(browser .. " --private"), desc_release("Browser (private)"))
+bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("uwsm-app -- flatpak run com.spotify.Client"), desc_release("Music"))
+bind("SUPER + M", hl.dsp.exec_cmd(scripts .. "/spotify-workspace 15"), desc_release("Spotify (workspace 15)"))
+bind("SUPER + K", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 2"), desc_release("Switch/cycle workspace 2"))
+bind("SUPER + SHIFT + N", hl.dsp.exec_cmd("uwsm-app -- cursor"), desc_release("Editor"))
+bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"), desc_release("Docker"))
+-- Lock (Super+L is workspace 3). hyprlock — QS WlSessionLock crashed Hyprland.
+bind("SUPER + CTRL + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), desc_release("Lock screen"))
+
+-- System sleep
+bind("SUPER + CTRL + SHIFT + S", hl.dsp.exec_cmd("/usr/bin/systemctl suspend"), desc_release("Sleep/Suspend"))
+bind("CTRL + ALT + SHIFT + S", hl.dsp.exec_cmd("/usr/bin/systemctl suspend"), desc("Sleep/Suspend"))
+
+-- System monitor
+bind("CTRL + ALT + DELETE", hl.dsp.exec_cmd(terminal .. " -e btop"), desc("System monitor"))
+
+-- Stuck Ctrl/modifiers (no Ctrl in chord — use when Ctrl is stuck)
+bind("SUPER + ALT + U", hl.dsp.exec_cmd(scripts .. "/kbd-unstick"), desc_release("Unstick keyboard"))
+bind("Scroll_Lock", hl.dsp.exec_cmd(scripts .. "/kbd-unstick"), desc("Unstick keyboard"))
+
+-- Games: Super+G focuses/cycles; Super+Shift+G moves games → free game ws (>=16)
+bind("SUPER + G", hl.dsp.exec_cmd(scripts .. "/game-focus"), desc_release("Focus game"))
+-- dont_inhibit = bypass app keybind inhibitors (NOT ignore_mods — that eats bare G)
+bind("SUPER + SHIFT + G", hl.dsp.exec_cmd(scripts .. "/game-move-active"), desc_release_inhibit("Move games to game workspace"))
+
+-- Window management
+bind("SUPER + W", hl.dsp.exec_cmd(scripts .. "/confirm-close-window"), desc_release("Close window"))
+bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }), desc_release("Full screen"))
+
+-- Switch focus with SUPER + arrow keys
+bind("SUPER + LEFT", hl.dsp.focus({ direction = "left" }), desc_release("Move focus left"))
+bind("SUPER + RIGHT", hl.dsp.focus({ direction = "right" }), desc_release("Move focus right"))
+bind("SUPER + UP", hl.dsp.focus({ direction = "up" }), desc_release("Move focus up"))
+bind("SUPER + DOWN", hl.dsp.focus({ direction = "down" }), desc_release("Move focus down"))
+bind("SUPER + T", hl.dsp.exec_cmd(scripts .. "/toggle-group-workspace"), desc_release("Toggle 16:9 group stack"))
+
+-- Keyboard shortcuts guide (Super+?)
+bind("SUPER + SHIFT + plus", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
+bind("SUPER + SHIFT + slash", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
+bind("SUPER + question", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
+
+-- App launcher + clipboard (Quickshell)
+bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call shell toggleLauncher"), desc_release("Launch apps"))
+bind("SUPER + C", hl.dsp.exec_cmd("qs ipc call shell toggleClipboard"), desc_release("Clipboard history"))
+
+-- Screenshot bindings - using grim + slurp + satty
+bind(
+  "SUPER + mouse:272",
+  hl.dsp.exec_cmd('grim -g "$(slurp)" - | wl-copy'),
+  { description = "Screenshot region to clipboard", mouse = true }
+)
+bind(
+  "SHIFT + Prior",
+  hl.dsp.exec_cmd(
+    "grim -g \"$(slurp)\" - | satty --filename - --output-filename ~/Pictures/screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png --early-exit --copy-command 'wl-copy'"
+  ),
+  desc("Screenshot with editing")
+)
+bind("Next", hl.dsp.exec_cmd("grim - | wl-copy"), desc("Screenshot full screen"))
+bind("SUPER + Prior", hl.dsp.exec_cmd("pkill hyprpicker || hyprpicker -a"), desc_release("Color picker"))
+
+-- Voice and OCR bindings
+bind("SUPER + V", hl.dsp.exec_cmd(scripts .. "/stt-dictate"), desc_release("Live dictation (type as you speak)"))
+bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(scripts .. "/ocr-region"), desc_release("OCR region to clipboard"))
+bind("SUPER + ALT + V", hl.dsp.exec_cmd(scripts .. "/tts-speak"), desc_release("Text to speech (TTS)"))
+
+-- Web apps - switch to workspace, launch app if not already there
+-- SUPER I: Trilium (workspace 10)
+bind(
+  "SUPER + I",
+  hl.dsp.exec_cmd(
+    scripts .. "/webapp-launch 10 helium helium-browser --new-window https://trilium.netbird.hjacke.com/"
+  ),
+  desc_release("Trilium (workspace 10)")
+)
+bind("SUPER + SHIFT + I", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 10"), desc_release("Move active window to workspace 10"))
+
+-- SUPER U: ChatGPT (workspace 11)
+bind(
+  "SUPER + U",
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 11 helium helium-browser --new-window https://chatgpt.com"),
+  desc_release("ChatGPT (workspace 11)")
+)
+bind("SUPER + SHIFT + U", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 11"), desc_release("Move active window to workspace 11"))
+
+-- SUPER Y: YouTube (workspace 12)
+bind(
+  "SUPER + Y",
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 12 helium helium-browser --new-window https://youtube.com"),
+  desc_release("YouTube (workspace 12)")
+)
+bind("SUPER + SHIFT + Y", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 12"), desc_release("Move active window to workspace 12"))
+
+-- SUPER H: Discord (workspace 13)
+bind(
+  "SUPER + H",
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 13 discord uwsm-app -- flatpak run com.discordapp.Discord"),
+  desc_release("Discord (workspace 13)")
+)
+bind("SUPER + SHIFT + H", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 13"), desc_release("Move active window to workspace 13"))
+
+-- SUPER B: Steam (workspace 14)
+bind(
+  "SUPER + B",
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 14 steam uwsm-app -- steam"),
+  desc_release("Steam (workspace 14)")
+)
+bind("SUPER + SHIFT + B", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 14"), desc_release("Move active window to workspace 14"))
+
+-- Switch workspaces with SUPER + [1-9] (press again to cycle windows there)
+bind("SUPER + J", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 1"), desc_release("Switch/cycle workspace 1"))
+bind("SUPER + L", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 3"), desc_release("Switch/cycle workspace 3"))
+bind("SUPER + odiaeresis", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 4"), desc_release("Switch/cycle workspace 4"))
+bind("SUPER + 5", hl.dsp.focus({ workspace = 5, on_current_monitor = true }), desc_release("Switch to workspace 5"))
+bind("SUPER + 6", hl.dsp.focus({ workspace = 6, on_current_monitor = true }), desc_release("Switch to workspace 6"))
+bind("SUPER + 7", hl.dsp.focus({ workspace = 7, on_current_monitor = true }), desc_release("Switch to workspace 7"))
+bind("SUPER + 8", hl.dsp.focus({ workspace = 8, on_current_monitor = true }), desc_release("Switch to workspace 8"))
+bind("SUPER + 9", hl.dsp.focus({ workspace = 9, on_current_monitor = true }), desc_release("Switch to workspace 9"))
+
+-- Move active window to a workspace with SUPER + SHIFT + [1-9]
+bind("SUPER + SHIFT + J", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 1"), desc_release("Move active window to workspace 1"))
+bind("SUPER + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 2"), desc_release("Move active window to workspace 2"))
+bind("SUPER + SHIFT + L", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 3"), desc_release("Move active window to workspace 3"))
+bind("SUPER + SHIFT + odiaeresis", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 4"), desc_release("Move active window to workspace 4"))
+bind("SUPER + SHIFT + 5", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 5"), desc_release("Move active window to workspace 5"))
+bind("SUPER + SHIFT + 6", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 6"), desc_release("Move active window to workspace 6"))
+bind("SUPER + SHIFT + 7", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 7"), desc_release("Move active window to workspace 7"))
+bind("SUPER + SHIFT + 8", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 8"), desc_release("Move active window to workspace 8"))
+bind("SUPER + SHIFT + 9", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 9"), desc_release("Move active window to workspace 9"))
+
+-- ALT+TAB: group-aware cycling (tabs when grouped, windows otherwise)
+bind("ALT + TAB", hl.dsp.exec_cmd(scripts .. "/smart-cycle"), desc("Cycle next (group-aware)"))
+-- Shift+Tab reports ISO_Left_Tab, not TAB — bind both (hyprwm/Hyprland#266)
+bind("ALT + SHIFT + TAB", hl.dsp.exec_cmd(scripts .. "/smart-cycle prev"), desc("Cycle prev (group-aware)"))
+bind("ALT + SHIFT + ISO_Left_Tab", hl.dsp.exec_cmd(scripts .. "/smart-cycle prev"), desc("Cycle prev (group-aware)"))
+
+-- Media controls
+bind("F7", hl.dsp.exec_cmd("playerctl --player=spotify previous"), desc_locked("Spotify previous track"))
+bind("F8", hl.dsp.exec_cmd("playerctl --player=spotify play-pause"), desc_locked("Spotify play/pause"))
+bind("F9", hl.dsp.exec_cmd("playerctl --player=spotify next"), desc_locked("Spotify next track"))
+bind("F11", hl.dsp.exec_cmd(scripts .. "/spotify-volume down"), desc_locked_repeat("Spotify volume down"))
+bind("F12", hl.dsp.exec_cmd(scripts .. "/spotify-volume up"), desc_locked_repeat("Spotify volume up"))
+
+-- Open project in tmux with nvim and opencode
+bind("SUPER + SHIFT + O", hl.dsp.exec_cmd(scripts .. "/open-project-tmux"), desc_release("Open project (tmux+nvim+opencode)"))

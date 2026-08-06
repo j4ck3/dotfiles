@@ -10,31 +10,15 @@ import ".."
 Item {
     id: root
 
-    NotificationServer {
-        id: server
-        keepOnReload: true
-        actionsSupported: true
-        actionIconsSupported: true
-        bodyHyperlinksSupported: true
-        bodyImagesSupported: true
-        bodyMarkupSupported: true
-        bodySupported: true
-        imageSupported: true
-        inlineReplySupported: true
-        persistenceSupported: true
-
-        onNotification: notif => {
-            notif.tracked = true
-        }
-    }
+    readonly property var server: Notifs.server
 
     PanelWindow {
         id: win
         screen: Globals.focusedScreen()
         color: "transparent"
-        exclusiveZone: 0
         exclusionMode: ExclusionMode.Ignore
-        visible: true
+        // Hide toast stack while dashboard shows history.
+        visible: !Globals.dashboardOpen
         implicitWidth: 388
         implicitHeight: screen ? screen.height : 800
         mask: Region {
@@ -47,8 +31,8 @@ Item {
         }
 
         margins {
-            top: Theme.barHeight + 10
-            right: 14
+            top: Theme.barHeight + Theme.widgetTopGap
+            right: Globals.notifRightMargin
         }
 
         WlrLayershell.namespace: "qs-notifications"
@@ -83,10 +67,19 @@ Item {
                     implicitHeight: body.implicitHeight + 14 + (timeoutSec > 0 ? 22 : 14)
                     radius: 18
                     color: "#000000"
-                    border.width: isCritical ? 1 : 0
-                    border.color: isCritical ? Theme.alert : "transparent"
+                    border.width: hover.hovered || isCritical ? 1 : 0
+                    border.color: isCritical ? Theme.alert
+                                 : hover.hovered ? Theme.hoverStrong : "transparent"
                     opacity: 0
                     clip: true
+                    scale: hover.hovered ? 1.01 : 1
+
+                    Behavior on border.color {
+                        ColorAnimation { duration: Theme.animFast }
+                    }
+                    Behavior on scale {
+                        NumberAnimation { duration: Theme.animFast; easing.type: Easing.OutCubic }
+                    }
 
                     readonly property var notif: modelData
                     property real life: 1

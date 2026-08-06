@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Bare Super alone → toggle Quickshell dashboard.
+# press: arm   |  cancel: other Super+key fired  |  release: toggle if still armed
+set -euo pipefail
+
+STATE="${XDG_RUNTIME_DIR:-/tmp}/hypr-super-tap-dashboard"
+
+case "${1:-}" in
+  press)
+    printf '1' >"$STATE"
+    ;;
+  cancel)
+    printf '0' >"$STATE"
+    ;;
+  release)
+    armed=0
+    if [[ -f "$STATE" ]]; then
+      armed=$(tr -d '[:space:]' <"$STATE" || true)
+      rm -f "$STATE"
+    fi
+    if [[ "$armed" == "1" ]]; then
+      qs ipc call shell toggleDashboard
+    fi
+    ;;
+  *)
+    echo "usage: $0 press|cancel|release" >&2
+    exit 1
+    ;;
+esac

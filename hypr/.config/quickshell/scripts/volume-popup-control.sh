@@ -20,6 +20,20 @@ case "$action:$target" in
     ;;
   set:stream)
     pactl set-sink-input-volume "$id" "${value}%"
+    # Keep spotify-volume-guard + MPRIS in sync (incl. intentional 100%).
+    name=$(pactl --format=json list sink-inputs 2>/dev/null \
+      | jq -r --argjson i "$id" '
+          .[] | select(.index == $i)
+          | ((.properties["application.name"] // "")
+            + " " + (.properties["media.name"] // "")
+            + " " + (.properties["application.process.binary"] // ""))
+          | ascii_downcase
+        ' 2>/dev/null || true)
+    if [[ "$name" == *spotify* ]]; then
+      echo "$value" > "${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
+      frac=$(awk -v p="$value" 'BEGIN { printf "%.4f", p / 100 }')
+      playerctl -p spotify volume "$frac" >/dev/null 2>&1 || true
+    fi
     ;;
   toggle-mute:sink)
     pactl set-sink-mute "$id" toggle

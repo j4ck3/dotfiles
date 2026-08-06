@@ -21,7 +21,7 @@ sixteen_nine_geometry() {
 	bottom=$(jq -r '.reserved[3]' <<<"$mon_json")
 
 	local gaps_str gaps_l gaps_t gaps_r gaps_b
-	gaps_str=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.custom')
+	gaps_str=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.css // empty')
 	gaps_l=0
 	gaps_t=0
 	gaps_r=0
@@ -35,7 +35,7 @@ sixteen_nine_geometry() {
 	work_h=$((mon_h - top - bottom - gaps_t - gaps_b))
 
 	SIXTEEN_NINE_H=$work_h
-	SIXTEEN_NINE_W=$((work_h * 16 * 108 / 9 / 100))
+	SIXTEEN_NINE_W=$((work_h * 16 / 9))
 	SIXTEEN_NINE_LEFT=$((work_left + (work_w - SIXTEEN_NINE_W) / 2))
 	SIXTEEN_NINE_TOP=$work_top
 	# Hyprland windowrule move/size use monitor-local coordinates.
@@ -67,8 +67,9 @@ sixteen_nine_deactivate_terminal_open_rule() {
 
 sixteen_nine_float_resize() {
 	local addr="$1"
-	hyprctl --batch \
-		"dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr}"
+	hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$addr\" })"
+	hyprctl dispatch "hl.dsp.window.resize({ x = $SIXTEEN_NINE_W, y = $SIXTEEN_NINE_H, relative = false, window = \"address:$addr\" })"
+	hyprctl dispatch "hl.dsp.window.move({ x = $SIXTEEN_NINE_LEFT, y = $SIXTEEN_NINE_TOP, relative = false, window = \"address:$addr\" })"
 }
 
 sixteen_nine_enable_workspace() {
@@ -89,11 +90,13 @@ sixteen_nine_apply_to_address() {
 	done
 	[[ -z "$win_json" ]] && return 1
 
-	local is_float ws_id mon_id grouped_len
+	local is_float ws_id mon_id grouped_len current_w current_h
 	is_float=$(jq -r '.floating' <<<"$win_json")
 	ws_id=$(jq -r '.workspace.id' <<<"$win_json")
 	mon_id=$(jq -r '.monitor' <<<"$win_json")
 	grouped_len=$(jq -r '.grouped | length' <<<"$win_json")
+	current_w=$(jq -r '.size[0]' <<<"$win_json")
+	current_h=$(jq -r '.size[1]' <<<"$win_json")
 
 	# Workspace 2: monocle only unless 16:9 was toggled manually.
 	if [[ "$ws_id" == "2" ]]; then
@@ -105,8 +108,16 @@ sixteen_nine_apply_to_address() {
 	sixteen_nine_enable_workspace "$ws_id"
 	sixteen_nine_geometry "$mon_id" || return 1
 
-	# Opened via terminal windowrule: already floating, sized, and grouped.
-	if [[ "$is_float" == "true" && "$grouped_len" -gt 0 ]]; then
+	# Re-selecting an app already in the correct mode must not recreate its
+	# single-window group or shift it by a rounding pixel.
+	if [[ "$is_float" == "true" && "$current_w" == "$SIXTEEN_NINE_W" && "$current_h" == "$SIXTEEN_NINE_H" ]]; then
+		return 0
+	fi
+
+	# Already grouped: float and size the whole group. This also handles windows
+	# moved by workspace rules before the open-window listener finishes.
+	if [[ "$grouped_len" -gt 0 ]]; then
+		sixteen_nine_float_resize "$addr" >/dev/null 2>&1 || true
 		return 0
 	fi
 
@@ -114,17 +125,20 @@ sixteen_nine_apply_to_address() {
 	group_addr=$(hyprctl clients -j 2>/dev/null \
 		| jq -r --argjson ws "$ws_id" '[.[] | select(.workspace.id == $ws and (.grouped | length) > 0)] | .[0].address // empty')
 
-	# Hide layout changes from the user (tiled → group → float).
-	local hide="dispatch setprop address:${addr} opacity 0 override"
-	local show="dispatch setprop address:${addr} opacity 1 override"
-
 	if [[ -z "$group_addr" ]]; then
-		hyprctl --batch \
-			"${hide} ; dispatch settiled address:${addr} ; dispatch focuswindow address:${addr} ; dispatch togglegroup ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}" \
-			>/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"opacity\", value = \"0 override\", window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.window.float({ action = \"unset\", window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.group.toggle({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
 	else
-		hyprctl --batch \
-			"${hide} ; dispatch settiled address:${group_addr} ; dispatch focuswindow address:${addr} ; dispatch moveintogroup l ; dispatch moveintogroup r ; dispatch moveintogroup u ; dispatch moveintogroup d ; dispatch setfloating address:${addr} ; dispatch resizewindowpixel exact ${SIXTEEN_NINE_W} ${SIXTEEN_NINE_H},address:${addr} ; dispatch movewindowpixel exact ${SIXTEEN_NINE_LEFT} ${SIXTEEN_NINE_TOP},address:${addr} ; ${show}" \
-			>/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"opacity\", value = \"0 override\", window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.window.float({ action = \"unset\", window = \"address:$group_addr\" })" >/dev/null 2>&1 || true
+		hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		for direction in left right up down; do
+			hyprctl dispatch "hl.dsp.window.move({ into_group = \"$direction\", window = \"address:$addr\" })" >/dev/null 2>&1 || true
+		done
 	fi
+
+	sixteen_nine_float_resize "$addr" >/dev/null 2>&1 || true
+	hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"opacity\", value = \"1 override\", window = \"address:$addr\" })" >/dev/null 2>&1 || true
 }

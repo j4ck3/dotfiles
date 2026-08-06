@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Super+Shift+G: move game windows to free workspaces >= 16.
+# Targets games wherever they are — not the focused non-game window.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/game-lib.sh"
+
+GAMES_JSON=$(list_game_clients_json)
+COUNT=$(jq 'length' <<<"$GAMES_JSON")
+[[ "$COUNT" -eq 0 ]] && exit 0
+
+# Prefer active game first, then rest by focus history
+ACTIVE_ADDR=$(hyprctl activewindow -j 2>/dev/null | jq -r '.address // empty' || true)
+ORDERED=$(jq -c --arg a "$ACTIVE_ADDR" '
+	if $a != "" and any(.[]; .address == $a) then
+		([.[] | select(.address == $a)] + [.[] | select(.address != $a)])
+	else . end
+' <<<"$GAMES_JSON")
+
+assigned=""
+while IFS= read -r win; do
+	[[ -z "$win" || "$win" == "null" ]] && continue
+	addr=$(jq -r '.address' <<<"$win")
+	ws_id=$(jq -r '.workspace.id' <<<"$win")
+
+	tag_game_window "$addr"
+
+	# Already alone on a game workspace — keep
+	if [[ "$ws_id" =~ ^[0-9]+$ && "$ws_id" -ge "$GAME_WS_MIN" ]]; then
+		others=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" --argjson ws "$ws_id" \
+			'[.[] | select(.workspace.id == $ws and .address != $a)] | length' || echo 1)
+		if [[ "$others" == "0" ]]; then
+			assigned="${assigned} ${ws_id}"
+			continue
+		fi
+	fi
+
+	free=$(find_free_game_workspace "$assigned")
+	[[ -z "$free" ]] && continue
+	[[ "$free" == "$ws_id" ]] && continue
+
+	move_game_to_workspace "$addr" "$free"
+	sleep 0.1
+	now=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" \
+		'.[] | select(.address == $a) | .workspace.id' || true)
+	if [[ -n "$now" && "$now" != "$free" ]]; then
+		hyprctl dispatch movetoworkspace "$free,address:$addr" >/dev/null 2>&1 || true
+	fi
+	assigned="${assigned} ${free}"
+done < <(jq -c '.[]' <<<"$ORDERED")

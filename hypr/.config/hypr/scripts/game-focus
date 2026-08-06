@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Super+G: focus a game window. Already on a game → cycle to next game.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/game-lib.sh"
+
+GAMES_JSON=$(list_game_clients_json)
+COUNT=$(jq 'length' <<<"$GAMES_JSON")
+[[ "$COUNT" -eq 0 ]] && exit 0
+
+ACTIVE=$(hyprctl activewindow -j 2>/dev/null || echo '{}')
+ACTIVE_ADDR=$(jq -r '.address // empty' <<<"$ACTIVE")
+
+# If active is a game and multiple exist, cycle to next in focusHistory order
+if [[ -n "$ACTIVE_ADDR" ]] && jq -e --arg a "$ACTIVE_ADDR" 'any(.[]; .address == $a)' <<<"$GAMES_JSON" >/dev/null; then
+	if [[ "$COUNT" -gt 1 ]]; then
+		IDX=$(jq -r --arg a "$ACTIVE_ADDR" 'to_entries[] | select(.value.address == $a) | .key' <<<"$GAMES_JSON")
+		NEXT=$(( (IDX + 1) % COUNT ))
+		TARGET=$(jq -r --argjson i "$NEXT" '.[$i].address' <<<"$GAMES_JSON")
+		hyprctl dispatch focuswindow "address:$TARGET" >/dev/null 2>&1
+		exit 0
+	fi
+	# Single game already focused — jump to its workspace (noop if there)
+	WS=$(jq -r --arg a "$ACTIVE_ADDR" '.[] | select(.address == $a) | .workspace.id' <<<"$GAMES_JSON")
+	hyprctl dispatch focusworkspaceoncurrentmonitor "$WS" >/dev/null 2>&1
+	exit 0
+fi
+
+# Not on a game: focus most recently focused game (lowest focusHistoryID)
+TARGET=$(jq -r '.[0].address // empty' <<<"$GAMES_JSON")
+[[ -z "$TARGET" ]] && exit 0
+hyprctl dispatch focuswindow "address:$TARGET" >/dev/null 2>&1

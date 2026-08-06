@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# On openwindow: if game → tag + move to first free workspace >= 16.
+# Leave alone if already alone on a game workspace (>= 16).
+# Retries class/tag settle (CS2/Steam often map before class is final).
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/game-lib.sh"
+
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+SOCKET=""
+for _ in $(seq 15); do
+	for s in "$RUNTIME"/hypr/*/.socket2.sock; do
+		[[ -S "$s" ]] && SOCKET="$s" && break 2
+	done
+	sleep 0.2
+done
+[[ -z "$SOCKET" ]] && exit 0
+
+export XDG_RUNTIME_DIR="$RUNTIME"
+export HYPRLAND_INSTANCE_SIGNATURE
+HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$SOCKET")")
+
+# openwindow>>ADDRESS,WORKSPACE,CLASS,TITLE — CLASS may be empty at first
+looks_like_game_class() {
+	local c="${1:-}"
+	[[ -n "$c" ]] || return 1
+	[[ "$c" =~ ^(steam_app_|cs2$|gamescope(-wl)?$) ]]
+}
+
+handle_openwindow() {
+	local addr="$1"
+	local event_class="${2:-}"
+	[[ "$addr" != 0x* ]] && addr="0x$addr"
+
+	local win_json=""
+	local i
+	# Wait for client + game identity (class or tag). CS2 can take a beat.
+	for i in $(seq 80); do
+		win_json=$(hyprctl clients -j 2>/dev/null | jq -c --arg a "$addr" '.[] | select(.address == $a)' || true)
+		if [[ -n "$win_json" ]]; then
+			if is_game_json "$win_json"; then
+				break
+			fi
+			# Event class already says game but client JSON not settled yet
+			if looks_like_game_class "$event_class"; then
+				:
+			elif [[ "$i" -ge 20 ]]; then
+				# Mapped non-game for a while — give up
+				local mapped
+				mapped=$(jq -r '.mapped // false' <<<"$win_json")
+				[[ "$mapped" == "true" ]] && return
+			fi
+		fi
+		sleep 0.05
+	done
+	[[ -z "$win_json" ]] && return
+	is_game_json "$win_json" || looks_like_game_class "$event_class" || return
+	# Refresh after settle
+	win_json=$(hyprctl clients -j 2>/dev/null | jq -c --arg a "$addr" '.[] | select(.address == $a)' || true)
+	[[ -z "$win_json" ]] && return
+	is_game_json "$win_json" || return
+
+	tag_game_window "$addr"
+	ungroup_game_window "$addr"
+
+	local ws_id others free
+	ws_id=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" \
+		'.[] | select(.address == $a) | .workspace.id' || true)
+	# Already parked alone on a game workspace — keep (still force exclusive FS).
+	if [[ "$ws_id" =~ ^[0-9]+$ && "$ws_id" -ge "$GAME_WS_MIN" ]]; then
+		others=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" --argjson ws "$ws_id" \
+			'[.[] | select(.workspace.id == $ws and .address != $a)] | length' || echo 1)
+		if [[ "$others" == "0" ]]; then
+			hyprctl dispatch fullscreenstate "2 2,address:$addr" >/dev/null 2>&1 || true
+			return
+		fi
+	fi
+
+	free=$(find_free_game_workspace)
+	[[ -z "$free" ]] && return
+
+	# Fullscreen XWayland (CS2) sometimes ignores first silent move — retry once.
+	if [[ "$free" != "$ws_id" ]]; then
+		move_game_to_workspace "$addr" "$free"
+		sleep 0.15
+		ws_id=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a) | .workspace.id' || true)
+		if [[ -n "$ws_id" && "$ws_id" != "$free" ]]; then
+			hyprctl dispatch movetoworkspace "$free,address:$addr" >/dev/null 2>&1 || true
+		fi
+	fi
+	hyprctl dispatch fullscreenstate "2 2,address:$addr" >/dev/null 2>&1 || true
+}
+
+while IFS=$'\t' read -r addr event_class; do
+	[[ -z "$addr" ]] && continue
+	handle_openwindow "$addr" "$event_class" &
+done < <(python3 - "$SOCKET" <<'PY'
+import sys, socket, time
+
+sock_path = sys.argv[1]
+s = None
+for _ in range(30):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(sock_path)
+        break
+    except (ConnectionRefusedError, FileNotFoundError, OSError):
+        time.sleep(0.2)
+else:
+    sys.exit(0)
+
+buf = b""
+while True:
+    data = s.recv(4096)
+    if not data:
+        break
+    buf += data
+    while b"\n" in buf:
+        line, buf = buf.split(b"\n", 1)
+        line = line.decode("utf-8", errors="replace").strip()
+        if not line.startswith("openwindow>>"):
+            continue
+        payload = line[len("openwindow>>") :]
+        parts = payload.split(",", 3)
+        addr = (parts[0] if parts else "").strip()
+        # openwindow>>ADDRESS,WORKSPACE,CLASS,TITLE
+        event_class = parts[2].strip() if len(parts) > 2 else ""
+        if addr:
+            print(f"{addr}\t{event_class}", flush=True)
+PY
+)

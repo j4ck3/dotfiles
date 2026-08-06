@@ -14,14 +14,10 @@ Item {
     signal closed
     signal scrimClicked
 
-    // Dim scrim
+    // Click-catcher (no dim)
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.45)
-        opacity: root.visible ? 1 : 0
-        Behavior on opacity {
-            NumberAnimation { duration: 40 }
-        }
+        color: "transparent"
 
         MouseArea {
             anchors.fill: parent

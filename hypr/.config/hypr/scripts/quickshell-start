@@ -18,6 +18,10 @@ fi
 
 # Free org.freedesktop.Notifications for Quickshell's NotificationServer.
 pkill -x dunst 2>/dev/null || true
+pkill -x mako 2>/dev/null || true
+pkill -x swaync 2>/dev/null || true
+pkill -x xfce4-notifyd 2>/dev/null || true
+systemctl --user stop xfce4-notifyd.service 2>/dev/null || true
 
 # Prefer qs kill when available (handles socket cleanup).
 if command -v qs >/dev/null 2>&1; then

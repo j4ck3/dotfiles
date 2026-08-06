@@ -67,6 +67,10 @@ ShellRoot {
         screen: Globals.focusedScreen()
     }
 
+    DashboardPopup {
+        screen: Globals.focusedScreen()
+    }
+
     NotificationOSD {}
 
     IpcHandler {
@@ -78,6 +82,8 @@ ShellRoot {
         function toggleShortcuts(): void { Globals.toggleShortcuts() }
         function toggleLauncher(): void { Globals.toggleLauncher() }
         function toggleClipboard(): void { Globals.toggleClipboard() }
+        function toggleDashboard(): void { Globals.toggleDashboard() }
         function closeAll(): void { Globals.closeAll() }
+        function lock(): void { Globals.lockSession() }
     }
 }

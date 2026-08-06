@@ -10,7 +10,6 @@
           { "keys": "Super Return", "desc": "Terminal (16:9)" },
           { "keys": "Super Backspace", "desc": "File manager" },
           { "keys": "Super Shift N", "desc": "Cursor editor" },
-          { "keys": "Super N", "desc": "SSH devbox (Ghostty)" },
           { "keys": "Super Shift D", "desc": "Docker (lazydocker)" },
           { "keys": "Super Shift O", "desc": "Open project (tmux + nvim + opencode)" }
         ]
@@ -33,6 +32,8 @@
           { "keys": "Super I", "desc": "Trilium (workspace 10)" },
           { "keys": "Super U", "desc": "ChatGPT (workspace 11)" },
           { "keys": "Super Y", "desc": "YouTube (workspace 12)" },
+          { "keys": "Super H", "desc": "Discord (workspace 13)" },
+          { "keys": "Super B", "desc": "Steam (workspace 14)" },
           { "keys": "Super M", "desc": "Spotify (workspace 15)" },
           { "keys": "Super Shift M", "desc": "Spotify (Flatpak, any workspace)" },
           { "keys": "Super Shift Alt B", "desc": "Browser (private window)" }
@@ -73,7 +74,7 @@
           { "keys": "Super Ö", "desc": "Workspace 4" },
           { "keys": "Super 5–9", "desc": "Workspaces 5–9 (top row keys)" },
           { "keys": "Super Shift J…9", "desc": "Move window to workspace" },
-          { "keys": "Super Shift I/U/Y", "desc": "Move window to web-app workspace" }
+          { "keys": "Super Shift I/U/Y/H/B", "desc": "Move window to app workspace" }
         ]
       },
       {
@@ -84,6 +85,7 @@
           { "keys": "l", "desc": "Workspace 3" },
           { "keys": "ö", "desc": "Workspace 4" },
           { "keys": "i / u / y", "desc": "Workspaces 10 / 11 / 12" },
+          { "keys": "h / b", "desc": "Workspaces 13 / 14 (Discord / Steam)" },
           { "keys": "m", "desc": "Workspace 15 (Spotify)" }
         ]
       }
@@ -124,9 +126,11 @@
       {
         "title": "System",
         "items": [
+          { "keys": "Super Ctrl L", "desc": "Lock screen (hyprlock)" },
           { "keys": "Ctrl Alt Del", "desc": "System monitor (btop)" },
+          { "keys": "Super G", "desc": "Focus / cycle game (auto-snapped ≥16)" },
+          { "keys": "Super Shift G", "desc": "Move games → free game workspace (≥16)" },
           { "keys": "Super Ctrl Shift S", "desc": "Suspend" },
-          { "keys": "Super Shift G", "desc": "GParted (sudo)" },
           { "keys": "Super ?", "desc": "This shortcuts guide" }
         ]
       }

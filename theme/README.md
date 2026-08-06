@@ -12,14 +12,14 @@ apply-gnome-theme
 apply-flatpak-theme
 ```
 
-Reload Hyprland config (`hyprctl reload`) or re-login so `envs.conf` vars apply.
+Reload Hyprland config (`hyprctl reload`) or re-login so `envs.lua` vars apply.
 
 ## What it sets
 
 | Layer | Mechanism |
 | ----- | --------- |
 | GTK 3/4 | `~/.config/gtk-*/settings.ini`, `~/.gtkrc-2.0` |
-| Hyprland | `hypr/.config/hypr/envs.conf` (`COLOR_SCHEME`, `GTK_THEME`, Qt) |
+| Hyprland | `hypr/.config/hypr/envs.lua` (`COLOR_SCHEME`, `GTK_THEME`, Qt) |
 | systemd user | `~/.config/environment.d/99-theme.conf` |
 | GNOME portal | `apply-gnome-theme` (gsettings, autostart) |
 | Flatpak | `apply-flatpak-theme` (run once after flatpak install) |

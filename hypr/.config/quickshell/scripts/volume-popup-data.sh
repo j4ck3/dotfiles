@@ -21,9 +21,9 @@ jq -n \
   --argjson sources "$sources_json" \
   --argjson inputs "$inputs_json" '
   def pct:
-    (.volume["front-left"].value_percent // "0%")
-    | sub("%$"; "")
-    | tonumber;
+    (.volume // {})
+    | [to_entries[] | .value.value_percent? // empty | sub("%$"; "") | tonumber]
+    | if length == 0 then 0 else ((add / length) | round) end;
 
   def stream_name:
     .properties["application.name"]

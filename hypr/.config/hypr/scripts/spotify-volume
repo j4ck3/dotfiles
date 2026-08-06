@@ -1,51 +1,111 @@
 #!/bin/bash
-# Adjust Spotify volume
-# Usage: spotify-volume up|down
-# Writes state to file so spotify-volume-guard knows the user's intended volume.
+# Adjust Spotify PipeWire stream volume (+ keep MPRIS in sync).
+# Usage:
+#   spotify-volume up|down
+#   spotify-volume set <percent>
+#   spotify-volume get          → JSON {"id":N,"vol":N} or empty
+#   spotify-volume reapply      → force stream (+ MPRIS) back to state file
+#
+# Spotify reapplies its MPRIS volume onto the Pulse stream on seek — so MPRIS
+# and the stream must stay aligned, or seek/guard fights look like "history".
 
 set -euo pipefail
 
-MAX_VOLUME=100  # percent
+MAX_VOLUME=100
 MIN_VOLUME=5
 STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/spotify-volume-state"
 
-DIRECTION="$1"
-
-get_spotify_id() {
-    pactl --format=json list sink-inputs 2>/dev/null \
-        | jq -r '.[] | select(.properties["application.name"] == "spotify") | .index' \
-        | head -1
+spotify_json() {
+    pactl --format=json list sink-inputs 2>/dev/null | jq -c '
+      def is_spotify:
+        ((.properties["application.name"] // "") | ascii_downcase) == "spotify"
+        or ((.properties["media.name"] // "") | ascii_downcase) == "spotify"
+        or ((.properties["application.process.binary"] // "") | ascii_downcase | test("spotify"));
+      def pct:
+        (.volume // {})
+        | [to_entries[] | .value.value_percent? // empty | sub("%$"; "") | tonumber]
+        | if length == 0 then empty else ((add / length) | round) end;
+      [.[] | select(is_spotify) | {id: .index, vol: pct}] | .[0] // empty
+    '
 }
 
-get_volume() {
-    local id="$1"
-    pactl --format=json list sink-inputs 2>/dev/null \
-        | jq -r --argjson id "$id" '.[] | select(.index == $id) | .volume["front-left"].value_percent // empty' \
-        | tr -d '%' \
-        | head -1
+write_state() {
+    echo "$1" > "$STATE_FILE"
 }
 
-ID=$(get_spotify_id)
+sync_mpris() {
+    local pct=$1
+    # playerctl wants 0.0–1.0
+    local frac
+    frac=$(awk -v p="$pct" 'BEGIN { printf "%.4f", p / 100 }')
+    playerctl -p spotify volume "$frac" >/dev/null 2>&1 || true
+}
 
-if [ -n "$ID" ]; then
-    # Get current volume percentage
-    CURRENT=$(get_volume "$ID")
+apply_volume() {
+    local id=$1
+    local new=$2
+    if [ "$new" -gt "$MAX_VOLUME" ]; then
+        new=$MAX_VOLUME
+    fi
+    if [ "$new" -lt 0 ]; then
+        new=0
+    fi
+    # State first so the guard never treats an intentional set as a Spotify reset.
+    write_state "$new"
+    pactl set-sink-input-volume "$id" "${new}%"
+    sync_mpris "$new"
+    echo "$new"
+}
 
-    if [ "$DIRECTION" = "up" ]; then
-        if [ "$CURRENT" -lt "$MAX_VOLUME" ]; then
-            NEW=$((CURRENT + 5))
-            if [ "$NEW" -gt "$MAX_VOLUME" ]; then
-                NEW=$MAX_VOLUME
-            fi
-            pactl set-sink-input-volume "$ID" "${NEW}%"
-            echo "$NEW" > "$STATE_FILE"
-        fi
+CMD="${1:-}"
+[[ -z "$CMD" ]] && exit 1
+
+if [[ "$CMD" == "reapply" ]]; then
+    raw=$(spotify_json)
+    [[ -z "$raw" || "$raw" == "null" ]] && exit 0
+    ID=$(jq -r '.id' <<<"$raw")
+    [[ -z "$ID" || "$ID" == "null" ]] && exit 0
+    if [[ -f "$STATE_FILE" ]]; then
+        NEW=$(tr -d '[:space:]' <"$STATE_FILE")
     else
+        NEW=$(jq -r '.vol' <<<"$raw")
+    fi
+    [[ -z "$NEW" || "$NEW" == "null" ]] && exit 0
+    apply_volume "$ID" "$NEW" >/dev/null
+    exit 0
+fi
+
+raw=$(spotify_json)
+if [[ "$CMD" == "get" ]]; then
+    [[ -z "$raw" || "$raw" == "null" ]] && exit 0
+    echo "$raw"
+    exit 0
+fi
+
+[[ -z "$raw" || "$raw" == "null" ]] && exit 0
+ID=$(jq -r '.id' <<<"$raw")
+CURRENT=$(jq -r '.vol' <<<"$raw")
+[[ -z "$ID" || "$ID" == "null" || -z "$CURRENT" || "$CURRENT" == "null" ]] && exit 0
+
+case "$CMD" in
+    up)
+        NEW=$((CURRENT + 5))
+        apply_volume "$ID" "$NEW" >/dev/null
+        ;;
+    down)
         NEW=$((CURRENT - 5))
         if [ "$NEW" -lt "$MIN_VOLUME" ]; then
             NEW=$MIN_VOLUME
         fi
-        pactl set-sink-input-volume "$ID" "${NEW}%"
-        echo "$NEW" > "$STATE_FILE"
-    fi
-fi
+        apply_volume "$ID" "$NEW" >/dev/null
+        ;;
+    set)
+        NEW="${2:-}"
+        [[ -z "$NEW" ]] && exit 1
+        apply_volume "$ID" "$NEW" >/dev/null
+        ;;
+    *)
+        echo "usage: $0 up|down|get|set <percent>|reapply" >&2
+        exit 1
+        ;;
+esac

@@ -3,8 +3,6 @@
 
 xdg-terminal-exec
 
-blueberry
-
 helium-browser-bin
 
 python-hyprland-config

@@ -9,6 +9,9 @@ Singleton {
     readonly property color surfaceContainer: Qt.rgba(1, 1, 1, 0.10)
     readonly property color surfaceContainerHigh: Qt.rgba(1, 1, 1, 0.14)
     readonly property color surfaceContainerHighest: Qt.rgba(1, 1, 1, 0.18)
+    readonly property color hover: Qt.rgba(1, 1, 1, 0.12)
+    readonly property color hoverStrong: Qt.rgba(1, 1, 1, 0.20)
+    readonly property color hoverBright: Qt.rgba(1, 1, 1, 0.28)
 
     readonly property color ink: "#ffffff"
     readonly property color inkMuted: Qt.rgba(1, 1, 1, 0.55)
@@ -38,12 +41,14 @@ Singleton {
     readonly property string iconFontFallback: "Symbols Nerd Font Mono"
 
     readonly property int fontSize: 12
-    readonly property int barHeight: 32
+    readonly property int barHeight: 36
     readonly property int barMargin: 0
-    readonly property int barInnerHeight: 28
+    readonly property int barInnerHeight: 32
+    // Gap between bar bottom and widget cards (panel already starts at barHeight).
+    readonly property int widgetTopGap: 5
     readonly property int pillRadius: 999
     readonly property int panelRadius: 16
-    readonly property int modulePad: 8
+    readonly property int modulePad: 4
     readonly property color alert: "#ff4d4d"
 
     readonly property int animFast: 150

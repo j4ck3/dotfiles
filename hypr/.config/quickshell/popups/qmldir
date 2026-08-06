@@ -4,6 +4,7 @@ PowerMenu 1.0 PowerMenu.qml
 ShortcutsPopup 1.0 ShortcutsPopup.qml
 LauncherPopup 1.0 LauncherPopup.qml
 ClipboardPopup 1.0 ClipboardPopup.qml
+DashboardPopup 1.0 DashboardPopup.qml
 NotificationOSD 1.0 NotificationOSD.qml
 LauncherCard 1.0 LauncherCard.qml
 PopupCard 1.0 PopupCard.qml

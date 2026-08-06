@@ -9,7 +9,7 @@ PanelWindow {
     id: root
     visible: Globals.powerOpen
     color: "transparent"
-    exclusiveZone: 0
+    exclusionMode: ExclusionMode.Ignore
 
     anchors {
         top: true
@@ -18,19 +18,29 @@ PanelWindow {
         bottom: true
     }
 
+    margins {
+        top: Theme.barHeight
+    }
+
     WlrLayershell.namespace: "qs-power"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     function run(cmd: var): void {
         Quickshell.execDetached(cmd)
         Globals.powerOpen = false
     }
 
-    HyprlandFocusGrab {
-        active: root.visible
-        windows: [root]
-        onCleared: Globals.powerOpen = false
+    property bool shutDownArmed: false
+
+    onVisibleChanged: {
+        if (visible) {
+            shutDownArmed = false
+            card.playIn()
+        } else {
+            shutDownArmed = false
+            card.resetOut()
+        }
     }
 
     MouseArea {
@@ -39,10 +49,15 @@ PanelWindow {
     }
 
     PopupCard {
+        id: card
         anchors.fill: parent
         title: "Power"
         cardWidth: 300
+        topMargin: Theme.widgetTopGap
+        rightMargin: Globals.powerPopupRightMargin
+        animateIn: true
         onClosed: Globals.powerOpen = false
+        onCardHover: inside => Globals.setPowerHover(inside)
 
         M3Section {
             title: "VIRTUAL MACHINES"
@@ -72,7 +87,10 @@ PanelWindow {
                 wide: true
                 icon: "󰌾"
                 label: "Lock Screen"
-                onClicked: root.run(["loginctl", "lock-session"])
+                onClicked: {
+                    Globals.powerOpen = false
+                    Globals.lockSession()
+                }
             }
 
             M3IconButton {
@@ -95,9 +113,14 @@ PanelWindow {
                 Layout.fillWidth: true
                 wide: true
                 icon: "󰐥"
-                label: "Shut Down"
+                label: root.shutDownArmed ? "Confirm Shut Down?" : "Shut Down"
                 danger: true
-                onClicked: root.run(["systemctl", "poweroff"])
+                onClicked: {
+                    if (root.shutDownArmed)
+                        root.run(["systemctl", "poweroff"])
+                    else
+                        root.shutDownArmed = true
+                }
             }
 
             M3IconButton {

@@ -8,9 +8,13 @@ source "$SCRIPT_DIR/16-9-lib.sh"
 
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 SOCKET=""
+if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" && -S "$RUNTIME/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" ]]; then
+	SOCKET="$RUNTIME/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+fi
 for _ in $(seq 15); do
+	[[ -n "$SOCKET" ]] && break
 	for s in "$RUNTIME"/hypr/*/.socket2.sock; do
-		[[ -S "$s" ]] && SOCKET="$s" && break 2
+		[[ -S "$s" && -f "$(dirname "$s")/hyprland.lock" ]] && SOCKET="$s" && break 2
 	done
 	sleep 0.2
 done
@@ -32,6 +36,11 @@ handle_openwindow() {
 	[[ -z "$win_json" ]] && return
 
 	[[ "$(jq -r '.floating' <<<"$win_json")" == "true" ]] && return
+
+	# Never 16:9-group games / gamescope — grouping with Steam kills exclusive FS + FPS.
+	local cls
+	cls=$(jq -r '.class // empty' <<<"$win_json")
+	[[ "$cls" =~ ^(steam_app_|cs2$|gamescope(-wl)?$) ]] && return
 
 	local ws_id tiled_count mode
 	ws_id=$(jq -r '.workspace.id' <<<"$win_json")

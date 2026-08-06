@@ -9,9 +9,12 @@ MAX_LOG_BYTES=$((512 * 1024))
 wait_for_socket() {
 	local runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 	local s
+	if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" && -S "$runtime/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" ]]; then
+		return 0
+	fi
 	for _ in $(seq 30); do
 		for s in "$runtime"/hypr/*/.socket2.sock; do
-			[[ -S "$s" ]] && return 0
+			[[ -S "$s" && -f "$(dirname "$s")/hyprland.lock" ]] && return 0
 		done
 		sleep 0.5
 	done

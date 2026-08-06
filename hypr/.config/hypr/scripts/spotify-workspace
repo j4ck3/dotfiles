@@ -10,9 +10,9 @@ get_client() {
 move_and_focus() {
     local client="$1"
 
-    hyprctl dispatch movetoworkspacesilent "$WORKSPACE,address:$client"
-    hyprctl dispatch workspace "$WORKSPACE"
-    hyprctl dispatch focuswindow "address:$client"
+    hyprctl dispatch "hl.dsp.window.move({ workspace = $WORKSPACE, follow = false, window = \"address:$client\" })"
+    hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$client\" })"
 }
 
 CLIENT="$(get_client)"
@@ -22,7 +22,7 @@ if [ -n "$CLIENT" ]; then
     exit 0
 fi
 
-hyprctl dispatch workspace "$WORKSPACE"
+hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
 uwsm-app -- flatpak run com.spotify.Client &
 
 for _ in $(seq 1 40); do

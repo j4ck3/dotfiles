@@ -16,11 +16,13 @@ Item {
         "10": "i",
         "11": "u",
         "12": "y",
+        "13": "h",
+        "14": "b",
         "15": "m"
     })
-    readonly property var persistent: [1, 2, 3, 4, 5, 11, 12, 13, 15]
-    readonly property int cellW: 24
-    readonly property int pad: 3
+    readonly property var persistent: [1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15]
+    readonly property int cellW: 20
+    readonly property int pad: 2
     readonly property int activeId: Hyprland.focusedWorkspace?.id ?? 1
 
     implicitWidth: layout.implicitWidth + pad * 2
@@ -97,6 +99,17 @@ Item {
 
                 readonly property bool active: root.activeId === modelData
                 readonly property bool empty: !root.occupied(modelData)
+                readonly property bool hovered: wsMouse.containsMouse
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    radius: height / 2
+                    color: wsItem.hovered && !wsItem.active ? Theme.hover : "transparent"
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animFast }
+                    }
+                }
 
                 Text {
                     anchors.centerIn: parent
@@ -104,9 +117,10 @@ Item {
                     anchors.verticalCenterOffset: 0.5
                     text: root.labelFor(wsItem.modelData)
                     color: wsItem.active ? Theme.primaryInk
+                         : wsItem.hovered ? Theme.ink
                          : wsItem.empty ? Theme.hairline
                          : Theme.ink
-                    opacity: wsItem.active ? 1 : (wsItem.empty ? 0.55 : 0.9)
+                    opacity: wsItem.active ? 1 : (wsItem.hovered ? 1 : (wsItem.empty ? 0.55 : 0.9))
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSize
                     font.weight: wsItem.active ? Font.DemiBold : Font.Medium
@@ -115,12 +129,19 @@ Item {
                     Behavior on color {
                         ColorAnimation { duration: Theme.animFast }
                     }
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.animFast }
+                    }
                 }
 
                 MouseArea {
+                    id: wsMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch("workspace " + wsItem.modelData)
+                    onClicked: Hyprland.dispatch(
+                        "hl.dsp.focus({ workspace = " + wsItem.modelData + ", on_current_monitor = true })"
+                    )
                 }
             }
         }

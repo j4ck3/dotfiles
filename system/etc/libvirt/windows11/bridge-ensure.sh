@@ -9,10 +9,39 @@ bridge_iface_on_bridge() {
   bridge link show 2>/dev/null | awk -v br="${bridge}" '$0 ~ "master " br { sub(":", "", $2); print $2; exit }'
 }
 
+# Reads domain XML on stdin and prints the tap device of the NIC on ${bridge}.
+# Hooks must use this instead of domain_tap_iface: libvirtd holds the domain job
+# lock while a hook runs, so any virsh query about that same domain deadlocks.
+tap_iface_from_xml() {
+  local bridge="${1:-${LAN_BRIDGE:-br0}}"
+  python3 -c '
+import sys
+import xml.etree.ElementTree as ET
+
+bridge = sys.argv[1]
+try:
+    root = ET.fromstring(sys.stdin.read())
+except ET.ParseError:
+    sys.exit(1)
+for iface in root.findall("./devices/interface"):
+    target = iface.find("target")
+    source = iface.find("source")
+    if target is None or not target.get("dev"):
+        continue
+    if iface.get("type") == "bridge" and source is not None and source.get("bridge") == bridge:
+        print(target.get("dev"))
+        sys.exit(0)
+sys.exit(1)
+' "${bridge}" 2>/dev/null
+}
+
+# domiflist prints "header / ---- separator / rows", and uses "-" for the interface
+# name while the domain is not running.
 domain_tap_iface() {
   local domain="$1"
-  virsh -c "${VIRSH_DEFAULT_CONNECT_URI:-qemu:///system}" domiflist "${domain}" 2>/dev/null \
-    | awk 'NR == 2 { print $1 }'
+  LC_ALL=C virsh -c "${VIRSH_DEFAULT_CONNECT_URI:-qemu:///system}" domiflist "${domain}" 2>/dev/null \
+    | awk '/^[[:space:]]*-+[[:space:]]*$/ { body = 1; next }
+           body && NF && $1 != "-" { print $1; exit }'
 }
 
 tap_master_bridge() {
@@ -43,6 +72,23 @@ attach_tap_to_bridge() {
   fi
   echo "STEP: attach ${tap} to ${bridge}"
   ip link set "${tap}" master "${bridge}"
+}
+
+# Attach an already-known tap to the LAN bridge. Safe to call from a hook.
+bridge_ensure_tap() {
+  local tap="$1" master
+  export LC_ALL=C LANG=C
+  ensure_nm_bridge_up
+  if [[ -z "${tap}" ]]; then
+    echo "WARN: no tap interface given" >&2
+    return 1
+  fi
+  master="$(tap_master_bridge "${tap}")"
+  if [[ "${master}" == "${LAN_BRIDGE}" ]]; then
+    echo "OK: ${tap} already on ${LAN_BRIDGE}"
+    return 0
+  fi
+  attach_tap_to_bridge "${tap}" "${LAN_BRIDGE}"
 }
 
 bridge_ensure_for_domain() {

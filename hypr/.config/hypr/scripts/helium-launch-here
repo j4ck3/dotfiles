@@ -12,7 +12,7 @@
 # `workspace <id> silent` windowrule that matches class:helium, launch
 # Helium, then drop the rule after a short delay. The webapp-launch script
 # uses the same pattern for SUPER+I/U/Y, so concurrent launches stay
-# isolated by the title-based rules in autostart.conf.
+# isolated by the title-based rules in autostart.lua.
 
 set -eu
 

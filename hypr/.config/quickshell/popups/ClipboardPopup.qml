@@ -225,7 +225,18 @@ PanelWindow {
                 height: 36
                 z: 1
 
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Theme.pillRadius
+                    color: rowMouse.containsMouse && list.currentIndex !== row.index
+                         ? Theme.hover : "transparent"
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animFast }
+                    }
+                }
+
                 MouseArea {
+                    id: rowMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor

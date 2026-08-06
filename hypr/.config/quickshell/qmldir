@@ -1,3 +1,4 @@
 singleton Theme 1.0 Theme.qml
 singleton Globals 1.0 Globals.qml
+singleton Notifs 1.0 Notifs.qml
 Bar 1.0 Bar.qml

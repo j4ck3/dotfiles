@@ -6,7 +6,7 @@ Hyprland desktop alternate view
 
 Personal configs for **CachyOS** (Arch-based).
 
-**Dark mode:** `theme` stow package + Hypr `envs.conf` — see [`theme/README.md`](theme/README.md).
+**Dark mode:** `theme` stow package + Hypr `envs.lua` — see [`theme/README.md`](theme/README.md).
 
 **Notifications:** Quickshell (`NotificationOSD`) — replaces Dunst. Test: `notify-send "Hi" "body"`.
 
@@ -22,7 +22,7 @@ Personal configs for **CachyOS** (Arch-based).
 
 ## Hyprland keybinds
 
-Source of truth: `[hypr/.config/hypr/bindings.conf](hypr/.config/hypr/bindings.conf)`. Below matches the descriptions in that file. Workspace keys use `odiaeresis` (ö on a Swedish layout) and `code:14`–`code:18` for 5–9; those map to physical keys depending on your layout.
+Source of truth: `[hypr/.config/hypr/bindings.lua](hypr/.config/hypr/bindings.lua)`. Below matches the descriptions in that file. Workspace keys use `odiaeresis` (ö on a Swedish layout) and `code:14`–`code:18` for 5–9; those map to physical keys depending on your layout.
 
 ### Applications and system
 
@@ -30,18 +30,18 @@ Source of truth: `[hypr/.config/hypr/bindings.conf](hypr/.config/hypr/bindings.c
 | Shortcut           | Action                                  |
 | ------------------ | --------------------------------------- |
 | Super+Enter        | Terminal (`xdg-terminal-exec` via uwsm) |
-| Super+Backspace    | File manager (Nautilus)                 |
+| Super+Backspace    | File manager (Dolphin)                  |
 | Super+Shift+Alt+B  | Browser private window (Helium)         |
 | Super+Shift+M      | Spotify                                 |
 | Super+M            | Spotify, workspace 15                   |
 | Super+K            | t3code workspace script                 |
-| Super+N            | SSH devbox (Ghostty)                    |
 | Super+Shift+N      | Cursor                                  |
 | Super+Shift+D      | Lazydocker in terminal                  |
 | Super+Ctrl+Shift+S | Suspend                                 |
 | Ctrl+Alt+Shift+S   | Suspend                                 |
 | Ctrl+Alt+Delete    | System monitor (btop)                   |
-| Super+Shift+G      | GParted (sudo in terminal)              |
+| Super+G            | Focus / cycle game (snapped ws ≥16)     |
+| Super+Shift+G      | Move games → free game workspace (≥16) |
 
 
 ### Windows and launcher
@@ -86,6 +86,8 @@ Source of truth: `[hypr/.config/hypr/bindings.conf](hypr/.config/hypr/bindings.c
 | Super+I / Super+Shift+I | Trilium (ws 10) / move window to ws 10 |
 | Super+U / Super+Shift+U | ChatGPT (ws 11) / move to ws 11        |
 | Super+Y / Super+Shift+Y | YouTube (ws 12) / move to ws 12        |
+| Super+H / Super+Shift+H | Discord (ws 13) / move to ws 13        |
+| Super+B / Super+Shift+B | Steam (ws 14) / move to ws 14          |
 
 
 ### Workspaces (current monitor)

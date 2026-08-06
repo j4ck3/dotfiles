@@ -24,8 +24,8 @@ close_window() {
     local address=$1
 
     if hyprctl clients -j 2>>"$LOG_FILE" | jq -e --arg address "$address" 'any(.[]; .address == $address)' >/dev/null; then
-        hyprctl dispatch closewindow "address:$address" >/dev/null 2>>"$LOG_FILE" \
-            || hyprctl --batch "dispatch focuswindow address:$address ; dispatch killactive" >/dev/null 2>>"$LOG_FILE" \
+        hyprctl dispatch "hl.dsp.window.close({ window = \"address:$address\" })" >/dev/null 2>>"$LOG_FILE" \
+            || hyprctl dispatch "hl.dsp.window.kill({ window = \"address:$address\" })" >/dev/null 2>>"$LOG_FILE" \
             || notify "Close confirmation: failed to close window"
     else
         log "target disappeared before close"

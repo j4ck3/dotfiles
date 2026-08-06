@@ -18,4 +18,4 @@ if [[ "$ACTIVE_WORKSPACE" == "$WS" ]]; then
     exec ~/.config/hypr/scripts/smart-cycle
 fi
 
-hyprctl dispatch focusworkspaceoncurrentmonitor "$WS" >/dev/null 2>&1
+hyprctl dispatch "hl.dsp.focus({ workspace = ${WS}, on_current_monitor = true })" >/dev/null 2>&1

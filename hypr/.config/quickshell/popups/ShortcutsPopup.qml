@@ -62,12 +62,10 @@ PanelWindow {
         onCleared: Globals.shortcutsOpen = false
     }
 
-    // Dim backdrop
+    // Click-catcher (no dim)
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.45)
-        opacity: root.visible ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: Theme.animFast } }
+        color: "transparent"
 
         MouseArea {
             anchors.fill: parent
@@ -147,11 +145,6 @@ PanelWindow {
                             onTextChanged: root.query = text
                         }
                     }
-                }
-
-                M3IconButton {
-                    icon: "󰅖"
-                    onClicked: Globals.shortcutsOpen = false
                 }
             }
 

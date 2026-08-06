@@ -3,28 +3,33 @@ import QtQuick.Layouts
 
 import ".."
 
-// Shared popup card chrome — solid panel, reliable height.
+// Shared popup card chrome — solid panel under the bar (top-right).
 Item {
     id: root
 
-    property alias title: titleLabel.text
-    property bool showClose: true
+    property string title: ""
+    property bool showClose: false
     property int cardWidth: 360
+    property int topMargin: Theme.widgetTopGap
+    property int rightMargin: 16
+    property bool animateIn: false
     default property alias body: bodyCol.data
 
     signal closed
+    signal cardHover(bool inside)
 
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.4)
+        color: "transparent"
     }
 
     Rectangle {
         id: card
+
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.topMargin: Theme.barHeight + 10
-        anchors.rightMargin: 16
+        anchors.topMargin: root.topMargin
+        anchors.rightMargin: root.rightMargin
         width: root.cardWidth
         implicitHeight: inner.implicitHeight + 32
         height: implicitHeight
@@ -32,6 +37,35 @@ Item {
         color: "#111111"
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.14)
+
+        // Driven by playIn() — slide down + fade
+        property real slideY: 0
+        opacity: root.animateIn ? 0 : 1
+        transform: Translate { y: card.slideY }
+
+        ParallelAnimation {
+            id: inAnim
+            NumberAnimation {
+                target: card
+                property: "slideY"
+                from: -22
+                to: 0
+                duration: 160
+                easing.type: Easing.OutCubic
+            }
+            NumberAnimation {
+                target: card
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        HoverHandler {
+            onHoveredChanged: root.cardHover(hovered)
+        }
 
         MouseArea {
             anchors.fill: parent
@@ -46,46 +80,38 @@ Item {
             anchors.margins: 16
             spacing: 14
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Text {
-                    id: titleLabel
-                    color: "#ffffff"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                    Layout.fillWidth: true
-                }
-
-                Rectangle {
-                    visible: root.showClose
-                    width: 28
-                    height: 28
-                    radius: 14
-                    color: Qt.rgba(1, 1, 1, 0.12)
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "✕"
-                        color: Qt.rgba(1, 1, 1, 0.7)
-                        font.pixelSize: 12
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.closed()
-                    }
-                }
-            }
-
             ColumnLayout {
                 id: bodyCol
                 Layout.fillWidth: true
                 spacing: 12
             }
+        }
+    }
+
+    function playIn(): void {
+        if (!root.animateIn) {
+            card.slideY = 0
+            card.opacity = 1
+            return
+        }
+        inAnim.stop()
+        card.slideY = -22
+        card.opacity = 0
+        inAnim.restart()
+    }
+
+    function resetOut(): void {
+        inAnim.stop()
+        if (root.animateIn) {
+            card.slideY = -22
+            card.opacity = 0
+        }
+    }
+
+    Component.onCompleted: {
+        if (root.animateIn) {
+            card.slideY = -22
+            card.opacity = 0
         }
     }
 }
