@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# GNOME Keyring secrets agent (libsecret). Required for Cursor/VS Code cloud sync on Hyprland.
+# GNOME Keyring secrets agent (libsecret). Required for Electron password-store on Hyprland.
+# Must own org.freedesktop.secrets — kwallet/ksecretd will steal it if started first.
 set -eu
 if ! command -v gnome-keyring-daemon >/dev/null 2>&1; then
 	echo "start-keyring: install gnome-keyring (pacman -S gnome-keyring)" >&2
 	exit 0
 fi
-exec gnome-keyring-daemon --start --components=secrets,ssh,pkcs11
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "$runtime/keyring"
+
+# Prefer systemd socket activation when available
+if systemctl --user start gnome-keyring-daemon.socket 2>/dev/null; then
+	systemctl --user start gnome-keyring-daemon.service 2>/dev/null || true
+fi
+
+# Replace any existing daemon; claim secrets (+ ssh/pkcs11)
+exec gnome-keyring-daemon --replace --daemonize --components=secrets,ssh,pkcs11

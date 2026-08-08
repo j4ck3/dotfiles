@@ -21,11 +21,10 @@ Item {
         "15": "m"
     })
     readonly property var persistent: [1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15]
-    readonly property int cellW: 20
-    readonly property int pad: 2
+    readonly property int cellW: 26
     readonly property int activeId: Hyprland.focusedWorkspace?.id ?? 1
 
-    implicitWidth: layout.implicitWidth + pad * 2
+    implicitWidth: layout.implicitWidth
     implicitHeight: Theme.barInnerHeight
     Layout.preferredHeight: Theme.barInnerHeight
     Layout.fillHeight: false
@@ -52,31 +51,46 @@ Item {
         return 0
     }
 
-    // Outer pill
-    Rectangle {
-        id: track
-        anchors.fill: parent
-        radius: height / 2
-        color: Theme.surfaceContainer
-    }
-
-    // Sliding active indicator — vertically centered in track
-    Rectangle {
-        id: activePill
+    // Selected workspace only — Liquid Glass (circle)
+    Item {
+        id: activeLift
         readonly property int idx: root.indexOfId(root.activeId)
-        width: root.cellW - 2
-        height: track.height - root.pad * 2
-        radius: height / 2
-        color: Theme.primary
-
-        anchors.verticalCenter: track.verticalCenter
-        x: layout.x + idx * root.cellW + (root.cellW - width) / 2
+        width: root.cellW
+        height: root.cellW
+        anchors.verticalCenter: layout.verticalCenter
+        x: layout.x + idx * root.cellW
+        z: 1
 
         Behavior on x {
             NumberAnimation {
                 duration: Theme.animEmphasized
                 easing.type: Easing.OutBack
                 easing.overshoot: 0.6
+            }
+        }
+
+        Rectangle {
+            id: activePill
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: width / 2
+            color: Theme.glassFillHover
+            border.width: 1
+            border.color: Theme.glassRimHover
+
+            // Specular — circle-clipped via matching radius + contained size
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: 1
+                width: parent.width - 2
+                height: parent.height * 0.5
+                radius: width / 2
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: Theme.glassSpecular }
+                    GradientStop { position: 0.55; color: Theme.glassSpecularSoft }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
             }
         }
     }
@@ -86,7 +100,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 0
-        height: parent.height - root.pad * 2
+        height: root.cellW
+        z: 2
 
         Repeater {
             model: root.persistent
@@ -95,7 +110,7 @@ Item {
                 id: wsItem
                 required property int modelData
                 width: root.cellW
-                height: layout.height
+                height: root.cellW
 
                 readonly property bool active: root.activeId === modelData
                 readonly property bool empty: !root.occupied(modelData)
@@ -104,7 +119,7 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: 1
-                    radius: height / 2
+                    radius: width / 2
                     color: wsItem.hovered && !wsItem.active ? Theme.hover : "transparent"
                     Behavior on color {
                         ColorAnimation { duration: Theme.animFast }
@@ -113,10 +128,9 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    // Optical vertical nudge — fonts sit slightly high in the pill
                     anchors.verticalCenterOffset: 0.5
                     text: root.labelFor(wsItem.modelData)
-                    color: wsItem.active ? Theme.primaryInk
+                    color: wsItem.active ? Theme.ink
                          : wsItem.hovered ? Theme.ink
                          : wsItem.empty ? Theme.hairline
                          : Theme.ink

@@ -29,9 +29,23 @@ local function desc_locked_repeat(text)
   return { description = text, locked = true, repeating = true }
 end
 
+-- Detach from group if needed, then move active window (stay on current workspace).
+local function move_active_to_workspace(ws)
+  return function()
+    local win = hl.get_active_window()
+    if not win then
+      return
+    end
+    if win.group then
+      hl.dispatch(hl.dsp.window.move({ out_of_group = true, window = win }))
+    end
+    hl.dispatch(hl.dsp.window.move({ workspace = ws, follow = false, window = win }))
+  end
+end
+
 -- Apps
 bind("SUPER + RETURN", hl.dsp.exec_cmd(scripts .. "/launch-terminal-16-9"), desc_release("Terminal"))
-bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- dolphin"), desc_release("File manager"))
+bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- /home/jacke/.local/bin/dolphin"), desc_release("File manager"))
 bind("SUPER + SHIFT + ALT + B", hl.dsp.exec_cmd(browser .. " --private"), desc_release("Browser (private)"))
 bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("uwsm-app -- flatpak run com.spotify.Client"), desc_release("Music"))
 bind("SUPER + M", hl.dsp.exec_cmd(scripts .. "/spotify-workspace 15"), desc_release("Spotify (workspace 15)"))
@@ -107,7 +121,7 @@ bind(
   ),
   desc_release("Trilium (workspace 10)")
 )
-bind("SUPER + SHIFT + I", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 10"), desc_release("Move active window to workspace 10"))
+bind("SUPER + SHIFT + I", move_active_to_workspace(10), desc_release("Move active window to workspace 10"))
 
 -- SUPER U: ChatGPT (workspace 11)
 bind(
@@ -115,7 +129,7 @@ bind(
   hl.dsp.exec_cmd(scripts .. "/webapp-launch 11 helium helium-browser --new-window https://chatgpt.com"),
   desc_release("ChatGPT (workspace 11)")
 )
-bind("SUPER + SHIFT + U", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 11"), desc_release("Move active window to workspace 11"))
+bind("SUPER + SHIFT + U", move_active_to_workspace(11), desc_release("Move active window to workspace 11"))
 
 -- SUPER Y: YouTube (workspace 12)
 bind(
@@ -123,7 +137,7 @@ bind(
   hl.dsp.exec_cmd(scripts .. "/webapp-launch 12 helium helium-browser --new-window https://youtube.com"),
   desc_release("YouTube (workspace 12)")
 )
-bind("SUPER + SHIFT + Y", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 12"), desc_release("Move active window to workspace 12"))
+bind("SUPER + SHIFT + Y", move_active_to_workspace(12), desc_release("Move active window to workspace 12"))
 
 -- SUPER H: Discord (workspace 13)
 bind(
@@ -131,7 +145,7 @@ bind(
   hl.dsp.exec_cmd(scripts .. "/webapp-launch 13 discord uwsm-app -- flatpak run com.discordapp.Discord"),
   desc_release("Discord (workspace 13)")
 )
-bind("SUPER + SHIFT + H", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 13"), desc_release("Move active window to workspace 13"))
+bind("SUPER + SHIFT + H", move_active_to_workspace(13), desc_release("Move active window to workspace 13"))
 
 -- SUPER B: Steam (workspace 14)
 bind(
@@ -139,7 +153,7 @@ bind(
   hl.dsp.exec_cmd(scripts .. "/webapp-launch 14 steam uwsm-app -- steam"),
   desc_release("Steam (workspace 14)")
 )
-bind("SUPER + SHIFT + B", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 14"), desc_release("Move active window to workspace 14"))
+bind("SUPER + SHIFT + B", move_active_to_workspace(14), desc_release("Move active window to workspace 14"))
 
 -- Switch workspaces with SUPER + [1-9] (press again to cycle windows there)
 bind("SUPER + J", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 1"), desc_release("Switch/cycle workspace 1"))
@@ -151,16 +165,18 @@ bind("SUPER + 7", hl.dsp.focus({ workspace = 7, on_current_monitor = true }), de
 bind("SUPER + 8", hl.dsp.focus({ workspace = 8, on_current_monitor = true }), desc_release("Switch to workspace 8"))
 bind("SUPER + 9", hl.dsp.focus({ workspace = 9, on_current_monitor = true }), desc_release("Switch to workspace 9"))
 
--- Move active window to a workspace with SUPER + SHIFT + [1-9]
-bind("SUPER + SHIFT + J", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 1"), desc_release("Move active window to workspace 1"))
-bind("SUPER + SHIFT + K", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 2"), desc_release("Move active window to workspace 2"))
-bind("SUPER + SHIFT + L", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 3"), desc_release("Move active window to workspace 3"))
-bind("SUPER + SHIFT + odiaeresis", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 4"), desc_release("Move active window to workspace 4"))
-bind("SUPER + SHIFT + 5", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 5"), desc_release("Move active window to workspace 5"))
-bind("SUPER + SHIFT + 6", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 6"), desc_release("Move active window to workspace 6"))
-bind("SUPER + SHIFT + 7", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 7"), desc_release("Move active window to workspace 7"))
-bind("SUPER + SHIFT + 8", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 8"), desc_release("Move active window to workspace 8"))
-bind("SUPER + SHIFT + 9", hl.dsp.exec_cmd(scripts .. "/move-active-to-workspace 9"), desc_release("Move active window to workspace 9"))
+-- Move active window to a workspace with SUPER + SHIFT + letter/number
+-- Swedish Ö: Shift may report Odiaeresis — bind both.
+bind("SUPER + SHIFT + J", move_active_to_workspace(1), desc_release("Move active window to workspace 1"))
+bind("SUPER + SHIFT + K", move_active_to_workspace(2), desc_release("Move active window to workspace 2"))
+bind("SUPER + SHIFT + L", move_active_to_workspace(3), desc_release("Move active window to workspace 3"))
+bind("SUPER + SHIFT + odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))
+bind("SUPER + SHIFT + Odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))
+bind("SUPER + SHIFT + 5", move_active_to_workspace(5), desc_release("Move active window to workspace 5"))
+bind("SUPER + SHIFT + 6", move_active_to_workspace(6), desc_release("Move active window to workspace 6"))
+bind("SUPER + SHIFT + 7", move_active_to_workspace(7), desc_release("Move active window to workspace 7"))
+bind("SUPER + SHIFT + 8", move_active_to_workspace(8), desc_release("Move active window to workspace 8"))
+bind("SUPER + SHIFT + 9", move_active_to_workspace(9), desc_release("Move active window to workspace 9"))
 
 -- ALT+TAB: group-aware cycling (tabs when grouped, windows otherwise)
 bind("ALT + TAB", hl.dsp.exec_cmd(scripts .. "/smart-cycle"), desc("Cycle next (group-aware)"))

@@ -13,6 +13,19 @@ Singleton {
     readonly property color hoverStrong: Qt.rgba(1, 1, 1, 0.20)
     readonly property color hoverBright: Qt.rgba(1, 1, 1, 0.28)
 
+    // Liquid Glass (Regular) — lensing cues without compositor blur.
+    readonly property color glassFill: Qt.rgba(1, 1, 1, 0.11)
+    readonly property color glassFillHover: Qt.rgba(1, 1, 1, 0.17)
+    readonly property color glassRim: Qt.rgba(1, 1, 1, 0.22)
+    readonly property color glassRimHover: Qt.rgba(1, 1, 1, 0.34)
+    readonly property color glassSpecular: Qt.rgba(1, 1, 1, 0.28)
+    readonly property color glassSpecularSoft: Qt.rgba(1, 1, 1, 0.06)
+    readonly property color glassShade: Qt.rgba(0, 0, 0, 0.18)
+    readonly property color glassShadow: Qt.rgba(0, 0, 0, 0.28)
+    readonly property color glassActiveFill: Qt.rgba(1, 1, 1, 0.88)
+    readonly property color glassActiveInk: "#0a0a0a"
+    readonly property color glassGlow: Qt.rgba(1, 1, 1, 0.14)
+
     readonly property color ink: "#ffffff"
     readonly property color inkMuted: Qt.rgba(1, 1, 1, 0.55)
     readonly property color hairline: Qt.rgba(1, 1, 1, 0.35)

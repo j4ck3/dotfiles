@@ -21,9 +21,8 @@ ACTIVE_ADDR=$(jq -r '.address // empty' <<< "$ACTIVE_JSON")
 GROUPED_LEN=$(jq -r '(.grouped // []) | length' <<< "$ACTIVE_JSON")
 
 if [[ "$GROUPED_LEN" -gt 0 ]]; then
-    hyprctl dispatch focuswindow "address:$ACTIVE_ADDR" >/dev/null 2>&1 || true
-    hyprctl dispatch moveoutofgroup >/dev/null 2>&1 || true
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$ACTIVE_ADDR\" })" >/dev/null 2>&1 || true
+    hyprctl dispatch "hl.dsp.window.move({ out_of_group = true, window = \"address:$ACTIVE_ADDR\" })" >/dev/null 2>&1 || true
 fi
 
-hyprctl dispatch movetoworkspacesilent "$WS,address:$ACTIVE_ADDR" >/dev/null 2>&1 \
-    || hyprctl dispatch movetoworkspace "$WS"
+hyprctl dispatch "hl.dsp.window.move({ workspace = $WS, follow = false, window = \"address:$ACTIVE_ADDR\" })"

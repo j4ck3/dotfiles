@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Force dark palette for Dolphin only (session stays Adwaita light / Fusion).
+# Qt uses QT_QPA_PLATFORMTHEME=gtk3, so GTK_THEME drives Dolphin colors.
+set -euo pipefail
+export GTK_THEME=Adwaita:dark
+export COLOR_SCHEME=prefer-dark
+exec /usr/bin/dolphin "$@"

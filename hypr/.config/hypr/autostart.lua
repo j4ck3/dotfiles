@@ -26,12 +26,31 @@ hl.on("hyprland.start", function()
   -- Workspace 2 monocle mode - maximize and stack all windows
   hl.exec_cmd(scripts .. "/workspace2-monocle")
 
-  -- 16:9 group: SUPER+Return opens terminal in 16:9; other first apps via listener below.
-  hl.exec_cmd(scripts .. "/group-new-window-listener-watchdog")
-
   -- Games (steam_app_*/cs2/gamescope) → free workspace >= 16; Super+G focuses them
   hl.exec_cmd(scripts .. "/game-snap-listener-watchdog")
 end)
+
+-- Normal app windows enter the 16:9 floating group before their first frame.
+-- Initially-floating windows are dialogs/popups and keep their requested geometry.
+-- DP-1 usable area: 3440x1440 - 36px bar - 4px top/bottom gaps = 3440x1396.
+hl.window_rule({
+  name = "default-16-9",
+  match = {
+    class = ".*",
+    float = false,
+  },
+  float = true,
+  size = {
+    "(monitor_h - 44) * 16 / 9",
+    "monitor_h - 44",
+  },
+  move = {
+    "(monitor_w - ((monitor_h - 44) * 16 / 9)) / 2",
+    "40",
+  },
+  group = "set",
+  no_anim = true,
+})
 
 -- Cursor → Workspace 2
 hl.window_rule({
