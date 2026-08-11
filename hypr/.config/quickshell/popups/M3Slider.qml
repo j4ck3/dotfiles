@@ -11,6 +11,7 @@ Slider {
     property color trackColor: Qt.rgba(1, 1, 1, 0.15)
     property int trackHeight: 6
     property bool showHandle: true
+    property int handleSize: 16
     // Extra vertical hit padding around the track (makes long drags easier).
     property int hitPad: 12
     // Visual tick marks only (same units as value). No magnetic snap —
@@ -20,7 +21,7 @@ Slider {
     from: 0
     to: 100
     implicitHeight: showHandle
-        ? Math.max(32, trackHeight + hitPad * 2)
+        ? Math.max(32, trackHeight + hitPad * 2, handleSize + hitPad)
         : Math.max(28, trackHeight + hitPad * 2)
     padding: 0
     topPadding: hitPad
@@ -72,7 +73,9 @@ Slider {
     handle: Rectangle {
         x: root.leftPadding + root.visualPosition * (root.availableWidth - width)
         y: root.topPadding + (root.availableHeight - height) / 2
-        implicitWidth: root.showHandle ? (root.hovered || root.pressed ? 18 : 16) : 0
+        implicitWidth: root.showHandle
+            ? (root.hovered || root.pressed ? root.handleSize + 2 : root.handleSize)
+            : 0
         implicitHeight: implicitWidth
         radius: width / 2
         color: "#ffffff"

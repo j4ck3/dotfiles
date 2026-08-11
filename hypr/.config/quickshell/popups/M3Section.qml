@@ -9,8 +9,10 @@ ColumnLayout {
     property string title: ""
     default property alias content: body.data
 
+    property bool compact: false
+
     Layout.fillWidth: true
-    spacing: 6
+    spacing: compact ? 4 : 6
 
     Text {
         visible: root.title.length > 0
@@ -25,18 +27,18 @@ ColumnLayout {
     Rectangle {
         id: box
         Layout.fillWidth: true
-        radius: 14
+        radius: root.compact ? 12 : 14
         color: Qt.rgba(1, 1, 1, 0.08)
-        implicitHeight: body.implicitHeight + 20
+        implicitHeight: body.implicitHeight + (root.compact ? 14 : 20)
         height: implicitHeight
         clip: true
 
         ColumnLayout {
             id: body
-            x: 12
-            y: 10
-            width: box.width - 24
-            spacing: 8
+            x: root.compact ? 10 : 12
+            y: root.compact ? 7 : 10
+            width: box.width - (root.compact ? 20 : 24)
+            spacing: root.compact ? 4 : 8
         }
     }
 }

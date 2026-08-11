@@ -13,6 +13,7 @@ hyprland
 hypridle
 hyprlock
 hyprpicker
+hyprsunset
 waybar
 quickshell
 uwsm

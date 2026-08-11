@@ -13,6 +13,7 @@ Item {
     property int topMargin: Theme.widgetTopGap
     property int rightMargin: 16
     property bool animateIn: false
+    property bool compact: false
     default property alias body: bodyCol.data
 
     signal closed
@@ -31,9 +32,9 @@ Item {
         anchors.topMargin: root.topMargin
         anchors.rightMargin: root.rightMargin
         width: root.cardWidth
-        implicitHeight: inner.implicitHeight + 32
+        implicitHeight: inner.implicitHeight + (root.compact ? 22 : 32)
         height: implicitHeight
-        radius: 18
+        radius: root.compact ? 14 : 18
         color: "#111111"
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.14)
@@ -77,13 +78,13 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 16
-            spacing: 14
+            anchors.margins: root.compact ? 12 : 16
+            spacing: root.compact ? 10 : 14
 
             ColumnLayout {
                 id: bodyCol
                 Layout.fillWidth: true
-                spacing: 12
+                spacing: root.compact ? 8 : 12
             }
         }
     }

@@ -1,0 +1,25 @@
+#!/bin/bash
+# Launch OpenWhispr with stdout log so the Quickshell bar can show REC/TX.
+# Single instance; D-Bus Toggle needs this process alive.
+
+set -euo pipefail
+
+readonly LOG="${OPENWHISPR_LOG:-/tmp/openwhispr.log}"
+readonly BIN="${OPENWHISPR_BIN:-openwhispr}"
+
+if dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+    /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+    string:com.openwhispr.App 2>/dev/null | rg -q 'boolean true'; then
+    echo "===== $(date -Is) openwhispr already running (dbus) =====" >>"$LOG"
+    exit 0
+fi
+
+# Orphans after crashed main — free ports / capture
+pkill -x open-whispr-app 2>/dev/null || true
+pkill -x open-whispr 2>/dev/null || true
+sleep 0.2
+
+{
+    echo "===== $(date -Is) openwhispr-start ====="
+    exec "$BIN"
+} >>"$LOG" 2>&1

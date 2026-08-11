@@ -8,6 +8,7 @@ Singleton {
     id: root
 
     property bool volumeOpen: false
+    property bool displayOpen: false
     property bool mediaOpen: false
     property bool powerOpen: false
     property bool shortcutsOpen: false
@@ -24,12 +25,19 @@ Singleton {
     // Hover bridges (bar trigger ↔ popup card). Overlay must not cover the bar
     // or the trigger loses hover and the popup flash-loops open/close.
     property bool volumeHover: false
+    // Display: bar + card tracked separately so card HoverHandler(false) on
+    // open does not kill popup while pointer still on BRT.
+    property bool displayBarHover: false
+    property bool displayCardHover: false
+    property bool displayPinned: false
+    readonly property bool displayHover: displayBarHover || displayCardHover || displayPinned
     property bool powerHover: false
     property bool mediaHover: false
 
     // Bar → popup: distance from screen right to center card under trigger.
     property int mediaPopupRightMargin: 280
     property int volumePopupRightMargin: 210
+    property int displayPopupRightMargin: 210
     property int powerPopupRightMargin: 16
     property int notifRightMargin: 14
 
@@ -57,6 +65,15 @@ Singleton {
     }
 
     Timer {
+        id: displayCloseTimer
+        interval: 220
+        onTriggered: {
+            if (!root.displayBarHover && !root.displayCardHover && !root.displayPinned)
+                root.displayOpen = false
+        }
+    }
+
+    Timer {
         id: powerCloseTimer
         interval: 80
         onTriggered: {
@@ -77,6 +94,8 @@ Singleton {
     function closeOthers(except: string): void {
         if (except !== "volume")
             volumeOpen = false
+        if (except !== "display")
+            displayOpen = false
         if (except !== "media")
             mediaOpen = false
         if (except !== "power")
@@ -89,6 +108,12 @@ Singleton {
         if (except !== "volume") {
             volumeHover = false
             volumeCloseTimer.stop()
+        }
+        if (except !== "display") {
+            displayBarHover = false
+            displayCardHover = false
+            displayPinned = false
+            displayCloseTimer.stop()
         }
         if (except !== "power") {
             powerHover = false
@@ -112,6 +137,48 @@ Singleton {
         } else {
             volumeCloseTimer.restart()
         }
+    }
+
+    function syncDisplayOpen(): void {
+        if (displayBarHover || displayCardHover || displayPinned) {
+            displayCloseTimer.stop()
+            if (!displayOpen) {
+                playHoverSound()
+                closeOthers("display")
+                displayOpen = true
+            }
+        } else {
+            displayCloseTimer.restart()
+        }
+    }
+
+    function setDisplayBarHover(inside: bool): void {
+        displayBarHover = inside
+        syncDisplayOpen()
+    }
+
+    function setDisplayCardHover(inside: bool): void {
+        displayCardHover = inside
+        syncDisplayOpen()
+    }
+
+    function setDisplayPinned(pinned: bool): void {
+        displayPinned = pinned
+        if (pinned) {
+            displayCloseTimer.stop()
+            if (!displayOpen) {
+                playHoverSound()
+                closeOthers("display")
+                displayOpen = true
+            }
+        } else {
+            syncDisplayOpen()
+        }
+    }
+
+    // Back-compat for older call sites
+    function setDisplayHover(inside: bool): void {
+        setDisplayBarHover(inside)
     }
 
     function setPowerHover(inside: bool): void {
@@ -159,6 +226,7 @@ Singleton {
 
     function closeAll(): void {
         volumeOpen = false
+        displayOpen = false
         mediaOpen = false
         powerOpen = false
         shortcutsOpen = false
@@ -166,9 +234,13 @@ Singleton {
         clipboardOpen = false
         dashboardOpen = false
         volumeHover = false
+        displayBarHover = false
+        displayCardHover = false
+        displayPinned = false
         powerHover = false
         mediaHover = false
         volumeCloseTimer.stop()
+        displayCloseTimer.stop()
         powerCloseTimer.stop()
         mediaCloseTimer.stop()
     }
@@ -178,6 +250,16 @@ Singleton {
         const next = !volumeOpen
         closeAll()
         volumeOpen = next
+    }
+
+    function toggleDisplay(): void {
+        cancelSuperTap()
+        const next = !(displayOpen && displayPinned)
+        closeAll()
+        if (next) {
+            displayPinned = true
+            displayOpen = true
+        }
     }
 
     function toggleMedia(): void {

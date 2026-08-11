@@ -17,6 +17,12 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("wl-paste --type text --watch cliphist store")
   hl.exec_cmd("wl-paste --type image --watch cliphist store")
   hl.exec_cmd("helium-browser")
+  -- Software brightness + blue-light (hyprctl hyprsunset gamma|temperature)
+  hl.exec_cmd("uwsm-app -- hyprsunset")
+  -- Local dictation (Ctrl+Super). Log → /tmp/openwhispr.log for bar REC/TX.
+  hl.exec_cmd("uwsm-app -- " .. scripts .. "/openwhispr-start")
+  -- Park floating mic HUD off-screen (indicator lives in Quickshell bar).
+  hl.exec_cmd("uwsm-app -- " .. scripts .. "/openwhispr-hide-hud")
   hl.exec_cmd("enable-keyboard-wake")
   hl.exec_cmd(scripts .. "/kbd-unstick")
 

@@ -1,0 +1,45 @@
+#!/bin/bash
+# Keep OpenWhispr "Voice Recorder" HUD off-screen (bar shows REC/TX instead).
+set -uo pipefail
+
+ensure_hypr() {
+  if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    return 0
+  fi
+  local runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  local newest
+  newest=$(ls -1t "$runtime"/hypr 2>/dev/null | head -1) || true
+  [[ -n "${newest:-}" ]] || return 1
+  export HYPRLAND_INSTANCE_SIGNATURE="$newest"
+}
+
+park() {
+  ensure_hypr || return 0
+  local addr x y
+  while read -r addr x y; do
+    [[ -z "${addr:-}" ]] && continue
+    # Already parked far off-screen
+    if (( x < -50 && y < -50 )); then
+      continue
+    fi
+    hyprctl dispatch "hl.dsp.window.move({ x = -400, y = -400, relative = false, window = \"address:${addr}\" })" >/dev/null
+    hyprctl dispatch "hl.dsp.window.resize({ x = 1, y = 1, relative = false, window = \"address:${addr}\" })" >/dev/null
+    hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"opacity\", value = \"0 override 0 override\", window = \"address:${addr}\" })" >/dev/null
+  done < <(hyprctl clients -j 2>/dev/null | python3 -c '
+import sys, json
+try:
+    clients = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+for c in clients:
+    if c.get("class") == "open-whispr" and c.get("title") == "Voice Recorder":
+        at = c.get("at") or [0, 0]
+        print(c["address"], int(at[0]), int(at[1]))
+')
+}
+
+# Poll: OpenWhispr repositions HUD after each toggle (no socat required).
+while true; do
+  park
+  sleep 0.35
+done

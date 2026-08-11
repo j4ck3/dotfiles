@@ -112,6 +112,15 @@ bind("SUPER + V", hl.dsp.exec_cmd(scripts .. "/stt-dictate"), desc_release("Live
 bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(scripts .. "/ocr-region"), desc_release("OCR region to clipboard"))
 bind("SUPER + ALT + V", hl.dsp.exec_cmd(scripts .. "/tts-speak"), desc_release("Text to speech (TTS)"))
 
+-- OpenWhispr: toggle dictation (Lua config — openwhispr-binds.conf is NOT auto-sourced)
+bind(
+  "CTRL + SUPER",
+  hl.dsp.exec_cmd(
+    "dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.Toggle"
+  ),
+  desc_release("OpenWhispr dictation toggle")
+)
+
 -- Web apps - switch to workspace, launch app if not already there
 -- SUPER I: Trilium (workspace 10)
 bind(

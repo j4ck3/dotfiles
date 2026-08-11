@@ -82,7 +82,7 @@ Item {
 
     function syncPopupAnchors(): void {
         if (volHit.width > 0)
-            Globals.volumePopupRightMargin = root.popupMarginUnder(volHit, 320)
+            Globals.volumePopupRightMargin = root.popupMarginUnder(volHit, 262)
         if (powerBtn.width > 0)
             Globals.powerPopupRightMargin = root.popupMarginUnder(powerBtn, 300)
         // Toasts sit at content-strip right edge (same inset as 16:9 window).
@@ -171,10 +171,10 @@ Item {
                 pillColor: "transparent"
                 hoverLift: false
 
-                readonly property bool showExtras: mediaPill.hovered || mediaPill.spotifyVolDrag || mediaPill.spotifySeekDrag
                 property int spotifyUiVol: 100
                 property bool spotifyVolDrag: false
                 property bool spotifySeekDrag: false
+                readonly property bool showTimeline: mediaPill.hovered || mediaPill.spotifySeekDrag
 
                 readonly property string spotifyVolumeScript: {
                     const home = Quickshell.env("HOME") || ""
@@ -208,18 +208,29 @@ Item {
                     return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
                 }
 
-                onVisibleChanged: Qt.callLater(root.syncPopupAnchors)
-                onWidthChanged: Qt.callLater(root.syncPopupAnchors)
-                onHoveredChanged: {
-                    if (hovered)
+                onVisibleChanged: {
+                    Qt.callLater(root.syncPopupAnchors)
+                    if (visible)
                         mediaPill.refreshSpotifyVol()
                 }
-                Component.onCompleted: Qt.callLater(root.syncPopupAnchors)
+                onWidthChanged: Qt.callLater(root.syncPopupAnchors)
+                Component.onCompleted: {
+                    Qt.callLater(root.syncPopupAnchors)
+                    mediaPill.refreshSpotifyVol()
+                }
 
-                // MPRIS position does not emit continuously — tick while extras shown + playing.
+                // MPRIS position does not emit continuously — tick while timeline shown + playing.
                 FrameAnimation {
-                    running: mediaPill.showExtras && !!root.spotify?.isPlaying
+                    running: mediaPill.showTimeline && !!root.spotify?.isPlaying
                     onTriggered: root.spotify?.positionChanged()
+                }
+
+                Timer {
+                    interval: 500
+                    running: mediaPill.visible
+                    repeat: true
+                    triggeredOnStart: true
+                    onTriggered: mediaPill.refreshSpotifyVol()
                 }
 
                 Timer {
@@ -278,7 +289,7 @@ Item {
                             Layout.alignment: Qt.AlignVCenter
                             radius: 5
                             color: Theme.surfaceContainer
-                            visible: !mediaPill.showExtras
+                            z: 1
 
                             Image {
                                 id: artThumbImg
@@ -315,30 +326,148 @@ Item {
                                 font.family: Theme.iconFontFallback
                                 font.pixelSize: 12
                             }
-                        }
 
-                        BarText {
-                            Layout.alignment: Qt.AlignVCenter
-                            color: Theme.tertiary
-                            font.pixelSize: 12
-                            visible: !mediaPill.showExtras
-                            text: {
-                                if (!root.spotify)
-                                    return ""
-                                const artist = root.spotify.trackArtist || ""
-                                const title = root.spotify.trackTitle || ""
-                                const full = artist ? (artist + " — " + title) : title
-                                return full.length > 40 ? full.slice(0, 39) + "…" : full
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    const home = Quickshell.env("HOME") || ""
+                                    Quickshell.execDetached([
+                                        home + "/.config/hypr/scripts/spotify-workspace", "15"
+                                    ])
+                                }
                             }
                         }
 
-                        // Transport + volume — reveal on hover
+                        // Fixed slot: title idle, timeline on hover — same width, no layout jump.
+                        Item {
+                            id: mediaSwapSlot
+                            Layout.preferredWidth: 180
+                            Layout.preferredHeight: Theme.barHeight
+                            Layout.alignment: Qt.AlignVCenter
+                            clip: true
+
+                            BarText {
+                                anchors.fill: parent
+                                verticalAlignment: Text.AlignVCenter
+                                color: Theme.tertiary
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                                opacity: mediaPill.showTimeline ? 0 : 1
+                                text: {
+                                    if (!root.spotify)
+                                        return ""
+                                    const artist = root.spotify.trackArtist || ""
+                                    const title = root.spotify.trackTitle || ""
+                                    return artist ? (artist + " — " + title) : title
+                                }
+
+                                Behavior on opacity {
+                                    NumberAnimation { duration: Theme.animFast }
+                                }
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: 8
+                                opacity: mediaPill.showTimeline ? 1 : 0
+                                enabled: mediaPill.showTimeline
+
+                                Behavior on opacity {
+                                    NumberAnimation { duration: Theme.animFast }
+                                }
+
+                                BarText {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.preferredWidth: 30
+                                    color: Theme.inkMuted
+                                    font.pixelSize: 10
+                                    horizontalAlignment: Text.AlignRight
+                                    text: mediaPill.fmtTime(
+                                        mediaSeekSlider.pressed
+                                            ? mediaSeekSlider.value
+                                            : (root.spotify?.position || 0)
+                                    )
+                                }
+
+                                Slider {
+                                    id: mediaSeekSlider
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 16
+                                    Layout.alignment: Qt.AlignVCenter
+                                    from: 0
+                                    to: Math.max(1, root.spotify?.length || 1)
+                                    live: true
+                                    padding: 0
+                                    topPadding: 4
+                                    bottomPadding: 4
+
+                                    Binding {
+                                        target: mediaSeekSlider
+                                        property: "value"
+                                        value: root.spotify?.position || 0
+                                        when: !mediaSeekSlider.pressed
+                                        restoreMode: Binding.RestoreNone
+                                    }
+
+                                    background: Item {
+                                        x: mediaSeekSlider.leftPadding
+                                        y: mediaSeekSlider.topPadding + (mediaSeekSlider.availableHeight - height) / 2
+                                        width: mediaSeekSlider.availableWidth
+                                        height: 3
+
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 1.5
+                                            color: Qt.rgba(1, 1, 1, 0.18)
+                                        }
+                                        Rectangle {
+                                            width: mediaSeekSlider.visualPosition * parent.width
+                                            height: parent.height
+                                            radius: 1.5
+                                            color: "#ffffff"
+                                        }
+                                    }
+
+                                    handle: Rectangle {
+                                        x: mediaSeekSlider.leftPadding + mediaSeekSlider.visualPosition * (mediaSeekSlider.availableWidth - width)
+                                        y: mediaSeekSlider.topPadding + (mediaSeekSlider.availableHeight - height) / 2
+                                        implicitWidth: 10
+                                        implicitHeight: 10
+                                        radius: 5
+                                        color: "#ffffff"
+                                    }
+
+                                    onMoved: {
+                                        if (root.spotify && pressed)
+                                            root.spotify.position = value
+                                    }
+                                    onPressedChanged: {
+                                        mediaPill.spotifySeekDrag = pressed
+                                        // Seek in place — do not pause/play (Spotify blips stream volume).
+                                        if (!pressed && root.spotify) {
+                                            root.spotify.position = value
+                                            // Spotify reapplies MPRIS volume onto the stream after seek.
+                                            mediaSeekReapply.restart()
+                                        }
+                                    }
+                                }
+
+                                BarText {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    Layout.preferredWidth: 30
+                                    color: Theme.inkMuted
+                                    font.pixelSize: 10
+                                    text: mediaPill.fmtTime(root.spotify?.length || 0)
+                                }
+                            }
+                        }
+
+                        // Transport + volume — always shown
                         RowLayout {
                             id: mediaExtras
                             Layout.alignment: Qt.AlignVCenter
                             spacing: 10
-                            visible: mediaPill.showExtras
-                            opacity: mediaPill.showExtras ? 1 : 0
 
                             Item {
                                 Layout.preferredWidth: 28
@@ -507,87 +636,6 @@ Item {
                                         : mediaPill.spotifyUiVol
                                 ) + "%"
                             }
-
-                            BarText {
-                                Layout.alignment: Qt.AlignVCenter
-                                color: Theme.inkMuted
-                                font.pixelSize: 10
-                                text: mediaPill.fmtTime(
-                                    mediaSeekSlider.pressed
-                                        ? mediaSeekSlider.value
-                                        : (root.spotify?.position || 0)
-                                )
-                            }
-
-                            Slider {
-                                id: mediaSeekSlider
-                                Layout.preferredWidth: 110
-                                Layout.preferredHeight: 16
-                                Layout.alignment: Qt.AlignVCenter
-                                from: 0
-                                to: Math.max(1, root.spotify?.length || 1)
-                                live: true
-                                padding: 0
-                                topPadding: 4
-                                bottomPadding: 4
-
-                                Binding {
-                                    target: mediaSeekSlider
-                                    property: "value"
-                                    value: root.spotify?.position || 0
-                                    when: !mediaSeekSlider.pressed
-                                    restoreMode: Binding.RestoreNone
-                                }
-
-                                background: Item {
-                                    x: mediaSeekSlider.leftPadding
-                                    y: mediaSeekSlider.topPadding + (mediaSeekSlider.availableHeight - height) / 2
-                                    width: mediaSeekSlider.availableWidth
-                                    height: 3
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        radius: 1.5
-                                        color: Qt.rgba(1, 1, 1, 0.18)
-                                    }
-                                    Rectangle {
-                                        width: mediaSeekSlider.visualPosition * parent.width
-                                        height: parent.height
-                                        radius: 1.5
-                                        color: "#ffffff"
-                                    }
-                                }
-
-                                handle: Rectangle {
-                                    x: mediaSeekSlider.leftPadding + mediaSeekSlider.visualPosition * (mediaSeekSlider.availableWidth - width)
-                                    y: mediaSeekSlider.topPadding + (mediaSeekSlider.availableHeight - height) / 2
-                                    implicitWidth: 10
-                                    implicitHeight: 10
-                                    radius: 5
-                                    color: "#ffffff"
-                                }
-
-                                onMoved: {
-                                    if (root.spotify && pressed)
-                                        root.spotify.position = value
-                                }
-                                onPressedChanged: {
-                                    mediaPill.spotifySeekDrag = pressed
-                                    // Seek in place — do not pause/play (Spotify blips stream volume).
-                                    if (!pressed && root.spotify) {
-                                        root.spotify.position = value
-                                        // Spotify reapplies MPRIS volume onto the stream after seek.
-                                        mediaSeekReapply.restart()
-                                    }
-                                }
-                            }
-
-                            BarText {
-                                Layout.alignment: Qt.AlignVCenter
-                                color: Theme.inkMuted
-                                font.pixelSize: 10
-                                text: mediaPill.fmtTime(root.spotify?.length || 0)
-                            }
                         }
                     }
 
@@ -620,14 +668,26 @@ Item {
             anchors.bottom: parent.bottom
             spacing: 4
 
+            // OpenWhispr: MIC/REC recording, MIC/TX transcribing, MIC/OFF if dead
             Pill {
                 visible: dictation.visible
                 Layout.alignment: Qt.AlignVCenter
+                pillColor: dictation.cssClass === "high"
+                    ? Qt.rgba(1, 0.3, 0.3, 0.22)
+                    : dictation.cssClass === "active"
+                        ? Qt.rgba(1, 1, 1, 0.16)
+                        : Theme.surfaceContainer
 
                 JsonScript {
                     id: dictation
                     scriptName: "dictation-status.sh"
-                    intervalMs: 1000
+                    intervalMs: 350
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Quickshell.execDetached(["openwhispr"])
                 }
             }
 
