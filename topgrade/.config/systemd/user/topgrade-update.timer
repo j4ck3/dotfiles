@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly topgrade system update timer
+
+[Timer]
+# Every Sunday at 06:00 local time
+OnCalendar=Sun *-*-* 06:00:00
+# Run on next boot if the machine was off at 06:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

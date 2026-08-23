@@ -1,0 +1,20 @@
+# CachyOS: oh-my-zsh-git is updated via paru; /usr/share/oh-my-zsh has no .git.
+[misc]
+disable = ["shell", "config_update"]
+
+# hyprpm needs an active Hyprland session; cmake/cpio are in install-deps.sh.
+ignore_failures = ["hyprpm"]
+
+# Unattended upgrades (paru, etc.) without per-step prompts.
+assume_yes = true
+
+# Cache sudo at start (weekly timer uses NOPASSWD via install-weekly-update.sh).
+pre_sudo = true
+
+# Perl vendor file conflicts (perl-timedate / perl-clone "finns redan").
+[linux]
+yay_arguments = "--overwrite /usr/share/perl5/* --overwrite /usr/lib/perl5/*"
+
+# After system update (NOPASSWD for this script via install-weekly-update.sh).
+[post_commands]
+"Dismiss mirrorlist pacnew" = "sudo -n /home/tv/dotfiles/topgrade/.local/bin/dismiss-pacnew"

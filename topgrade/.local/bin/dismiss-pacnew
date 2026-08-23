@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Drop .pacnew files for configs we keep as-is (same as answering Skip in pacdiff).
+# Never fails topgrade: best-effort cleanup using cached sudo (see pre_sudo in topgrade config).
+set -euo pipefail
+
+files=(
+  /etc/pacman.d/cachyos-mirrorlist.pacnew
+  /etc/pacman.d/cachyos-v3-mirrorlist.pacnew
+  /etc/pacman.d/cachyos-v4-mirrorlist.pacnew
+  /etc/pacman.d/mirrorlist.pacnew
+  /etc/resolv.conf.pacnew
+)
+
+rm_one() {
+  local f=$1
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    rm -f -- "$f"
+  elif sudo -n rm -f -- "$f" 2>/dev/null; then
+    :
+  elif sudo rm -f -- "$f" 2>/dev/null; then
+    :
+  else
+    return 1
+  fi
+}
+
+removed=0
+for f in "${files[@]}"; do
+  [[ -f "$f" ]] || continue
+  if rm_one "$f"; then
+    removed=$((removed + 1))
+  fi
+done
+
+if ((removed > 0)); then
+  echo "dismiss-pacnew: removed ${removed} stale .pacnew file(s)"
+fi
+
+exit 0

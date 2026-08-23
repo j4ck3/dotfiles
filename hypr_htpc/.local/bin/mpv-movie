@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Switch to 24 Hz, play with movie-tuned mpv, restore desktop mode on exit.
+restore_desktop() {
+    hypr-display-mode desktop >/dev/null 2>&1 || true
+}
+
+trap restore_desktop EXIT INT TERM
+
+hypr-display-mode movie >/dev/null
+
+exec mpv --profile=movie "$@"

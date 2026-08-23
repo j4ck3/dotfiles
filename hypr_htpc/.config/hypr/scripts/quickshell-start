@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
+
+if command -v qs >/dev/null 2>&1; then
+  quickshell_bin=$(command -v qs)
+elif command -v quickshell >/dev/null 2>&1; then
+  quickshell_bin=$(command -v quickshell)
+else
+  echo "quickshell not found; install the quickshell package" >&2
+  exit 1
+fi
+
+if command -v qs >/dev/null 2>&1; then
+  qs kill 2>/dev/null || true
+else
+  pkill -x quickshell 2>/dev/null || true
+fi
+
+exec "$quickshell_bin" -p "$config" "$@"

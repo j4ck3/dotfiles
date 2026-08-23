@@ -1,0 +1,11 @@
+# Disabled — Hyprland 0.55+ uses ~/.config/hypr/hyprland.lua instead.
+# Config mode (lua vs legacy) is chosen once at compositor startup; remove or
+# rename this file, then log out and back in so luminance/HDR fields load.
+#
+# Previous legacy entry point (kept for reference):
+# source = ~/.config/hypr/monitors.conf
+# source = ~/.config/hypr/input.conf
+# source = ~/.config/hypr/envs.conf
+# source = ~/.config/hypr/looknfeel.conf
+# source = ~/.config/hypr/bindings.conf
+# source = ~/.config/hypr/autostart.conf

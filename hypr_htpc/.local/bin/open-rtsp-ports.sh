@@ -1,0 +1,1 @@
+/home/tv/dotfiles/hypr_htpc/.local/bin/open-rtsp-ports.sh

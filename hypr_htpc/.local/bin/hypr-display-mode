@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly MONITOR="HDMI-A-1"
+readonly STATE="${XDG_RUNTIME_DIR:-/tmp}/hypr-display-mode"
+readonly DESKTOP_MODE="${MONITOR}, 3840x2160@60, 0x0, 1"
+readonly DESKTOP_FALLBACK="${MONITOR}, 2560x1440@120, 0x0, 1, bitdepth, 10, cm, hdr"
+readonly MOVIE_MODE="${MONITOR}, 3840x2160@24, 0x0, 1, bitdepth, 10, cm, hdr"
+
+apply_mode() {
+    local mode=$1
+    local state=$2
+    local label=$3
+    local lua_mode=$4
+    local lua_bitdepth=$5
+    local lua_cm=$6
+    local expected_width=$7
+    local expected_height=$8
+
+    output=$(hyprctl keyword monitor "${mode}" 2>&1) || rc=$?
+    if [[ "${output}" == *"non-legacy parsers"* ]]; then
+        hyprctl eval "hl.monitor({ output = \"${MONITOR}\", mode = \"${lua_mode}\", position = \"0x0\", scale = 1, bitdepth = ${lua_bitdepth}, cm = \"${lua_cm}\" })"
+    elif [[ "${rc:-0}" != 0 ]]; then
+        printf '%s\n' "${output}" >&2
+        return 1
+    fi
+
+    actual=$(hyprctl monitors -j | jq -r '.[0] | "\(.width)x\(.height)"')
+    if [[ "${actual}" != "${expected_width}x${expected_height}" ]]; then
+        echo "Display mode did not apply: wanted ${expected_width}x${expected_height}, got ${actual}" >&2
+        return 1
+    fi
+
+    printf '%s\n' "${state}" >"${STATE}"
+    notify-send -t 5000 "Display" "${label}" >/dev/null 2>&1 || true
+}
+
+apply_desktop() {
+    apply_mode "${DESKTOP_MODE}" "desktop" "Desktop: 4K @ 60 Hz" "3840x2160@60" 8 "srgb" 3840 2160
+}
+
+apply_desktop_fallback() {
+    apply_mode "${DESKTOP_FALLBACK}" "fallback" "Fallback: 1440p @ 120 Hz HDR" "2560x1440@120" 10 "hdr" 2560 1440
+}
+
+apply_movie() {
+    apply_mode "${MOVIE_MODE}" "movie" "Movie: 4K @ 24 Hz HDR" "3840x2160@24" 10 "hdr" 3840 2160
+}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [desktop|fallback|movie|next|toggle|status]
+
+  desktop   4K @ 60 Hz
+  fallback  1440p @ 120 Hz HDR
+  movie     4K @ 24 Hz HDR
+  next      cycle 4K60 -> 1440p120 HDR -> 4K24 HDR
+  toggle    desktop <-> movie
+  status    print current mode
+EOF
+}
+
+case "${1:-toggle}" in
+    desktop) apply_desktop ;;
+    fallback) apply_desktop_fallback ;;
+    movie) apply_movie ;;
+    next)
+        current=$(cat "${STATE}" 2>/dev/null || echo desktop)
+        case "${current}" in
+            desktop) apply_desktop_fallback ;;
+            fallback) apply_movie ;;
+            *) apply_desktop ;;
+        esac
+        ;;
+    toggle)
+        current=$(cat "${STATE}" 2>/dev/null || echo desktop)
+        if [[ "${current}" == movie ]]; then
+            apply_desktop
+        else
+            apply_movie
+        fi
+        ;;
+    status)
+        cat "${STATE}" 2>/dev/null || echo desktop
+        ;;
+    -h | --help | help) usage ;;
+    *)
+        echo "Unknown mode: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

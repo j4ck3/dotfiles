@@ -1,0 +1,6 @@
+LauncherPopup 1.0 LauncherPopup.qml
+VolumePopup 1.0 VolumePopup.qml
+DisplayPopup 1.0 DisplayPopup.qml
+PowerPopup 1.0 PowerPopup.qml
+PopupButton 1.0 PopupButton.qml
+ValueSlider 1.0 ValueSlider.qml

@@ -1,6 +1,28 @@
 # If not running interactively, don't do anything (leave this at the top of this file)
 [[ $- != *i* ]] && return
 
+# Hyprland IPC from SSH/TTY (Hyprland sets this only in its own terminals)
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+_hypr_set_signature() {
+  local lock
+  lock=$(ls -t "$XDG_RUNTIME_DIR"/hypr/*/hyprland.lock 2>/dev/null | head -1) || return 1
+  [[ -n "$lock" ]] || return 1
+  export HYPRLAND_INSTANCE_SIGNATURE
+  HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$lock")")
+}
+if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+  _hypr_set_signature || true
+fi
+hyprctl() {
+  if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+    _hypr_set_signature || {
+      echo "hyprctl: Hyprland not running (no HYPRLAND_INSTANCE_SIGNATURE)" >&2
+      return 1
+    }
+  fi
+  command hyprctl "$@"
+}
+
 # Add your own exports, aliases, and functions here.
 #
 # Make an alias for invoking commands you use constantly
@@ -140,7 +162,9 @@ alias codex-desktop="~/codex-desktop-linux/codex-app/start.sh"
 # ============================================================================
 # Starship Prompt
 # ============================================================================
-eval "$(starship init bash)"
+if command -v starship >/dev/null 2>&1; then
+  eval "$(starship init bash)"
+fi
 
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:/home/jacke/.lmstudio/bin"

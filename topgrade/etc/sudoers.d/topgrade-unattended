@@ -1,0 +1,5 @@
+# Allow unattended topgrade updates (systemd timer / cron).
+# Installed by topgrade/install-weekly-update.sh — do not edit in /etc directly.
+tv ALL=(root) NOPASSWD: /usr/bin/pacman, /usr/bin/paru, /usr/bin/yay
+tv ALL=(root) NOPASSWD: /home/tv/dotfiles/topgrade/.local/bin/dismiss-pacnew
+Defaults:tv !requiretty

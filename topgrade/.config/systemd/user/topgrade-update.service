@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly topgrade system update
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/topgrade/telegram.env
+ExecStart=%h/.local/bin/topgrade-update.sh
+Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/bin
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6

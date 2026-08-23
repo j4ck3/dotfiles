@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+pick_wayvnc() {
+  local candidate
+  for candidate in \
+    "$HOME/.local/libexec/wayvnc-0.8/bin/wayvnc" \
+    /usr/bin/wayvnc; do
+    [[ -x "$candidate" ]] || continue
+    if "$candidate" --version &>/dev/null; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! real_wayvnc="$(pick_wayvnc)"; then
+  echo "wayvnc: no working binary found (install the wayvnc package or fix ~/.local/libexec/wayvnc-0.8)." >&2
+  exit 1
+fi
+
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help|--version)
+      exec "$real_wayvnc" "$@"
+      ;;
+  esac
+done
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+    [[ -S "$socket" ]] || continue
+    export WAYLAND_DISPLAY="$(basename "$socket")"
+    break
+  done
+fi
+
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  if ! pgrep -x Hyprland &>/dev/null && ! pgrep -x hyprland &>/dev/null; then
+    echo "wayvnc: Hyprland is not running. Log in at the TV first (SDDM on tty2), then run this again." >&2
+    exit 1
+  fi
+  echo "wayvnc: waiting for Hyprland / Wayland socket in $XDG_RUNTIME_DIR..." >&2
+  for _ in {1..30}; do
+    for socket in "$XDG_RUNTIME_DIR"/wayland-*; do
+      [[ -S "$socket" ]] || continue
+      export WAYLAND_DISPLAY="$(basename "$socket")"
+      break 2
+    done
+    sleep 1
+  done
+fi
+
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "wayvnc: no Wayland socket found. Start or log into Hyprland, then run this command again." >&2
+  exit 1
+fi
+
+has_output=0
+for arg in "$@"; do
+  case "$arg" in
+    -o|--output)
+      has_output=1
+      ;;
+    --output=*)
+      has_output=1
+      ;;
+  esac
+done
+
+extra_args=()
+if [[ "$has_output" -eq 0 ]]; then
+  extra_args+=("--output" "${WAYVNC_OUTPUT:-HDMI-A-1}")
+fi
+
+exec "$real_wayvnc" "${extra_args[@]}" "$@"
