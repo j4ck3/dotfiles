@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Snapshot Helium + T3Code unresponsiveness suspects on CachyOS/Hyprland.
+# Usage: ~/.config/hypr/scripts/diagnose-unresponsive
+# Paste full output when reporting hangs.
+
+set -u
+
+section() { printf '\n=== %s ===\n' "$*"; }
+
+section "host"
+hostname
+uptime
+free -h 2>/dev/null || true
+
+section "hyprland"
+if command -v hyprctl >/dev/null 2>&1; then
+  hyprctl version 2>/dev/null || true
+  hyprctl activewindow -j 2>/dev/null | jq '{class,title,workspace,pid,fullscreen,floating,grouped,focusHistoryID}' 2>/dev/null || hyprctl activewindow 2>/dev/null || true
+  hyprctl clients -j 2>/dev/null | jq '[.[] | select(.class | test("helium|t3code|cursor"; "i")) | {class,title,workspace,pid,mapped,floating,fullscreen,at,grouped}]' 2>/dev/null || true
+else
+  echo "hyprctl not found"
+fi
+
+section "target processes"
+for pat in '[Hh]elium|[Tt]3[Cc]ode|t3code|helium-browser|helium'; do
+  pgrep -af "$pat" 2>/dev/null || true
+done
+
+section "cpu hogs (helium/t3code/cursor-agent/rg)"
+ps aux --sort=-%cpu 2>/dev/null | awk 'NR==1 || /[Hh]elium|[Tt]3[Cc]ode|t3code|cursor-agent|\/rg / {print}' | head -20
+
+section "gpu"
+if command -v lspci >/dev/null 2>&1; then
+  lspci -nnk -s 03:00.0 2>/dev/null | sed -n '1,4p' || true
+fi
+for node in /dev/dri/renderD* /dev/dri/by-path/pci-0000:03:00.0-render; do
+  [[ -e "$node" ]] && ls -l "$node" 2>/dev/null
+done
+if command -v radeontop >/dev/null 2>&1; then
+  timeout 2 radeontop -d - -l 1 2>/dev/null || true
+fi
+
+section "recent amdgpu dmesg"
+dmesg -T 2>/dev/null | grep -iE 'amdgpu|gpu hang|ring|reset' | tail -15 || true
+
+section "windows11 vm (input capture / gpu passthrough)"
+if command -v virsh >/dev/null 2>&1; then
+  virsh domstate windows11 2>/dev/null || echo "windows11: not defined or virsh unavailable"
+  virsh dumpxml windows11 2>/dev/null | grep -E "type='(evdev|usb)'|hostdev.*03:00" || true
+fi
+if command -v windows11-mode >/dev/null 2>&1; then
+  windows11-mode status 2>/dev/null || true
+fi
+
+section "cursor provider probes (t3code idle freeze suspect)"
+pgrep -af 'cursor-agent|/rg --files' 2>/dev/null || echo "(none)"
+
+section "helium flags tier"
+flags="${XDG_CONFIG_HOME:-$HOME/.config}/helium-browser-flags.conf"
+if [[ -f "$flags" ]]; then
+  grep -E 'VaapiVideoDecoder|disable-accelerated-video-decode|render-node-override|use-angle' "$flags" | grep -v '^#' || true
+else
+  echo "missing $flags"
+fi
+
+section "runtime logs"
+for f in \
+  "${XDG_RUNTIME_DIR:-/tmp}/qs-display-control.log" \
+  "${XDG_RUNTIME_DIR:-/tmp}/hypr-confirm-close.log" \
+  "$HOME/.t3/userdata/logs"; do
+  if [[ -f "$f" ]]; then
+    echo "--- tail $f ---"
+    tail -5 "$f" 2>/dev/null || true
+  elif [[ -d "$f" ]]; then
+    latest=$(ls -t "$f" 2>/dev/null | head -1)
+    [[ -n "$latest" && -f "$f/$latest" ]] && { echo "--- tail $f/$latest ---"; tail -8 "$f/$latest" 2>/dev/null || true; }
+  fi
+done
+
+section "quick fixes (if matched above)"
+cat <<'EOF'
+Helium feels dead but desktop OK:
+  • focus_on_activate=false on class helium — click titlebar or Alt+Tab
+  • Tier B VAAPI hang — comment Tier B block, enable Tier A in helium-browser-flags.conf, quit all Helium
+Keyboard/mouse dead everywhere:
+  • VM evdev/USB passthrough — windows11-stop; sudo windows11-mode console
+  • Stuck modifiers — Super+Alt+U or ~/.config/hypr/scripts/kbd-unstick
+T3Code frozen, high cursor-agent/rg CPU:
+  • Disable Cursor provider in T3 settings; update t3code-bin to >= 0.0.25
+Both GPU apps wedged:
+  • dmesg amdgpu hang — reboot; check LACT undervolt; try helium Tier A
+EOF
