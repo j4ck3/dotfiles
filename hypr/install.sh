@@ -48,6 +48,10 @@ if [[ -d "$SRC/.config/quickshell" ]]; then
   link_path "$SRC/.config/quickshell" "$HOME/.config/quickshell"
 fi
 
+if [[ -d "$SRC/.config/vimium-c" ]]; then
+  link_path "$SRC/.config/vimium-c" "$HOME/.config/vimium-c"
+fi
+
 for scripts_dir in \
   "$SRC/.config/hypr/scripts" \
   "$SRC/.config/quickshell/scripts" \
@@ -81,3 +85,8 @@ fi
 echo
 echo "Done. Reload Hyprland when in a session:"
 echo "  hyprctl reload"
+if [[ -f "$HOME/.config/vimium-c/vimium-c.json" ]]; then
+  echo
+  echo "Vimium C: import ~/.config/vimium-c/vimium-c.json in extension options"
+  echo "  (YouTube: f=fullscreen, e/E=link hints)"
+fi

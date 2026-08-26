@@ -1,0 +1,15 @@
+{
+  "name": "Vimium C",
+  "exclusionRules": [
+    {
+      "passKeys": "f",
+      "pattern": "^https?://(www\\.)?youtube\\.com/"
+    }
+  ],
+  "keyMappings": [
+    "# YouTube: f passed to page (fullscreen) via exclusionRules",
+    "# e / E = link hints on YouTube and everywhere else",
+    "map e LinkHints.activate",
+    "map E LinkHints.activateModeToOpenInNewTab"
+  ]
+}
