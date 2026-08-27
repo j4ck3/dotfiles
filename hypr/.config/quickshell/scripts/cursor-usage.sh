@@ -22,7 +22,7 @@ PY="$VENV/bin/python"
 HELIUM="${HELIUM_BROWSER:-$HOME/.local/bin/helium-browser}"
 [[ -x "$HELIUM" ]] || HELIUM="/usr/bin/helium-browser"
 
-cmd="${1:-bar}"
+cmd="${1:-status}"
 
 emit() { printf '%s\n' "$1"; }
 
@@ -104,7 +104,7 @@ PY
 setup_venv() {
   python3 -m venv "$VENV"
   "$VENV/bin/pip" install -q --upgrade pip
-  "$VENV/bin/pip" install -q 'browser-cookie3>=0.20'
+  "$VENV/bin/pip" install -q 'pycryptodomex>=3.20'
   echo "venv ready: $VENV" >&2
 }
 

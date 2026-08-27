@@ -20,7 +20,9 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("helium-browser")
   -- Software brightness + blue-light (hyprctl hyprsunset gamma|temperature)
   hl.exec_cmd("uwsm-app -- hyprsunset")
-  -- Handy: background app for Super+V toggle (--toggle-transcription via Hypr bind).
+  -- S1-mini (Superwhisper): local STT normalizer for Handy post-process
+  hl.exec_cmd("systemctl --user start s1-mini.service s1-mini-proxy.service")
+  -- Handy: background app for Super+V toggle (--toggle-post-process via Hypr bind).
   hl.exec_cmd("uwsm-app -- " .. scripts .. "/handy-start")
   hl.exec_cmd("enable-keyboard-wake")
   hl.exec_cmd(scripts .. "/kbd-unstick")

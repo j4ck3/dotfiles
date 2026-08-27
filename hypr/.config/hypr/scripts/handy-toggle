@@ -41,7 +41,12 @@ if pactl list source-outputs 2>/dev/null \
   was_rec=1
 fi
 
-handy --toggle-transcription
+# Prefer S1-mini post-process when local proxy is up; else plain transcription.
+if curl -fsS --max-time 0.3 "http://127.0.0.1:18180/health" >/dev/null 2>&1; then
+  handy --toggle-post-process
+else
+  handy --toggle-transcription
+fi
 
 if (( was_rec )); then
   date +%s >"/tmp/handy-tx.stamp"

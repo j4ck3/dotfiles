@@ -1,0 +1,13 @@
+[Unit]
+Description=S1-mini (Superwhisper) llama-server — STT text normalizer
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/hypr/scripts/s1-mini-server
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

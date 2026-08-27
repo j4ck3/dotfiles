@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""OpenAI-compatible front door for S1-mini (Superwhisper).
+
+Handy Custom post-process sends one user message (legacy mode). S1-mini needs
+the exact system prompt + control line, and thinking disabled. This proxy
+rewrites requests, then forwards to llama-server.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+UPSTREAM = os.environ.get("S1_MINI_UPSTREAM", "http://127.0.0.1:18181").rstrip("/")
+HOST = os.environ.get("S1_MINI_PROXY_HOST", "127.0.0.1")
+PORT = int(os.environ.get("S1_MINI_PROXY_PORT", "18180"))
+MODEL_ID = os.environ.get("S1_MINI_MODEL_ID", "s1-mini")
+
+SYSTEM = (
+    "You are a text normalizer for speech-to-text transcripts. The input begins "
+    "with a control line specifying the styling, structure, and context settings; "
+    "clean the transcript to match those settings and output only the cleaned text."
+)
+
+DEFAULT_STYLING = os.environ.get("S1_MINI_STYLING", "semi-formal")
+DEFAULT_STRUCTURE = os.environ.get("S1_MINI_STRUCTURE", "prose")
+DEFAULT_CONTEXT = os.environ.get("S1_MINI_CONTEXT", "general")
+
+CONTROL_RE = re.compile(
+    r"^\[Styling:\s*(casual|semi-casual|semi-formal|formal)\]\s*"
+    r"\[Structure:\s*(prose|lists)\]\s*"
+    r"\[Context:\s*(general|email)\]\s*\n?",
+    re.IGNORECASE,
+)
+
+
+def default_control() -> str:
+    return (
+        f"[Styling: {DEFAULT_STYLING}] "
+        f"[Structure: {DEFAULT_STRUCTURE}] "
+        f"[Context: {DEFAULT_CONTEXT}]"
+    )
+
+
+def extract_transcript(messages: list) -> tuple[str, str]:
+    """Return (control_line, transcript) from Handy/OpenAI messages."""
+    user_bits: list[str] = []
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, list):
+            parts = []
+            for p in content:
+                if isinstance(p, dict) and p.get("type") == "text":
+                    parts.append(str(p.get("text", "")))
+                elif isinstance(p, str):
+                    parts.append(p)
+            content = "\n".join(parts)
+        if content is None:
+            continue
+        user_bits.append(str(content))
+
+    raw = "\n".join(user_bits).strip()
+    if not raw:
+        return default_control(), ""
+
+    # Handy prompt may be only ${output}, or control + transcript.
+    m = CONTROL_RE.match(raw)
+    if m:
+        control = (
+            f"[Styling: {m.group(1).lower()}] "
+            f"[Structure: {m.group(2).lower()}] "
+            f"[Context: {m.group(3).lower()}]"
+        )
+        return control, raw[m.end() :].strip()
+
+    return default_control(), raw
+
+
+def upstream_chat(body: dict) -> dict:
+    control, transcript = extract_transcript(body.get("messages") or [])
+    payload = {
+        "model": body.get("model") or MODEL_ID,
+        "messages": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": f"{control}\n{transcript}"},
+        ],
+        "temperature": 0,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    if "max_tokens" in body:
+        payload["max_tokens"] = body["max_tokens"]
+    elif "max_completion_tokens" in body:
+        payload["max_tokens"] = body["max_completion_tokens"]
+
+    req = urllib.request.Request(
+        f"{UPSTREAM}/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+
+    # Strip residual think tags if a backend still emits them.
+    try:
+        content = data["choices"][0]["message"].get("content") or ""
+        if "<think>" in content:
+            end = content.find("</think>")
+            if end != -1:
+                content = content[end + len("</think>") :].lstrip()
+                data["choices"][0]["message"]["content"] = content
+    except (KeyError, IndexError, TypeError):
+        pass
+    return data
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt: str, *args) -> None:
+        sys_stderr = __import__("sys").stderr
+        print(f"[s1-mini-proxy] {self.address_string()} {fmt % args}", file=sys_stderr)
+
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        raw = self.rfile.read(length) if length else b"{}"
+        if not raw:
+            return {}
+        return json.loads(raw.decode("utf-8"))
+
+    def _send(self, code: int, obj: dict) -> None:
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        if path in ("/v1/models", "/models"):
+            self._send(
+                200,
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": MODEL_ID,
+                            "object": "model",
+                            "owned_by": "superwhisper",
+                        }
+                    ],
+                },
+            )
+            return
+        if path in ("/health", "/v1/health"):
+            self._send(200, {"status": "ok"})
+            return
+        self._send(404, {"error": {"message": f"unknown path {path}"}})
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = self.path.split("?", 1)[0]
+        if path not in ("/v1/chat/completions", "/chat/completions"):
+            self._send(404, {"error": {"message": f"unknown path {path}"}})
+            return
+        try:
+            body = self._read_json()
+            data = upstream_chat(body)
+            self._send(200, data)
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            try:
+                obj = json.loads(err_body)
+            except json.JSONDecodeError:
+                obj = {"error": {"message": err_body or str(e)}}
+            self._send(e.code, obj)
+        except Exception as e:  # noqa: BLE001
+            self._send(502, {"error": {"message": str(e)}})
+
+
+def main() -> None:
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"[s1-mini-proxy] listening on http://{HOST}:{PORT} → {UPSTREAM}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

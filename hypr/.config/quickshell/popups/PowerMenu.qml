@@ -60,6 +60,15 @@ PanelWindow {
     property string cursorDisplay: "--"
     property string cursorUpdated: ""
     property string cursorError: ""
+    property bool netbirdOk: false
+    property bool netbirdConnected: false
+    property string netbirdDisplay: "Offline"
+    property string netbirdIp: ""
+    property string netbirdHost: ""
+    property int netbirdPeersConnected: 0
+    property int netbirdPeersTotal: 0
+    property string netbirdRelays: "0/0"
+    property string netbirdError: ""
     property int sliderDragCount: 0
     readonly property bool sliderDragging: sliderDragCount > 0
     property bool cardHovering: false
@@ -107,6 +116,44 @@ PanelWindow {
         fanStatusProc.running = true
         otpStatusProc.running = true
         cursorStatusProc.running = true
+        netbirdStatusProc.running = true
+    }
+
+    function applyNetbirdStatus(data: var): void {
+        root.netbirdOk = !!data.ok
+        root.netbirdConnected = !!data.connected
+        root.netbirdDisplay = data.display || (root.netbirdConnected ? "Connected" : "Disconnected")
+        root.netbirdIp = data.ip || ""
+        root.netbirdHost = data.host || ""
+        root.netbirdPeersConnected = data.peers_connected ?? 0
+        root.netbirdPeersTotal = data.peers_total ?? 0
+        root.netbirdRelays = data.relays || "0/0"
+        root.netbirdError = data.error || ""
+    }
+
+    function toggleNetbird(): void {
+        Quickshell.execDetached([Globals.scriptsDir + "/netbird-status.sh", "toggle"])
+        statusRefreshTimer.restart()
+    }
+
+    readonly property string netbirdSubtitle: {
+        if (!root.netbirdOk) {
+            if (root.netbirdError.length > 0)
+                return root.netbirdError
+            return "Unavailable"
+        }
+        if (!root.netbirdConnected) {
+            if (root.netbirdError.length > 0)
+                return root.netbirdError
+            return "Disconnected"
+        }
+        const bits = []
+        if (root.netbirdIp.length > 0)
+            bits.push(root.netbirdIp)
+        bits.push(root.netbirdPeersConnected + "/" + root.netbirdPeersTotal + " peers")
+        if (root.netbirdRelays.length > 0)
+            bits.push("relay " + root.netbirdRelays)
+        return bits.join(" · ")
     }
 
     function applyOtpStatus(data: var): void {
@@ -458,6 +505,18 @@ PanelWindow {
             onStreamFinished: {
                 try {
                     root.applyCursorStatus(JSON.parse(text.trim()))
+                } catch (e) {}
+            }
+        }
+    }
+
+    Process {
+        id: netbirdStatusProc
+        command: [Globals.scriptsDir + "/netbird-status.sh", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.applyNetbirdStatus(JSON.parse(text.trim()))
                 } catch (e) {}
             }
         }
@@ -832,6 +891,51 @@ PanelWindow {
                     active: root.fanOk && root.fanOverride && root.fanDuty >= 95
                     opacity: root.fanOk ? 1 : 0.45
                     onClicked: root.setFanMax()
+                }
+            }
+        }
+
+        M3Section {
+            title: "NETBIRD"
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                M3IconButton {
+                    icon: root.netbirdConnected ? "󰒍" : "󰌙"
+                    active: root.netbirdConnected
+                    onClicked: root.toggleNetbird()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: {
+                            if (root.netbirdHost.length > 0)
+                                return "Netbird · " + root.netbirdHost
+                            return "Netbird · " + root.netbirdDisplay
+                        }
+                        color: "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.netbirdSubtitle
+                        color: root.netbirdConnected
+                            ? Qt.rgba(1, 1, 1, 0.55)
+                            : "#ffb4a8"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
                 }
             }
         }

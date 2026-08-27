@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Start llama-server for S1-mini (Superwhisper) GGUF with thinking disabled.
+set -euo pipefail
+
+readonly ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/s1-mini"
+readonly LLAMA_DIR="${S1_MINI_LLAMA_DIR:-$ROOT/llama/llama-b10661}"
+readonly MODEL="${S1_MINI_MODEL:-$ROOT/s1-mini-q4_k_m.gguf}"
+readonly HOST="${S1_MINI_HOST:-127.0.0.1}"
+readonly PORT="${S1_MINI_PORT:-18181}"
+readonly BIN="${S1_MINI_SERVER_BIN:-$HOME/.local/bin/llama-server}"
+
+[[ -f "$MODEL" ]] || { echo "missing model: $MODEL" >&2; exit 1; }
+[[ -x "$BIN" || -L "$BIN" ]] || { echo "missing llama-server: $BIN" >&2; exit 1; }
+
+export LD_LIBRARY_PATH="${LLAMA_DIR}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+exec "$BIN" \
+  -m "$MODEL" \
+  --host "$HOST" \
+  --port "$PORT" \
+  --jinja \
+  --chat-template-kwargs '{"enable_thinking":false}' \
+  --temp 0 \
+  -ngl 99 \
+  -c 4096 \
+  "$@"

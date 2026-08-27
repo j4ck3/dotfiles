@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Cursor usage from Helium cookies (browser-cookie3). Unofficial dashboard API."""
+"""Cursor usage from daily Helium cookies. Unofficial dashboard API."""
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import sqlite3
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
-from http.cookiejar import CookieJar
+from http.cookiejar import Cookie, CookieJar
 from pathlib import Path
 
 CACHE = Path(os.environ.get("CURSOR_USAGE_CACHE", "")).expanduser()
+UNIX_TO_NT_EPOCH_OFFSET = 11644473600
 
 COOKIE_CANDIDATES = [
     Path(os.environ["CURSOR_USAGE_COOKIE_FILE"]).expanduser()
     if os.environ.get("CURSOR_USAGE_COOKIE_FILE")
     else None,
     Path.home() / ".config/net.imput.helium/Default/Cookies",
-    Path.home() / ".config/helium-cursor-usage/Default/Cookies",
+    Path.home() / ".config/net.imput.helium/Default/Network/Cookies",
 ]
 
 
@@ -86,19 +90,115 @@ def parse_usage(summary: dict) -> dict:
     }
 
 
-def load_cookiejar() -> tuple[CookieJar | None, str]:
-    import browser_cookie3
+def _aes_key():
+    from Cryptodome.Protocol.KDF import PBKDF2
 
-    last = "no cookie db"
+    return PBKDF2(b"peanuts", b"saltysalt", dkLen=16, count=1)
+
+
+def _decrypt_v10(blob: bytes, strip_domain_hash: bool) -> str | None:
+    from Cryptodome.Cipher import AES
+    from Cryptodome.Util.Padding import unpad
+
+    if blob[:3] != b"v10":
+        return None
+    try:
+        pt = unpad(AES.new(_aes_key(), AES.MODE_CBC, iv=b" " * 16).decrypt(blob[3:]), 16)
+    except ValueError:
+        return None
+    if strip_domain_hash:
+        pt = pt[32:]
+    try:
+        return pt.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _copy_cookie_db(src: Path) -> Path:
+    tmp = Path(tempfile.mkdtemp(prefix="qs-cursor-cookies-"))
+    for extra in ("", "-wal", "-journal"):
+        p = src if extra == "" else Path(str(src) + extra)
+        if p.is_file():
+            shutil.copy2(p, tmp / p.name)
+    return tmp / src.name
+
+
+def load_cookiejar() -> tuple[CookieJar | None, str]:
+    last = "no Helium cookie db"
     for path in COOKIE_CANDIDATES:
         if path is None or not path.is_file():
             continue
         try:
-            cj = browser_cookie3.chrome(cookie_file=str(path))
+            db = _copy_cookie_db(path)
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            con.text_factory = bytes
+            try:
+                ver_row = con.execute(
+                    "SELECT value FROM meta WHERE key = 'version'"
+                ).fetchone()
+                strip = False
+                if ver_row:
+                    raw = ver_row[0]
+                    if isinstance(raw, bytes):
+                        raw = raw.decode("utf-8", "replace")
+                    try:
+                        strip = int(raw) >= 24
+                    except (TypeError, ValueError):
+                        strip = False
+                rows = con.execute(
+                    """
+                    SELECT host_key, path, is_secure, expires_utc, name,
+                           value, encrypted_value, is_httponly
+                    FROM cookies
+                    WHERE host_key LIKE '%cursor.com'
+                    """
+                ).fetchall()
+            finally:
+                con.close()
         except Exception as exc:
             last = f"{path}: {exc}"
             continue
-        if any(c.name == "WorkosCursorSessionToken" for c in cj):
+
+        cj = CookieJar()
+        has_session = False
+        for host_b, path_b, secure, expires_nt, name_b, value_b, enc, http_only in rows:
+            host = host_b.decode("utf-8", "replace") if isinstance(host_b, bytes) else host_b
+            cpath = path_b.decode("utf-8", "replace") if isinstance(path_b, bytes) else path_b
+            name = name_b.decode("utf-8", "replace") if isinstance(name_b, bytes) else name_b
+            if value_b:
+                value = value_b.decode("utf-8", "replace") if isinstance(value_b, bytes) else value_b
+            else:
+                value = _decrypt_v10(enc or b"", strip) or ""
+            if not value:
+                continue
+            if name == "WorkosCursorSessionToken":
+                has_session = True
+            expires = None
+            if expires_nt:
+                expires = int(expires_nt / 1000000 - UNIX_TO_NT_EPOCH_OFFSET)
+            cj.set_cookie(
+                Cookie(
+                    version=0,
+                    name=name,
+                    value=value,
+                    port=None,
+                    port_specified=False,
+                    domain=host,
+                    domain_specified=True,
+                    domain_initial_dot=host.startswith("."),
+                    path=cpath or "/",
+                    path_specified=True,
+                    secure=bool(secure),
+                    expires=expires,
+                    discard=not expires,
+                    comment=None,
+                    comment_url=None,
+                    rest={"HttpOnly": ""} if http_only else {},
+                    rfc2109=False,
+                )
+            )
+        shutil.rmtree(db.parent, ignore_errors=True)
+        if has_session:
             return cj, str(path)
         last = f"{path}: no session cookie"
     return None, last
@@ -142,7 +242,7 @@ def fetch() -> dict:
             "error": src,
             "display": "login",
             "class": "high",
-            "tooltip": "Log in to cursor.com in Helium, then right-click chip",
+            "tooltip": "Log in to cursor.com in Helium, then refresh",
         }
 
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))

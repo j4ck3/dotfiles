@@ -1,0 +1,21 @@
+[Unit]
+Description=S1-mini OpenAI proxy for Handy post-process
+PartOf=graphical-session.target
+After=graphical-session.target s1-mini.service
+Requires=s1-mini.service
+
+[Service]
+Type=simple
+Environment=S1_MINI_UPSTREAM=http://127.0.0.1:18181
+Environment=S1_MINI_PROXY_HOST=127.0.0.1
+Environment=S1_MINI_PROXY_PORT=18180
+Environment=S1_MINI_MODEL_ID=s1-mini
+Environment=S1_MINI_STYLING=semi-formal
+Environment=S1_MINI_STRUCTURE=prose
+Environment=S1_MINI_CONTEXT=general
+ExecStart=/usr/bin/python3 %h/.config/hypr/scripts/s1-mini-proxy
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
