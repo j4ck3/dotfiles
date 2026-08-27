@@ -54,8 +54,8 @@ e88a98ef713bec175c590319c0803b0404ce863ee3af8c6144721a9a374ff0ab = "Intel(R) Cor
 [device-settings.00a4da18625f56275c89e2fcd25a83c08c5ad3326452fa7e252fcc8a89c92493]
 fan1 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678901" }
 fan2 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678901" }
+fan5 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678901" }
 fan4 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678903" }
-fan5 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678903" }
 fan7 = { profile_uid = "b2c3d4e5-f6a7-8901-bcde-f12345678903" }
 
 [device-settings.7442ece48a26c31e110bbb1d21577e4a7b4613be5cce8adee1fe2d0832d11696]

@@ -26,19 +26,38 @@ ShellRoot {
             anchors {
                 top: true
                 left: true
-                right: true
+                right: !Theme.barVertical
+                bottom: Theme.barVertical
             }
 
-            implicitHeight: Theme.barHeight
-            color: Qt.rgba(0, 0, 0, 0.72)
-            exclusiveZone: Theme.barHeight
+            implicitHeight: Theme.barVertical ? 0 : Theme.barHeight
+            implicitWidth: Theme.barVertical ? Theme.barWidth : 0
+            // Vertical: solid so strip reads on dark wallpaper (top bar stays translucent).
+            color: Theme.barVertical ? "#000000" : Qt.rgba(0, 0, 0, 0.72)
+            exclusiveZone: Theme.barThickness
 
             WlrLayershell.namespace: "quickshell-bar"
             WlrLayershell.layer: WlrLayer.Top
 
-            Bar {
+            Loader {
                 anchors.fill: parent
-                modelData: bar.modelData
+                sourceComponent: Theme.barVertical ? verticalBarComp : horizontalBarComp
+            }
+
+            Component {
+                id: horizontalBarComp
+                Bar {
+                    anchors.fill: parent
+                    modelData: bar.modelData
+                }
+            }
+
+            Component {
+                id: verticalBarComp
+                VerticalBar {
+                    anchors.fill: parent
+                    modelData: bar.modelData
+                }
             }
         }
     }
@@ -71,6 +90,12 @@ ShellRoot {
         screen: Globals.focusedScreen()
     }
 
+    TowerPopup {
+        screen: Globals.focusedScreen()
+    }
+
+    DictationOverlay {}
+
     NotificationOSD {}
 
     IpcHandler {
@@ -83,6 +108,8 @@ ShellRoot {
         function toggleLauncher(): void { Globals.toggleLauncher() }
         function toggleClipboard(): void { Globals.toggleClipboard() }
         function toggleDashboard(): void { Globals.toggleDashboard() }
+        function toggleTower(): void { Globals.toggleTower() }
+        function cancelDictation(): void { Globals.cancelDictation() }
         function closeAll(): void { Globals.closeAll() }
         function lock(): void { Globals.lockSession() }
     }

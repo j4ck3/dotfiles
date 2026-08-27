@@ -6,10 +6,13 @@ CC_URL="${CC_URL:-https://127.0.0.1:11987}"
 CC_TOKEN_FILE="${CC_TOKEN_FILE:-${HOME}/.config/coolercontrol/token}"
 # nct6798 on this machine
 CC_NCT_UID="${CC_NCT_UID:-00a4da18625f56275c89e2fcd25a83c08c5ad3326452fa7e252fcc8a89c92493}"
-# Case Balanced mix profile (fan4/5/7 default)
+# Case Balanced mix profile (fan4/7 default)
 CC_CASE_PROFILE_UID="${CC_CASE_PROFILE_UID:-b2c3d4e5-f6a7-8901-bcde-f12345678903}"
-# Controllable case fans
-CC_CASE_FANS="${CC_CASE_FANS:-fan4 fan5 fan7}"
+# CPU fan header/profile.
+CC_CPU_FAN="${CC_CPU_FAN:-fan5}"
+CC_CPU_PROFILE_UID="${CC_CPU_PROFILE_UID:-b2c3d4e5-f6a7-8901-bcde-f12345678901}"
+# Controllable case headers.
+CC_CASE_FANS="${CC_CASE_FANS:-fan4 fan6 fan7}"
 
 cc_token() {
   if [[ ! -r "$CC_TOKEN_FILE" ]]; then

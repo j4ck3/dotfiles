@@ -1,5 +1,5 @@
 #!/bin/bash
-# Temporary case-fan override (fan4/5/7) via CoolerControl.
+# Temporary case-fan override (fan4/6/7) via CoolerControl.
 # usage: fan-control.sh set <0-100>
 #        fan-control.sh auto          # restore Case Balanced curve
 set -euo pipefail
@@ -43,6 +43,12 @@ restore_auto() {
       -d "{\"profile_uid\": \"${CC_CASE_PROFILE_UID}\"}" >/dev/null \
       || true
   done
+  if [[ -n "${CC_CPU_FAN:-}" && -n "${CC_CPU_PROFILE_UID:-}" ]]; then
+    cc_curl PUT \
+      "/devices/${CC_NCT_UID}/settings/${CC_CPU_FAN}/profile" \
+      -d "{\"profile_uid\": \"${CC_CPU_PROFILE_UID}\"}" >/dev/null \
+      || true
+  fi
 }
 
 case "$action" in

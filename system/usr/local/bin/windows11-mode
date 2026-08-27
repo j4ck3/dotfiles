@@ -70,9 +70,10 @@ has_qxl() {
 }
 
 has_gpu_hostdev() {
+  # managed=no|yes both OK — GPU handoff uses managed=no so hook owns reattach.
   virsh_cmd dumpxml "${DOMAIN}" | awk '
     /<hostdev / { in_hostdev=1 }
-    in_hostdev && /type=.pci. managed=.yes./ { pci=1 }
+    in_hostdev && /type=.pci./ { pci=1 }
     pci && /bus=.0x03. slot=.0x00. function=.0x0./ { found=1 }
     /<\/hostdev>/ { in_hostdev=0; pci=0 }
     END { exit !found }
@@ -155,7 +156,7 @@ has_gpu_vbios_rom() {
 has_gpu_audio_only() {
   virsh_cmd dumpxml "${DOMAIN}" | awk '
     /<hostdev / { in_hostdev=1; pci=0 }
-    in_hostdev && /type=.pci. managed=.yes./ { pci=1 }
+    in_hostdev && /type=.pci./ { pci=1 }
     in_hostdev && pci && /bus=.0x03. slot=.0x00. function=.0x0./ { has_gpu=1 }
     in_hostdev && pci && /bus=.0x03. slot=.0x00. function=.0x1./ { has_aud=1 }
     /<\/hostdev>/ { in_hostdev=0; pci=0 }
@@ -232,7 +233,7 @@ domain_path, fragment_path, out_path = sys.argv[1:4]
 domain = open(domain_path, encoding="utf-8").read()
 fragment = open(fragment_path, encoding="utf-8").read()
 blocks = re.findall(
-    r"<hostdev mode=[\"']subsystem[\"'] type=[\"'](?:pci|usb)[\"'] managed=[\"']yes[\"']>.*?</hostdev>",
+    r"<hostdev mode=[\"']subsystem[\"'] type=[\"'](?:pci|usb)[\"'] managed=[\"'](?:yes|no)[\"']>.*?</hostdev>",
     fragment,
     flags=re.S,
 )
@@ -372,8 +373,12 @@ cmd_status() {
   if has_gpu_audio_only; then
     echo "WARNING:     GPU audio passed through but NOT the GPU — broken; run: sudo $0 passthrough"
   fi
-  if has_graphics && has_qxl && ! has_gpu_hostdev && ! has_usb_hostdev && ! has_cirrus_video && ! hook_enabled; then
-    echo "Mode:        console (expected)"
+  if has_graphics && has_qxl && ! has_gpu_hostdev && ! has_usb_hostdev && ! has_evdev_input && ! has_cirrus_video; then
+    if hook_enabled; then
+      echo "Mode:        console (GPU hostdev gone; hook file still present — handoff skips)"
+    else
+      echo "Mode:        console (expected)"
+    fi
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && ! has_looking_glass && ! has_evdev_input; then
     echo "Mode:        passthrough (expected)"
   elif ! has_graphics && ! has_qxl && has_gpu_hostdev && hook_enabled && ! has_usb_hostdev && (has_looking_glass || has_evdev_input); then
@@ -390,13 +395,27 @@ cmd_status() {
 }
 
 enable_hook() {
+  if [[ ! -w "$(dirname "${ENABLE_FILE}")" ]] && [[ ! -e "${ENABLE_FILE}" || ! -w "${ENABLE_FILE}" ]]; then
+    if [[ -e "${ENABLE_FILE}" ]]; then
+      echo "Hook file already present: ${ENABLE_FILE}"
+      return 0
+    fi
+    echo "WARN: cannot create ${ENABLE_FILE} (need root)." >&2
+    echo "  Run: sudo touch ${ENABLE_FILE}" >&2
+    return 1
+  fi
   install -d -m 0755 "$(dirname "${ENABLE_FILE}")"
   touch "${ENABLE_FILE}"
   chmod 0644 "${ENABLE_FILE}"
 }
 
 disable_hook() {
-  rm -f "${ENABLE_FILE}"
+  if [[ -e "${ENABLE_FILE}" ]] && [[ ! -w "${ENABLE_FILE}" ]] && [[ ! -w "$(dirname "${ENABLE_FILE}")" ]]; then
+    echo "WARN: cannot remove ${ENABLE_FILE} (need root). GPU handoff still gated by domain XML — console domains without GPU hostdev skip kill." >&2
+    return 0
+  fi
+  rm -f "${ENABLE_FILE}" 2>/dev/null || \
+    echo "WARN: failed to remove ${ENABLE_FILE}; run: sudo rm -f ${ENABLE_FILE}" >&2
 }
 
 remove_pci_hostdevs() {
@@ -434,6 +453,9 @@ for hostdev in devices.findall("hostdev"):
         continue
     if (src.get("bus"), src.get("slot"), src.get("function")) != ("0x03", "0x00", "0x0"):
         continue
+    if hostdev.get("managed") != "no":
+        hostdev.set("managed", "no")
+        changed = True
     if hostdev.find("driver") is None:
         ET.SubElement(hostdev, "driver", name="vfio")
         changed = True
@@ -520,16 +542,21 @@ devices = root.find("devices")
 if devices is None:
     sys.exit("no <devices> in domain XML")
 
+# Replace all evdev nodes from fragment (keep PS/2 / tablet / etc).
 for inp in list(devices.findall("input")):
-    if inp.get("type") != "evdev":
-        continue
-    source = inp.find("source")
-    dev = source.get("dev") if source is not None else None
-    if not dev or not resolve.resolve_dev(dev):
+    if inp.get("type") == "evdev":
         devices.remove(inp)
 
-merge_evdev_inputs = resolve.merge_evdev_inputs
-merge_evdev_inputs(devices, fragment_path)
+changed, skipped = resolve.merge_evdev_inputs(devices, fragment_path)
+if skipped:
+    print("Skipped missing evdev devices:", file=sys.stderr)
+    for dev in skipped:
+        print(f"  {dev}", file=sys.stderr)
+if not changed and not any(
+    i.get("type") == "evdev" for i in devices.findall("input")
+):
+    print("No evdev devices resolved; check by-id paths", file=sys.stderr)
+    sys.exit(1)
 domain.write(out_path, encoding="unicode", xml_declaration=True)
 sys.exit(0)
 PY
@@ -561,15 +588,36 @@ cmd_network() {
 
 cmd_console() {
   require_shutoff
+  # Shared ENABLE_FILE gates GPU handoff for every domain. Console = leave
+  # Hyprland alone; re-enable with: sudo windows11-mode passthrough
+  # Hook also skips when domain XML has no GPU hostdev (safe without root).
   disable_hook
   remove_pci_hostdevs
   remove_usb_hostdevs
   apply_console_devices
   apply_domain_mode_patch console
-  cmd_network
-  echo "Console mode ready (host keyboard/mouse stay on Linux)."
-  echo "  Start: ${DOMAIN} via  windows11-console"
-  echo "  Stop:  windows11-stop"
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    # Keep LAN bridge; do not force NAT/virtio (cmd_network would).
+    if command -v windows11-stealth-ensure-network >/dev/null; then
+      windows11-stealth-ensure-network || true
+    elif [[ -x "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network" ]]; then
+      "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network" || true
+    fi
+  else
+    cmd_network
+  fi
+  echo "Console mode ready (host keeps GPU + Hyprland; VNC/QXL)."
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    echo "  Start: windows11-stealth-console   (or: DOMAIN=${DOMAIN} windows11-console)"
+    echo "  Stop:  windows11-stealth-stop"
+  else
+    echo "  Start: windows11-console"
+    echo "  Stop:  windows11-stop"
+  fi
+  if [[ -e "${ENABLE_FILE}" ]]; then
+    echo "  Note: ${ENABLE_FILE} still exists (need root to remove)."
+    echo "        Handoff still skips for this domain — no GPU hostdev."
+  fi
 }
 
 apply_passthrough_devices() {
@@ -592,12 +640,13 @@ apply_passthrough_devices() {
   fi
   ensure_gpu_vbios_in_xml || true
   apply_domain_mode_patch passthrough
-  if [[ "${with_usb}" -eq 1 ]]; then
+  # Evdev = keyboards; USB fragment = Finalmouse + Sound Blaster (+ legacy).
+  # Both together: USB mouse/audio while Voyager stays on evdev.
+  if [[ "${with_usb}" -eq 1 || "${with_evdev}" -eq 1 ]]; then
     add_usb_hostdevs
-  else
-    if [[ "${with_evdev}" -eq 1 ]]; then
-      add_evdev_inputs
-    fi
+  fi
+  if [[ "${with_evdev}" -eq 1 ]]; then
+    add_evdev_inputs
   fi
 }
 
@@ -642,20 +691,38 @@ cmd_passthrough() {
   require_shutoff
   enable_hook
   # Network first: virt-xml --edit --network can drop <hostdev>/<rom> if run after merge.
-  cmd_network
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    # Keep LAN bridge; do not force NAT/virtio.
+    if command -v windows11-stealth-ensure-network >/dev/null; then
+      windows11-stealth-ensure-network || true
+    elif [[ -x "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network" ]]; then
+      "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network" || true
+    fi
+  else
+    cmd_network
+  fi
   apply_passthrough_devices "${with_usb}" "${with_evdev}"
   ensure_gpu_vbios_in_xml || true
+  # Re-apply stealth anti-detect bits after device merge (preserves GPU hostdev).
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    apply_domain_mode_patch stealth
+    ensure_gpu_vbios_in_xml || true
+  fi
   verify_passthrough_xml
   echo ""
   echo "Passthrough ready. Before start, confirm:"
   echo "  - Monitor cable on the AMD RX 7900 (not Intel motherboard HDMI)"
   echo "  - BIOS: IOMMU/VT-d + Above 4G Decoding enabled"
   echo "  - VBIOS: sudo windows11-dump-vbios  (if not done)"
-  echo "  - Disk:  sudo windows11-disk check"
   echo ""
-  echo "  Start: windows11-start --yes   (NOT bare virsh start — see README)"
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    echo "  Start: windows11-stealth-start --yes"
+    echo "  Stop:  windows11-stealth-stop   (or SSH if display gone)"
+  else
+    echo "  Start: windows11-start --yes"
+    echo "  Stop:  windows11-stop"
+  fi
   echo "  View:  Windows on the RX 7900 monitor"
-  echo "  Stop:  ssh to host → windows11-stop"
   if [[ "${1:-}" == "--usb" ]]; then
     echo "  USB is passed to the VM — host has no keyboard/mouse on Linux."
   elif [[ "${1:-}" == "--evdev" ]]; then
@@ -679,10 +746,17 @@ main() {
       cmd_status
       ;;
     console|passthrough|passthrough-evdev|passthrough-usb|network)
-      if [[ "${EUID}" -ne 0 ]]; then
-        echo "Run as root: sudo $0 ${cmd}" >&2
-        exit 1
-      fi
+      case "${cmd}" in
+        console|passthrough|passthrough-evdev|passthrough-usb)
+          # Libvirt group can redefine domain; hook enable/disable is best-effort.
+          ;;
+        network)
+          if [[ "${EUID}" -ne 0 ]]; then
+            echo "Run as root: sudo $0 ${cmd}" >&2
+            exit 1
+          fi
+          ;;
+      esac
       case "${cmd}" in
         console) cmd_console ;;
         passthrough) cmd_passthrough ;;

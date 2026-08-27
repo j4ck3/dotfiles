@@ -39,23 +39,45 @@ def expand_fragment_inputs(fragment_path: str) -> tuple[list[ET.Element], list[s
     return inputs, skipped
 
 
+def drop_missing_evdev(devices: ET.Element) -> list[str]:
+    dropped: list[str] = []
+    for inp in list(devices.findall("input")):
+        if inp.get("type") != "evdev":
+            continue
+        source = inp.find("source")
+        dev = source.get("dev") if source is not None else None
+        if not dev or not os.path.exists(dev):
+            devices.remove(inp)
+            dropped.append(dev or "<missing source>")
+    return dropped
+
+
+def missing_evdev_paths(devices: ET.Element) -> list[str]:
+    missing: list[str] = []
+    for inp in devices.findall("input"):
+        if inp.get("type") != "evdev":
+            continue
+        source = inp.find("source")
+        dev = source.get("dev") if source is not None else None
+        if not dev or not os.path.exists(dev):
+            missing.append(dev or "<missing source>")
+    return missing
+
+
 def merge_evdev_inputs(
     devices: ET.Element,
     fragment_path: str,
     *,
     replace: bool = False,
 ) -> tuple[bool, list[str]]:
+    changed = False
     if replace:
         for inp in list(devices.findall("input")):
             devices.remove(inp)
+            changed = True
     else:
-        for inp in list(devices.findall("input")):
-            if inp.get("type") != "evdev":
-                continue
-            source = inp.find("source")
-            dev = source.get("dev") if source is not None else None
-            if not dev or not os.path.exists(dev):
-                devices.remove(inp)
+        if drop_missing_evdev(devices):
+            changed = True
 
     existing = {
         source.get("dev")
@@ -64,7 +86,6 @@ def merge_evdev_inputs(
         for source in [inp.find("source")]
         if source is not None and source.get("dev")
     }
-    changed = False
     new_inputs, skipped = expand_fragment_inputs(fragment_path)
     for inp in new_inputs:
         dev = inp.find("source").get("dev")

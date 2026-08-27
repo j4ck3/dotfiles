@@ -22,7 +22,8 @@ PanelWindow {
     }
 
     margins {
-        top: Theme.barHeight
+        top: Theme.popupTopInset
+        left: Theme.popupLeftInset
     }
 
     WlrLayershell.namespace: "qs-media"
@@ -45,11 +46,6 @@ PanelWindow {
         return home + "/.config/hypr/scripts/spotify-volume"
     }
 
-    // PipeWire stream volume (what you actually hear). MPRIS fights the guard.
-    property int spotifyStreamVol: -1
-    property int uiVol: 100
-    property bool volHold: false
-    property bool volDragging: false
     property bool seekDragging: false
 
     function fmt(secs: real): string {
@@ -57,80 +53,10 @@ PanelWindow {
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")
     }
 
-    function refreshSpotifyVol(): void {
-        if (root.volDragging || root.volHold || root.seekDragging)
-            return
-        spotifyVolProc.running = true
-    }
-
-    function queueSpotifyVol(pct): void {
-        const v = Math.max(0, Math.min(100, Math.round(pct)))
-        root.uiVol = v
-        root.volHold = true
-        volHoldTimer.restart()
-        volCommitTimer.restart()
-    }
-
-    function commitSpotifyVol(): void {
-        Quickshell.execDetached([root.spotifyVolumeScript, "set", String(root.uiVol)])
-    }
-
-    function reapplySpotifyVol(): void {
-        // After seek Spotify copies MPRIS→stream; force our intended level back.
-        Quickshell.execDetached([root.spotifyVolumeScript, "reapply"])
-    }
-
     Timer {
         id: reapplyDelay
         interval: 120
-        onTriggered: root.reapplySpotifyVol()
-    }
-
-    function scheduleReapply(): void {
-        reapplyDelay.restart()
-    }
-
-    Process {
-        id: spotifyVolProc
-        command: [root.spotifyVolumeScript, "get"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const t = text.trim()
-                if (!t.length)
-                    return
-                try {
-                    const d = JSON.parse(t)
-                    if (d.vol === undefined || d.vol === null)
-                        return
-                    root.spotifyStreamVol = d.vol
-                    if (!root.volDragging && !root.volHold)
-                        root.uiVol = d.vol
-                } catch (e) {}
-            }
-        }
-    }
-
-    Timer {
-        id: volCommitTimer
-        interval: 40
-        onTriggered: root.commitSpotifyVol()
-    }
-
-    Timer {
-        id: volHoldTimer
-        interval: 900
-        onTriggered: {
-            root.volHold = false
-            root.refreshSpotifyVol()
-        }
-    }
-
-    Timer {
-        interval: 500
-        running: root.visible
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: root.refreshSpotifyVol()
+        onTriggered: Quickshell.execDetached([root.spotifyVolumeScript, "reapply"])
     }
 
     // Mpris position does not emit continuously — tick it while popup open + playing.
@@ -142,7 +68,6 @@ PanelWindow {
     onVisibleChanged: {
         if (visible) {
             root.player?.positionChanged()
-            root.refreshSpotifyVol()
             card.playIn()
         } else {
             card.resetOut()
@@ -159,105 +84,11 @@ PanelWindow {
         anchors.fill: parent
         title: "Now Playing"
         cardWidth: 320
-        topMargin: Theme.widgetTopGap
+        topMargin: Theme.barVertical ? Globals.mediaPopupTopMargin : Theme.widgetTopGap
         rightMargin: Globals.mediaPopupRightMargin
         animateIn: true
         onClosed: Globals.mediaOpen = false
         onCardHover: inside => Globals.setMediaHover(inside)
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignHCenter
-            spacing: 4
-
-            Item { Layout.fillWidth: true }
-
-            // Previous
-            Item {
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "󰒮"
-                    color: prevMouse.containsMouse ? Theme.ink : Theme.inkMuted
-                    font.family: Theme.iconFontFallback
-                    font.pixelSize: 22
-                    Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                }
-
-                MouseArea {
-                    id: prevMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.player?.previous()
-                        root.scheduleReapply()
-                    }
-                }
-            }
-
-            // Play / pause
-            Rectangle {
-                Layout.preferredWidth: 44
-                Layout.preferredHeight: 44
-                radius: 22
-                color: playMouse.containsMouse ? "#f0f0f0" : "#ffffff"
-                scale: playMouse.pressed ? 0.94 : 1
-
-                Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                Behavior on scale {
-                    NumberAnimation { duration: 80; easing.type: Easing.OutCubic }
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.player?.isPlaying ? "󰏤" : "󰐊"
-                    color: "#000000"
-                    font.family: Theme.iconFontFallback
-                    font.pixelSize: 20
-                    // Play glyph sits optically left; nudge when paused
-                    anchors.horizontalCenterOffset: root.player?.isPlaying ? 0 : 1
-                }
-
-                MouseArea {
-                    id: playMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.player?.togglePlaying()
-                }
-            }
-
-            // Next
-            Item {
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "󰒭"
-                    color: nextMouse.containsMouse ? Theme.ink : Theme.inkMuted
-                    font.family: Theme.iconFontFallback
-                    font.pixelSize: 22
-                    Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                }
-
-                MouseArea {
-                    id: nextMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        root.player?.next()
-                        root.scheduleReapply()
-                    }
-                }
-            }
-
-            Item { Layout.fillWidth: true }
-        }
 
         Rectangle {
             id: artBox
@@ -330,51 +161,101 @@ PanelWindow {
         }
 
         RowLayout {
+            id: seekRow
             Layout.fillWidth: true
             spacing: 10
 
+            property real hoverTime: -1
+
             Text {
-                text: root.fmt(seekSlider.pressed ? seekSlider.value : (root.player?.position || 0))
-                color: Theme.inkMuted
+                text: root.fmt(
+                    seekSlider.pressed ? seekSlider.value
+                        : (seekRow.hoverTime >= 0 ? seekRow.hoverTime : (root.player?.position || 0))
+                )
+                color: seekRow.hoverTime >= 0 && !seekSlider.pressed ? Theme.ink : Theme.inkMuted
                 font.pixelSize: 11
                 font.family: Theme.fontFamily
                 Layout.alignment: Qt.AlignVCenter
+
+                Behavior on color { ColorAnimation { duration: Theme.animFast } }
             }
 
-            M3Slider {
-                id: seekSlider
+            Item {
                 Layout.fillWidth: true
-                Layout.alignment: Qt.AlignVCenter
-                from: 0
-                to: Math.max(1, root.player?.length || 1)
-                fillColor: "#ffffff"
-                trackColor: Qt.rgba(1, 1, 1, 0.18)
-                trackHeight: 6
-                showHandle: false
-                // Keep seek hitbox from eating the volume row under it.
-                hitPad: 6
+                Layout.preferredHeight: seekSlider.implicitHeight
 
-                Binding {
-                    target: seekSlider
-                    property: "value"
-                    value: root.player?.position || 0
-                    when: !seekSlider.pressed
-                    restoreMode: Binding.RestoreNone
-                }
+                M3Slider {
+                    id: seekSlider
+                    anchors.fill: parent
+                    from: 0
+                    to: Math.max(1, root.player?.length || 1)
+                    fillColor: "#ffffff"
+                    trackColor: Qt.rgba(1, 1, 1, 0.18)
+                    trackHeight: 6
+                    showHandle: false
+                    hitPad: 6
 
-                onPressedChanged: {
-                    root.seekDragging = pressed
-                    // Seek in place — do not pause/play (Spotify blips stream volume).
-                    if (!pressed && root.player) {
-                        root.player.position = value
-                        // Spotify reapplies MPRIS volume onto the stream after seek.
-                        root.scheduleReapply()
+                    Binding {
+                        target: seekSlider
+                        property: "value"
+                        value: root.player?.position || 0
+                        when: !seekSlider.pressed
+                        restoreMode: Binding.RestoreNone
+                    }
+
+                    onPressedChanged: {
+                        root.seekDragging = pressed
+                        if (!pressed && root.player) {
+                            root.player.position = value
+                            reapplyDelay.restart()
+                        }
+                    }
+
+                    onMoved: {
+                        if (root.player && pressed)
+                            root.player.position = value
                     }
                 }
 
-                onMoved: {
-                    if (root.player && pressed)
-                        root.player.position = value
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                    z: 1
+
+                    onContainsMouseChanged: {
+                        if (!containsMouse)
+                            seekRow.hoverTime = -1
+                    }
+
+                    onPositionChanged: {
+                        if (!containsMouse)
+                            return
+                        const trackX = seekSlider.leftPadding
+                        const trackW = seekSlider.availableWidth
+                        if (trackW <= 0)
+                            return
+                        const ratio = Math.max(0, Math.min(1, (mouse.x - trackX) / trackW))
+                        seekRow.hoverTime = seekSlider.from + ratio * (seekSlider.to - seekSlider.from)
+                    }
+                }
+
+                Text {
+                    visible: seekRow.hoverTime >= 0 && !seekSlider.pressed
+                    text: root.fmt(seekRow.hoverTime)
+                    color: Theme.ink
+                    font.pixelSize: 10
+                    font.family: Theme.fontFamily
+                    z: 2
+
+                    readonly property real trackX: seekSlider.leftPadding
+                    readonly property real trackW: seekSlider.availableWidth
+                    readonly property real ratio: trackW > 0
+                        ? Math.max(0, Math.min(1, (seekRow.hoverTime - seekSlider.from) / (seekSlider.to - seekSlider.from)))
+                        : 0
+
+                    x: trackX + ratio * trackW - implicitWidth / 2
+                    y: -implicitHeight - 4
                 }
             }
 
@@ -384,59 +265,6 @@ PanelWindow {
                 font.pixelSize: 11
                 font.family: Theme.fontFamily
                 Layout.alignment: Qt.AlignVCenter
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            visible: root.spotifyStreamVol >= 0
-
-            Item { Layout.fillWidth: true }
-
-            M3Slider {
-                id: volSlider
-                Layout.preferredWidth: 120
-                Layout.alignment: Qt.AlignVCenter
-                from: 0
-                to: 100
-                fillColor: "#ffffff"
-                trackColor: Qt.rgba(1, 1, 1, 0.18)
-                trackHeight: 4
-                showHandle: true
-                enabled: !root.seekDragging
-
-                Binding {
-                    target: volSlider
-                    property: "value"
-                    value: root.uiVol
-                    when: !volSlider.pressed
-                    restoreMode: Binding.RestoreNone
-                }
-
-                onMoved: {
-                    if (root.seekDragging)
-                        return
-                    root.queueSpotifyVol(value)
-                }
-                onPressedChanged: {
-                    root.volDragging = pressed
-                    if (!pressed) {
-                        volCommitTimer.stop()
-                        root.commitSpotifyVol()
-                        root.volHold = true
-                        volHoldTimer.restart()
-                    }
-                }
-            }
-
-            Text {
-                text: Math.round(volSlider.pressed ? volSlider.value : root.uiVol) + "%"
-                color: Theme.inkMuted
-                font.pixelSize: 11
-                font.family: Theme.fontFamily
-                Layout.alignment: Qt.AlignVCenter
-                Layout.preferredWidth: 32
             }
         }
     }

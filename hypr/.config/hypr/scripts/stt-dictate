@@ -9,15 +9,8 @@ set -euo pipefail
 readonly VENV_PYTHON="$HOME/.local/share/stt/.venv/bin/python3"
 readonly DICTATE_SCRIPT="$HOME/.local/share/stt/dictate.py"
 readonly SCRIPT_PATH="${BASH_SOURCE[0]}"
-readonly SV_MODEL="$HOME/.local/share/vosk-model-small-sv-rhasspy-0.15"
 readonly EN_MODEL="$HOME/.local/share/vosk-model-small-en-us-0.15"
-if [[ -n "${VOSK_MODEL_PATH:-}" ]]; then
-    readonly MODEL_DIR="$VOSK_MODEL_PATH"
-elif [[ -d "$SV_MODEL" ]] && [[ "${LANG:-}" == sv* ]]; then
-    readonly MODEL_DIR="$SV_MODEL"
-else
-    readonly MODEL_DIR="$EN_MODEL"
-fi
+readonly MODEL_DIR="${VOSK_MODEL_PATH:-$EN_MODEL}"
 readonly PID_FILE="/tmp/stt-dictate.pid"
 readonly LOG_FILE="/tmp/stt-dictate.log"
 

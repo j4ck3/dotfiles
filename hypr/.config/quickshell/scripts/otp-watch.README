@@ -1,0 +1,38 @@
+# Outlook / live.se OTP watcher for Quickshell
+#
+# Flow: PowerMenu → OTP Watch (arm) → IMAP poll 2s → code → wl-copy + notify → idle.
+# Chip stays on bar ~60s; click re-copies.
+#
+# NO Azure portal / NO paid subscription required (default).
+# Uses Mozilla Thunderbird's public OAuth client for personal Outlook IMAP.
+#
+# Deps (user venv, no root):
+#   python3 -m venv ~/.config/qs-otp/venv
+#   ~/.config/qs-otp/venv/bin/pip install 'msal>=1.28' 'httpx>=0.27'
+#
+# Config:
+#   mkdir -p ~/.config/qs-otp && chmod 700 ~/.config/qs-otp
+#   cat > ~/.config/qs-otp/config.toml <<'EOF'
+#   email = "you@live.se"
+#   client_id = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
+#   backend = "imap"
+#   authority = "https://login.microsoftonline.com/consumers"
+#   EOF
+#   chmod 600 ~/.config/qs-otp/config.toml
+#
+# Also enable IMAP in Outlook web: Settings → Mail → Sync email → IMAP on.
+#
+# Login once (browser device code — required by Microsoft, cannot be skipped):
+#   ~/.config/quickshell/scripts/otp-watch.sh login
+#
+# Enable daemon:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now qs-otp-watchd.service
+#
+# Manual: otp-watch.sh arm|disarm|toggle|status|copy
+# State: ~/.cache/quickshell/otp-watch.json
+#
+# Optional Graph backend (needs your own Azure app + Mail.Read):
+#   backend = "graph"
+#   client_id = "<your-app-id>"
+#   See otp-azure-setup.sh if you want that path later.

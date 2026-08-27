@@ -6,6 +6,23 @@ set -euo pipefail
 
 readonly LOG="${OPENWHISPR_LOG:-/tmp/openwhispr.log}"
 readonly BIN="${OPENWHISPR_BIN:-openwhispr}"
+readonly SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+readonly ENSURE_ENGLISH="$SCRIPT_DIR/openwhispr-ensure-english.mjs"
+readonly WL_COPY_WRAP="$SCRIPT_DIR/openwhispr-path"
+
+# Hyprland / uwsm / systemd-run often omit these — Electron needs them.
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+if [[ -z "${DISPLAY:-}" ]]; then
+  export DISPLAY=:0
+fi
+
+# Helium is native Wayland. OpenWhispr's 50ms wl-copy timeout needs -o (see openwhispr-path/wl-copy).
+if [[ -d "$WL_COPY_WRAP" ]]; then
+  export PATH="$WL_COPY_WRAP:$PATH"
+fi
 
 if dbus-send --session --print-reply --dest=org.freedesktop.DBus \
     /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
@@ -17,8 +34,14 @@ fi
 # Orphans after crashed main — free ports / capture
 pkill -x open-whispr-app 2>/dev/null || true
 pkill -x open-whispr 2>/dev/null || true
-sleep 0.2
+sleep 0.3
 
+# Whisper language: always English (not auto-detect / not system locale).
+if [[ -f "$ENSURE_ENGLISH" ]]; then
+  node "$ENSURE_ENGLISH" >>"$LOG" 2>&1 || true
+fi
+
+# Session marker: dictation-status.sh ignores log lines before this
 {
     echo "===== $(date -Is) openwhispr-start ====="
     exec "$BIN"

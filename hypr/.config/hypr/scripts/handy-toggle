@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Super+V: ensure Handy is running, then toggle record ↔ stop→transcribe→paste.
+set -uo pipefail
+
+readonly START="${BASH_SOURCE%/*}/handy-start"
+readonly TOGGLE_STAMP="${XDG_RUNTIME_DIR:-/tmp}/handy-toggle.stamp"
+
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
+now=$(date +%s%3N 2>/dev/null || date +%s)
+if [[ -f "$TOGGLE_STAMP" ]]; then
+  last=$(cat "$TOGGLE_STAMP" 2>/dev/null) || last=0
+  if (( now - last < 400 )); then
+    exit 0
+  fi
+fi
+echo "$now" >"$TOGGLE_STAMP"
+
+if ! pgrep -x handy >/dev/null 2>&1; then
+  setsid "$START" >/dev/null 2>&1 &
+  for _ in $(seq 1 40); do
+    sleep 0.25
+    pgrep -x handy >/dev/null 2>&1 && break
+  done
+fi
+
+pgrep -x handy >/dev/null 2>&1 || exit 1
+
+if [[ ! -d "${XDG_DATA_HOME:-$HOME/.local/share}/com.pais.handy/models" ]] \
+  || [[ -z "$(find "${XDG_DATA_HOME:-$HOME/.local/share}/com.pais.handy/models" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
+  command -v notify-send >/dev/null 2>&1 \
+    && notify-send -u normal "Handy" "Download a speech model once (open Handy from tray → Models)."
+fi
+
+was_rec=0
+if pactl list source-outputs 2>/dev/null \
+  | rg -q 'PipeWire ALSA \[handy\]|application\.name = "PipeWire ALSA \[handy\]"'; then
+  was_rec=1
+fi
+
+handy --toggle-transcription
+
+if (( was_rec )); then
+  date +%s >"/tmp/handy-tx.stamp"
+fi

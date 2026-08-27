@@ -17,11 +17,13 @@ if [[ -z "$QS_BIN" ]]; then
 fi
 
 # Free org.freedesktop.Notifications for Quickshell's NotificationServer.
+# xfce4-notifyd is D-Bus-activated; stop+mask so it cannot reclaim the name.
 pkill -x dunst 2>/dev/null || true
 pkill -x mako 2>/dev/null || true
 pkill -x swaync 2>/dev/null || true
 pkill -x xfce4-notifyd 2>/dev/null || true
 systemctl --user stop xfce4-notifyd.service 2>/dev/null || true
+systemctl --user mask xfce4-notifyd.service 2>/dev/null || true
 
 # Prefer qs kill when available (handles socket cleanup).
 if command -v qs >/dev/null 2>&1; then
@@ -29,5 +31,8 @@ if command -v qs >/dev/null 2>&1; then
 else
   pkill -x quickshell 2>/dev/null || true
 fi
+
+# Brief pause so the Notifications name is fully released before QS claims it.
+sleep 0.3
 
 exec "$QS_BIN" -p "$CONFIG" "$@"

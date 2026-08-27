@@ -3,6 +3,7 @@ import QtQuick
 import QtMultimedia
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 
 Singleton {
     id: root
@@ -15,6 +16,12 @@ Singleton {
     property bool launcherOpen: false
     property bool clipboardOpen: false
     property bool dashboardOpen: false
+    property bool towerOpen: false
+    // Handy center overlay — independent of closeAll() so launcher won't kill REC UI
+    property bool dictationOpen: false
+    property string dictationPhase: "" // "rec" | "tx" | ""
+    property var waveLevels: Array(48).fill(0.06)
+    property real waveGain: 0.15
 
     readonly property string lockscreenPath: {
         // Kept for reference; lockSession() uses hyprlock (QS lock disabled).
@@ -33,12 +40,16 @@ Singleton {
     readonly property bool displayHover: displayBarHover || displayCardHover || displayPinned
     property bool powerHover: false
     property bool mediaHover: false
+    property bool towerHover: false
 
     // Bar → popup: distance from screen right to center card under trigger.
     property int mediaPopupRightMargin: 280
+    // Left bar → distance from screen top to card top (below in-bar media).
+    property int mediaPopupTopMargin: Theme.widgetTopGap
     property int volumePopupRightMargin: 210
     property int displayPopupRightMargin: 210
     property int powerPopupRightMargin: 16
+    property int towerPopupRightMargin: 210
     property int notifRightMargin: 14
 
     function clampPopupMargin(margin: int, cardW: int, screenW: int): int {
@@ -57,7 +68,7 @@ Singleton {
 
     Timer {
         id: volumeCloseTimer
-        interval: 80
+        interval: Theme.barVertical ? 220 : 80
         onTriggered: {
             if (!root.volumeHover)
                 root.volumeOpen = false
@@ -75,7 +86,7 @@ Singleton {
 
     Timer {
         id: powerCloseTimer
-        interval: 80
+        interval: Theme.barVertical ? 220 : 80
         onTriggered: {
             if (!root.powerHover)
                 root.powerOpen = false
@@ -88,6 +99,15 @@ Singleton {
         onTriggered: {
             if (!root.mediaHover)
                 root.mediaOpen = false
+        }
+    }
+
+    Timer {
+        id: towerCloseTimer
+        interval: Theme.barVertical ? 220 : 80
+        onTriggered: {
+            if (!root.towerHover)
+                root.towerOpen = false
         }
     }
 
@@ -105,6 +125,8 @@ Singleton {
         clipboardOpen = false
         if (except !== "dashboard")
             dashboardOpen = false
+        if (except !== "tower")
+            towerOpen = false
         if (except !== "volume") {
             volumeHover = false
             volumeCloseTimer.stop()
@@ -122,6 +144,10 @@ Singleton {
         if (except !== "media") {
             mediaHover = false
             mediaCloseTimer.stop()
+        }
+        if (except !== "tower") {
+            towerHover = false
+            towerCloseTimer.stop()
         }
     }
 
@@ -209,6 +235,20 @@ Singleton {
         }
     }
 
+    function setTowerHover(inside: bool): void {
+        towerHover = inside
+        if (inside) {
+            towerCloseTimer.stop()
+            if (!towerOpen) {
+                playHoverSound()
+                closeOthers("tower")
+                towerOpen = true
+            }
+        } else {
+            towerCloseTimer.restart()
+        }
+    }
+
     // Resolved against this file's directory (config root)
     readonly property string scriptsDir: {
         const u = Qt.resolvedUrl("./scripts").toString()
@@ -233,16 +273,19 @@ Singleton {
         launcherOpen = false
         clipboardOpen = false
         dashboardOpen = false
+        towerOpen = false
         volumeHover = false
         displayBarHover = false
         displayCardHover = false
         displayPinned = false
         powerHover = false
         mediaHover = false
+        towerHover = false
         volumeCloseTimer.stop()
         displayCloseTimer.stop()
         powerCloseTimer.stop()
         mediaCloseTimer.stop()
+        towerCloseTimer.stop()
     }
 
     function toggleVolume(): void {
@@ -310,10 +353,121 @@ Singleton {
         dashboardOpen = next
     }
 
+    function toggleTower(): void {
+        cancelSuperTap()
+        const next = !towerOpen
+        closeAll()
+        if (next) {
+            towerOpen = true
+            towerHover = true
+        }
+    }
+
     function lockSession(): void {
         closeAll()
         // hyprlock — Quickshell WlSessionLock was crashing the Hyprland session.
         Quickshell.execDetached(["sh", "-c", "pidof hyprlock || hyprlock"])
+    }
+
+    function cancelDictation(): void {
+        root.dictationOpen = false
+        root.dictationPhase = ""
+    }
+
+    function applyWaveLevels(raw: string): void {
+        const t = (raw || "").trim()
+        if (!t.startsWith("["))
+            return
+        try {
+            const arr = JSON.parse(t)
+            if (!Array.isArray(arr) || arr.length === 0)
+                return
+            let peak = 0
+            for (let i = 0; i < arr.length; i++)
+                peak = Math.max(peak, Number(arr[i]) || 0)
+            const target = Math.max(0.12, peak)
+            root.waveGain = root.waveGain * 0.94 + target * 0.06
+            const scale = 1 / Math.max(0.18, root.waveGain)
+            const next = []
+            for (let i = 0; i < 48; i++) {
+                let v = (Number(arr[i]) || 0) * scale
+                v = Math.max(0, Math.min(1, v))
+                next.push(Math.max(0.06, v))
+            }
+            root.waveLevels = next
+        } catch (e) {
+        }
+    }
+
+    function applyDictationStatus(raw: string): void {
+        const t = (raw || "").trim()
+        if (!t.startsWith("{")) {
+            root.dictationOpen = false
+            root.dictationPhase = ""
+            return
+        }
+        try {
+            const j = JSON.parse(t)
+            const cls = j.class || ""
+            const text = (j.text || "").replace(/\\n/g, "\n")
+            if (cls === "hidden" || cls === "") {
+                root.dictationOpen = false
+                root.dictationPhase = ""
+                return
+            }
+            // MIC/OFF or starting… → no overlay
+            if (text.indexOf("OFF") >= 0 || text.indexOf("…") >= 0 || text.indexOf("...") >= 0) {
+                root.dictationOpen = false
+                root.dictationPhase = ""
+                return
+            }
+            if (cls === "high" || text.indexOf("REC") >= 0) {
+                root.dictationPhase = "rec"
+                root.dictationOpen = true
+                root.waveGain = 0.15
+                return
+            }
+            // TX only — not generic "active" (starting uses active too)
+            if (text.indexOf("TX") >= 0) {
+                root.dictationPhase = "tx"
+                root.dictationOpen = true
+                return
+            }
+            root.dictationOpen = false
+            root.dictationPhase = ""
+        } catch (e) {
+            root.dictationOpen = false
+            root.dictationPhase = ""
+        }
+    }
+
+    Process {
+        id: dictationStatusProc
+        command: [root.scriptsDir + "/dictation-status.sh"]
+        running: false
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: root.applyDictationStatus(text)
+        }
+    }
+
+    Process {
+        id: dictationWaveProc
+        command: [root.scriptsDir + "/dictation-waveform.sh"]
+        running: root.dictationPhase === "rec"
+
+        stdout: SplitParser {
+            splitMarker: "\n"
+            onRead: line => root.applyWaveLevels(line)
+        }
+    }
+
+    Timer {
+        interval: 350
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: dictationStatusProc.running = true
     }
 
     function focusedScreen(): var {

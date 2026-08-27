@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Start Handy hidden; Hyprland owns Super+V (global shortcuts fail on Wayland).
+set -euo pipefail
+
+readonly BIN="${HANDY_BIN:-handy}"
+readonly ENSURE="${BASH_SOURCE%/*}/handy-ensure-settings.sh"
+
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+
+if pgrep -x handy >/dev/null 2>&1; then
+  exit 0
+fi
+
+[[ -x "$ENSURE" ]] && bash "$ENSURE" || true
+
+exec "$BIN" --start-hidden

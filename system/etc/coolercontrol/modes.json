@@ -27,7 +27,7 @@
             "lighting": null,
             "lcd": null,
             "reset_to_default": null,
-            "profile_uid": "b2c3d4e5-f6a7-8901-bcde-f12345678903"
+            "profile_uid": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
           },
           "fan2": {
             "channel_name": "fan2",
@@ -95,7 +95,7 @@
             "lighting": null,
             "lcd": null,
             "reset_to_default": null,
-            "profile_uid": "b2c3d4e5-f6a7-8901-bcde-f12345678906"
+            "profile_uid": "b2c3d4e5-f6a7-8901-bcde-f12345678904"
           },
           "fan4": {
             "channel_name": "fan4",

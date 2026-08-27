@@ -1,5 +1,5 @@
 #!/bin/bash
-# Case fans (fan4/5/7) status for PowerMenu slider.
+# Case fans (fan4/6/7) status for PowerMenu slider.
 # JSON: {ok, override, duty, rpm, fans:[{name,duty,rpm,override}]}
 set -euo pipefail
 

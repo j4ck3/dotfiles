@@ -1,51 +1,73 @@
 #!/usr/bin/env bash
-# Reattach GPU to amdgpu and restart Hyprland (after emergency stop / hard reboot).
+# Reattach GPU to amdgpu after emergency stop / hard reboot / failed post-VM hook.
 set -u
 
+DOMAIN="${DOMAIN:-windows11}"
+
 if [[ "${EUID}" -ne 0 ]]; then
-  exec sudo -E "$0" "$@"
+  exec sudo -E DOMAIN="${DOMAIN}" "$0" "$@"
 fi
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
-HANDOFF_LIB="${HANDOFF_LIB:-${GPU_HANDOFF_LIB}}"
-HOOK="${HOOK:-${WINDOWS11_HOOKS_DIR}/qemu.d/windows11/release/end/revert.sh}"
+# shellcheck source=/dev/null
+source "${HOOK_LOG_LIB}"
+# shellcheck source=/dev/null
+source "${GPU_HANDOFF_LIB}"
 
-if [[ -x "${HOOK}" ]]; then
-  echo "Running passthrough revert hook..."
-  export GPU_HANDOFF_FORCE=1
-  "${HOOK}" windows11 release end -
-  exit 0
+export DOMAIN GPU_HANDOFF_FORCE=1
+RESTORE="${DOTFILES_SYSTEM}/usr/local/bin/windows11-restore-display"
+[[ -x "${RESTORE}" ]] || RESTORE="/usr/local/bin/windows11-restore-display"
+FAN_RESTORE_SCRIPT="${DOTFILES_ROOT}/hypr/.config/quickshell/scripts/fan-control.sh"
+
+restore_case_fans_auto() {
+  [[ -x "${FAN_RESTORE_SCRIPT}" ]] || return 0
+  if ! id "${CONSOLE_USER}" >/dev/null 2>&1; then
+    return 0
+  fi
+  local uid home runtime
+  uid="$(id -u "${CONSOLE_USER}")"
+  home="$(getent passwd "${CONSOLE_USER}" | cut -d: -f6)"
+  runtime="/run/user/${uid}"
+  [[ -d "${runtime}" ]] || runtime="/tmp"
+  echo "STEP: restore case fan auto profile (${CONSOLE_USER})"
+  runuser -u "${CONSOLE_USER}" -- env \
+    HOME="${home}" \
+    XDG_RUNTIME_DIR="${runtime}" \
+    "${FAN_RESTORE_SCRIPT}" auto >/dev/null 2>&1 || true
+}
+
+# Cancel any in-flight async restore from a prior release hook.
+systemctl stop windows11-restore-display.service 2>/dev/null || true
+systemctl reset-failed windows11-restore-display.service 2>/dev/null || true
+
+hook_log_begin "windows11-revert-host (manual)" "$@"
+hook_log_attach
+set -x
+
+echo "STEP: peel vfio (if bound)"
+reattach_gpu_to_host
+
+if [[ -x "${RESTORE}" ]]; then
+  echo "STEP: sync host GPU restore"
+  # restore-display logs itself; run without nested set -x noise if possible
+  set +x
+  "${RESTORE}"
+  restore_rc=$?
+  if [[ "${restore_rc}" -ne 0 ]]; then
+    echo "WARN: restore-display failed (${restore_rc}); forcing minimal login recovery" >&2
+    set -x
+    settle_console_input || true
+    start_ly_units || true
+    safe_chvt 1 || true
+  fi
+  restore_case_fans_auto
+  exit "${restore_rc}"
 fi
 
-if [[ -f "${HANDOFF_LIB}" ]]; then
-  # shellcheck source=/dev/null
-  source "${HANDOFF_LIB}"
-  export GPU_HANDOFF_FORCE=1
-  hook_log_begin "windows11-revert-host (manual)" "$@"
-  hook_log_attach
-  set -x
-  gpu_handoff_release_end
-  exit 0
-fi
-
-echo "No hook library found; minimal revert..." >&2
-export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+echo "windows11-restore-display missing; minimal revert..." >&2
 virsh nodedev-reattach pci_0000_03_00_1 2>/dev/null || true
 virsh nodedev-reattach pci_0000_03_00_0 2>/dev/null || true
 modprobe amdgpu 2>/dev/null || true
-modprobe usbhid 2>/dev/null || true
-udevadm trigger --subsystem-match=input 2>/dev/null || true
-udevadm trigger --subsystem-match=usb 2>/dev/null || true
-udevadm settle 2>/dev/null || true
-systemctl restart systemd-vconsole-setup.service 2>/dev/null || true
-loginctl flush-devices 2>/dev/null || true
-if command -v nmcli >/dev/null; then
-  nmcli general reload 2>/dev/null || true
-  nmcli networking on 2>/dev/null || true
-  for con in br0 eno1 "Wired connection 1"; do
-    nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "${con}" || continue
-    nmcli connection up "${con}" 2>/dev/null || true
-  done
-fi
-systemctl start ly@tty1.service ly@tty2.service 2>/dev/null || true
+restore_case_fans_auto
+start_ly_units

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 
 import ".."
 
@@ -70,6 +71,65 @@ Item {
 
             Behavior on opacity {
                 NumberAnimation { duration: Theme.animFast }
+            }
+        }
+    }
+
+    PopupWindow {
+        id: tip
+        color: "transparent"
+        visible: root.hovered && root.tooltip.length > 0
+        implicitWidth: tipBox.implicitWidth
+        implicitHeight: tipBox.implicitHeight
+
+        anchor {
+            window: root.QsWindow?.window
+            adjustment: PopupAdjustment.None
+            gravity: Theme.barVertical ? (Edges.Right | Edges.Bottom) : (Edges.Bottom | Edges.Right)
+
+            onAnchoring: {
+                const win = root.QsWindow
+                if (!win?.contentItem)
+                    return
+                const gap = 8
+                if (Theme.barVertical) {
+                    const pos = win.contentItem.mapFromItem(
+                        root,
+                        root.width + gap,
+                        (root.height - tip.height) / 2
+                    )
+                    tip.anchor.rect.x = pos.x
+                    tip.anchor.rect.y = pos.y
+                } else {
+                    const pos = win.contentItem.mapFromItem(
+                        root,
+                        (root.width - tip.width) / 2,
+                        root.height + gap
+                    )
+                    tip.anchor.rect.x = pos.x
+                    tip.anchor.rect.y = pos.y
+                }
+            }
+        }
+
+        Rectangle {
+            id: tipBox
+            implicitWidth: tipText.implicitWidth + 16
+            implicitHeight: tipText.implicitHeight + 10
+            radius: 8
+            color: "#111111"
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, 0.14)
+
+            Text {
+                id: tipText
+                anchors.centerIn: parent
+                text: root.tooltip
+                color: Theme.ink
+                font.family: Theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+                horizontalAlignment: Text.AlignHCenter
             }
         }
     }

@@ -1,0 +1,8 @@
+[Unit]
+Description=Fetch Cursor plan usage via Helium
+After=network.target
+
+[Service]
+Type=oneshot
+Nice=10
+ExecStart=%h/.config/quickshell/scripts/cursor-usage.sh fetch

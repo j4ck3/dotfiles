@@ -1,22 +1,20 @@
 <!--
-  AMD RX 7900 XTX (03:00.0) + HDMI/DP audio (03:00.1)
+  AMD RX 7900 XTX (03:00.0) only.
+
+  HDMI/DP audio (03:00.1) is NOT assigned to the guest — use USB Sound Blaster
+  (windows11-passthrough-usb.xml). Handoff still unbinds 03:00.1 from the host
+  during prepare so amdgpu can detach cleanly; it is not given to Windows.
+
+  managed="no": hook owns vfio↔amdgpu. managed="yes" races libvirt auto-reattach
+  with release/end and triggers naked modprobe → Navi 31 amdgpu_device_mm_access BUG.
 
   Install VBIOS once: sudo windows11-dump-vbios
-
-  BIOS for passthrough: IOMMU + Above 4G Decoding enabled.
-  RX 7900 XTX black-screen fix: keep explicit VBIOS file, but hide ROM BAR.
-
-  NOTE: <rom> must be a direct child of <hostdev>, NOT inside <driver>.
+  RX 7900 XTX: explicit VBIOS file, ROM BAR off.
 -->
-<hostdev mode="subsystem" type="pci" managed="yes">
+<hostdev mode="subsystem" type="pci" managed="no">
   <driver name="vfio"/>
   <source>
     <address domain="0x0000" bus="0x03" slot="0x00" function="0x0"/>
   </source>
   <rom bar="off" file="/var/lib/libvirt/vbios/rx7900xtx.rom"/>
-</hostdev>
-<hostdev mode="subsystem" type="pci" managed="yes">
-  <source>
-    <address domain="0x0000" bus="0x03" slot="0x00" function="0x1"/>
-  </source>
 </hostdev>

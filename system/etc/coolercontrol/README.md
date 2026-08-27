@@ -4,32 +4,34 @@ Tracked copies of `/etc/coolercontrol/{config.toml,modes.json}`.
 
 **Not tracked:** `.passwd`, TLS certs/keys, `config-ui.json`.
 
-## Live now (TUF Z790 + i9-14900KS + amdgpu)
+## Live now (TUF GAMING Z790-PLUS WIFI + i9-14900KS + amdgpu)
 
 | Mode | Switch in UI |
 |------|----------------|
 | **Balanced** (active) | quieter idle, ramps on heat |
 | **Performance** | higher floors, snappier response |
 
-### Assignments (heuristic)
+### Assignments (heuristic — confirm with fan-identify.sh)
 
-| Channel | Profile |
-|---------|---------|
-| `nct6798` fan1, fan2 | CPU curve (assume CPU_FAN / CPU_OPT) |
-| `nct6798` fan4, fan5, fan7 | Case Mix = max(CPU, GPU) |
-| `nct6798` fan3 | RPM-only (no PWM) |
-| `nct6798` fan6 | unused (0 RPM) |
-| `amdgpu` fan1 | GPU curve (0% below ~45 °C edge) |
+| Channel | Profile | Notes |
+|---------|---------|-------|
+| `nct6798` fan1, fan2, fan5 | CPU curve | silkscreen mapping unconfirmed |
+| `nct6798` fan4, fan7 | Case Mix = max(CPU, GPU) | silkscreen mapping unconfirmed |
+| `nct6798` fan3 | RPM-only (no PWM) | likely CPU_OPT tach or secondary sense |
+| `nct6798` fan6 | unused (0 RPM) | likely empty header |
+| `amdgpu` fan1 | GPU curve | 0% below ~45 °C edge; not a motherboard header |
+
+Board has **7 physical 4-pin headers** (manual): CPU_FAN, CPU_OPT, AIO_PUMP, CHA_FAN1–4. CPU_FAN + CPU_OPT share Q-Fan group **A** (OPT slaved to CPU_FAN PWM). Linux `fan1`–`fan7` ≠ silkscreen names — use identify script + case open.
 
 Wrong header mapping? Reassign in CoolerControl Controls page, then update Mode.
 
 ## Quickshell Power menu
 
-`CASE FANS` slider in Power popup → temporary fixed duty on fan4/5/7 via CoolerControl API.
+`CASE FANS` slider in Power popup → temporary fixed duty on fan4/7 via CoolerControl API.
 
 - Scripts: `hypr/.config/quickshell/scripts/fan-{common,status,control}.sh`
 - Token: `~/.config/coolercontrol/token` (Bearer, write access) — not in git
-- **Auto** = Case Balanced curve. **Quiet** = fixed 20%. **Max** = fixed 100% on fan4/5/7.
+- **Auto** = Case Balanced curve. **Quiet** = fixed 20%. **Max** = fixed 100% on fan4/7.
 
 ### Curves (duty %)
 

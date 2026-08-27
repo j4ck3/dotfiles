@@ -1,0 +1,2 @@
+# Members of group pacman may run pacman without a password.
+%pacman ALL=(ALL) NOPASSWD: /usr/bin/pacman

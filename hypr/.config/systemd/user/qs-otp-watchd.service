@@ -1,0 +1,14 @@
+[Unit]
+Description=Quickshell Outlook OTP watcher (Graph)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# Prefer ~/.config/qs-otp/venv (no root). Falls back to system python3.
+ExecStart=/bin/sh -c 'V="%h/.config/qs-otp/venv/bin/python"; if [ -x "$V" ]; then exec "$V" "%h/.config/quickshell/scripts/otp-watchd.py"; else exec /usr/bin/python3 "%h/.config/quickshell/scripts/otp-watchd.py"; fi'
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

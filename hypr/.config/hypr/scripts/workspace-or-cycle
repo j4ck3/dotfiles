@@ -4,18 +4,21 @@
 
 set -u
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 WS="${1:-}"
 if [[ -z "$WS" ]]; then
-    echo "usage: $0 <workspace>" >&2
-    exit 1
+	echo "usage: $0 <workspace>" >&2
+	exit 1
 fi
 
+# Match focused monitor's workspace (same scope as on_current_monitor focus).
 ACTIVE_WORKSPACE=$(hyprctl monitors -j 2>/dev/null | jq -r '
-    .[] | select(.focused == true) | .activeWorkspace.id
+	.[] | select(.focused == true) | .activeWorkspace.id
 ')
 
 if [[ "$ACTIVE_WORKSPACE" == "$WS" ]]; then
-    exec ~/.config/hypr/scripts/smart-cycle
+	exec "$SCRIPT_DIR/smart-cycle"
 fi
 
 hyprctl dispatch "hl.dsp.focus({ workspace = ${WS}, on_current_monitor = true })" >/dev/null 2>&1

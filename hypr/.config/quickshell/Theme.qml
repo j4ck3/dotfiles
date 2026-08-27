@@ -54,9 +54,16 @@ Singleton {
     readonly property string iconFontFallback: "Symbols Nerd Font Mono"
 
     readonly property int fontSize: 12
+    // Flip true → left vertical bar (VerticalBar). False → top Bar.
+    readonly property bool barVertical: true
     readonly property int barHeight: 36
+    readonly property int barWidth: 56
     readonly property int barMargin: 0
     readonly property int barInnerHeight: 32
+    readonly property int barThickness: barVertical ? barWidth : barHeight
+    // Popup inset past the bar edge (top bar → top inset; left bar → left inset).
+    readonly property int popupTopInset: barVertical ? 0 : barHeight
+    readonly property int popupLeftInset: barVertical ? barWidth : 0
     // Gap between bar bottom and widget cards (panel already starts at barHeight).
     readonly property int widgetTopGap: 5
     readonly property int pillRadius: 999

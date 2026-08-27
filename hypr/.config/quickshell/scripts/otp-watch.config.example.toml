@@ -1,0 +1,9 @@
+# Copy to ~/.config/qs-otp/config.toml
+#
+# Default = IMAP + Thunderbird public client (no Azure app registration).
+
+email = "you@live.se"
+client_id = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
+backend = "imap"
+authority = "https://login.microsoftonline.com/consumers"
+# imap_host = "outlook.office365.com"

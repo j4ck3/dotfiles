@@ -8,6 +8,8 @@ import ".."
 Item {
     id: root
 
+    property bool vertical: false
+
     readonly property var icons: ({
         "1": "j",
         "2": "k",
@@ -24,9 +26,10 @@ Item {
     readonly property int cellW: 26
     readonly property int activeId: Hyprland.focusedWorkspace?.id ?? 1
 
-    implicitWidth: layout.implicitWidth
-    implicitHeight: Theme.barInnerHeight
-    Layout.preferredHeight: Theme.barInnerHeight
+    implicitWidth: root.vertical ? root.cellW : layout.implicitWidth
+    implicitHeight: root.vertical ? layout.implicitHeight : Theme.barInnerHeight
+    Layout.preferredWidth: root.vertical ? root.cellW : implicitWidth
+    Layout.preferredHeight: root.vertical ? implicitHeight : Theme.barInnerHeight
     Layout.fillHeight: false
 
     function labelFor(id: int): string {
@@ -57,11 +60,20 @@ Item {
         readonly property int idx: root.indexOfId(root.activeId)
         width: root.cellW
         height: root.cellW
-        anchors.verticalCenter: layout.verticalCenter
-        x: layout.x + idx * root.cellW
+        x: root.vertical ? layout.x : (layout.x + idx * root.cellW)
+        y: root.vertical ? (layout.y + idx * root.cellW) : layout.y
         z: 1
 
         Behavior on x {
+            enabled: !root.vertical
+            NumberAnimation {
+                duration: Theme.animEmphasized
+                easing.type: Easing.OutBack
+                easing.overshoot: 0.6
+            }
+        }
+        Behavior on y {
+            enabled: root.vertical
             NumberAnimation {
                 duration: Theme.animEmphasized
                 easing.type: Easing.OutBack
@@ -95,12 +107,14 @@ Item {
         }
     }
 
-    Row {
+    Grid {
         id: layout
-        anchors.verticalCenter: parent.verticalCenter
         anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        columns: root.vertical ? 1 : root.persistent.length
+        rows: root.vertical ? root.persistent.length : 1
         spacing: 0
-        height: root.cellW
+        flow: root.vertical ? Grid.TopToBottom : Grid.LeftToRight
         z: 2
 
         Repeater {

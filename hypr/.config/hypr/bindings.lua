@@ -29,6 +29,15 @@ local function desc_locked_repeat(text)
   return { description = text, locked = true, repeating = true }
 end
 
+-- Voyager layer keys act as modifiers — ignore_mods so layer-2 media keys still fire.
+local function desc_media(text)
+  return { description = text, ignore_mods = true, locked = true }
+end
+
+local function desc_media_repeat(text)
+  return { description = text, ignore_mods = true, locked = true, repeating = true }
+end
+
 -- Detach from group if needed, then move active window (stay on current workspace).
 local function move_active_to_workspace(ws)
   return function()
@@ -49,7 +58,13 @@ bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- /home/jacke/.local/bin/do
 bind("SUPER + SHIFT + ALT + B", hl.dsp.exec_cmd(browser .. " --private"), desc_release("Browser (private)"))
 bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("uwsm-app -- flatpak run com.spotify.Client"), desc_release("Music"))
 bind("SUPER + M", hl.dsp.exec_cmd(scripts .. "/spotify-workspace 15"), desc_release("Spotify (workspace 15)"))
-bind("SUPER + K", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 2"), desc_release("Switch/cycle workspace 2"))
+bind(
+  "SUPER + K",
+  hl.dsp.exec_cmd(
+    scripts .. "/webapp-launch 2 t3code uwsm-app -- t3code --password-store=gnome-libsecret"
+  ),
+  desc_release("T3 Code (workspace 2)")
+)
 bind("SUPER + SHIFT + N", hl.dsp.exec_cmd("uwsm-app -- cursor"), desc_release("Editor"))
 bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"), desc_release("Docker"))
 -- Lock (Super+L is workspace 3). hyprlock — QS WlSessionLock crashed Hyprland.
@@ -80,7 +95,8 @@ bind("SUPER + LEFT", hl.dsp.focus({ direction = "left" }), desc_release("Move fo
 bind("SUPER + RIGHT", hl.dsp.focus({ direction = "right" }), desc_release("Move focus right"))
 bind("SUPER + UP", hl.dsp.focus({ direction = "up" }), desc_release("Move focus up"))
 bind("SUPER + DOWN", hl.dsp.focus({ direction = "down" }), desc_release("Move focus down"))
-bind("SUPER + T", hl.dsp.exec_cmd(scripts .. "/toggle-group-workspace"), desc_release("Toggle 16:9 group stack"))
+-- Fullscreen games use keyboard inhibitors; keep 16:9 recovery bind available.
+bind("SUPER + T", hl.dsp.exec_cmd(scripts .. "/toggle-group-workspace"), desc_release_inhibit("Apply 16:9 group view"))
 
 -- Keyboard shortcuts guide (Super+?)
 bind("SUPER + SHIFT + plus", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
@@ -107,26 +123,29 @@ bind(
 bind("Next", hl.dsp.exec_cmd("grim - | wl-copy"), desc("Screenshot full screen"))
 bind("SUPER + Prior", hl.dsp.exec_cmd("pkill hyprpicker || hyprpicker -a"), desc_release("Color picker"))
 
--- Voice and OCR bindings
-bind("SUPER + V", hl.dsp.exec_cmd(scripts .. "/stt-dictate"), desc_release("Live dictation (type as you speak)"))
+-- Voice / OCR / TTS
+-- Handy: Super+V toggles record ↔ stop→transcribe (Hypr bind; Wayland has no global shortcuts).
+bind(
+  "SUPER + V",
+  hl.dsp.exec_cmd(scripts .. "/handy-toggle"),
+  desc_release("Handy dictation toggle")
+)
+bind(
+  "Escape",
+  hl.dsp.exec_cmd(scripts .. "/handy-cancel"),
+  { description = "Cancel Handy dictation", non_consuming = true }
+)
 bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(scripts .. "/ocr-region"), desc_release("OCR region to clipboard"))
 bind("SUPER + ALT + V", hl.dsp.exec_cmd(scripts .. "/tts-speak"), desc_release("Text to speech (TTS)"))
 
--- OpenWhispr: toggle dictation (Lua config — openwhispr-binds.conf is NOT auto-sourced)
-bind(
-  "CTRL + SUPER",
-  hl.dsp.exec_cmd(
-    "dbus-send --session --type=method_call --dest=com.openwhispr.App /com/openwhispr/App com.openwhispr.App.Toggle"
-  ),
-  desc_release("OpenWhispr dictation toggle")
-)
+-- Web apps / pinned apps - switch to workspace, launch if not already there
+bind("SUPER + SHIFT + K", move_active_to_workspace(2), desc_release("Move active window to workspace 2"))
 
--- Web apps - switch to workspace, launch app if not already there
 -- SUPER I: Trilium (workspace 10)
 bind(
   "SUPER + I",
   hl.dsp.exec_cmd(
-    scripts .. "/webapp-launch 10 helium helium-browser --new-window https://trilium.netbird.hjacke.com/"
+    scripts .. "/webapp-launch 10 helium helium-webapp --new-window https://trilium.netbird.hjacke.com/"
   ),
   desc_release("Trilium (workspace 10)")
 )
@@ -135,7 +154,7 @@ bind("SUPER + SHIFT + I", move_active_to_workspace(10), desc_release("Move activ
 -- SUPER U: ChatGPT (workspace 11)
 bind(
   "SUPER + U",
-  hl.dsp.exec_cmd(scripts .. "/webapp-launch 11 helium helium-browser --new-window https://chatgpt.com"),
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 11 helium helium-webapp --new-window https://chatgpt.com"),
   desc_release("ChatGPT (workspace 11)")
 )
 bind("SUPER + SHIFT + U", move_active_to_workspace(11), desc_release("Move active window to workspace 11"))
@@ -143,7 +162,7 @@ bind("SUPER + SHIFT + U", move_active_to_workspace(11), desc_release("Move activ
 -- SUPER Y: YouTube (workspace 12)
 bind(
   "SUPER + Y",
-  hl.dsp.exec_cmd(scripts .. "/webapp-launch 12 helium helium-browser --new-window https://youtube.com"),
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 12 helium helium-webapp --new-window https://youtube.com"),
   desc_release("YouTube (workspace 12)")
 )
 bind("SUPER + SHIFT + Y", move_active_to_workspace(12), desc_release("Move active window to workspace 12"))
@@ -168,16 +187,16 @@ bind("SUPER + SHIFT + B", move_active_to_workspace(14), desc_release("Move activ
 bind("SUPER + J", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 1"), desc_release("Switch/cycle workspace 1"))
 bind("SUPER + L", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 3"), desc_release("Switch/cycle workspace 3"))
 bind("SUPER + odiaeresis", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 4"), desc_release("Switch/cycle workspace 4"))
-bind("SUPER + 5", hl.dsp.focus({ workspace = 5, on_current_monitor = true }), desc_release("Switch to workspace 5"))
-bind("SUPER + 6", hl.dsp.focus({ workspace = 6, on_current_monitor = true }), desc_release("Switch to workspace 6"))
-bind("SUPER + 7", hl.dsp.focus({ workspace = 7, on_current_monitor = true }), desc_release("Switch to workspace 7"))
-bind("SUPER + 8", hl.dsp.focus({ workspace = 8, on_current_monitor = true }), desc_release("Switch to workspace 8"))
-bind("SUPER + 9", hl.dsp.focus({ workspace = 9, on_current_monitor = true }), desc_release("Switch to workspace 9"))
+bind("SUPER + 5", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 5"), desc_release("Switch/cycle workspace 5"))
+bind("SUPER + 6", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 6"), desc_release("Switch/cycle workspace 6"))
+bind("SUPER + 7", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 7"), desc_release("Switch/cycle workspace 7"))
+bind("SUPER + 8", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 8"), desc_release("Switch/cycle workspace 8"))
+bind("SUPER + 9", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 9"), desc_release("Switch/cycle workspace 9"))
 
 -- Move active window to a workspace with SUPER + SHIFT + letter/number
 -- Swedish Ö: Shift may report Odiaeresis — bind both.
 bind("SUPER + SHIFT + J", move_active_to_workspace(1), desc_release("Move active window to workspace 1"))
-bind("SUPER + SHIFT + K", move_active_to_workspace(2), desc_release("Move active window to workspace 2"))
+-- SUPER + SHIFT + K: defined with T3 Code binds above
 bind("SUPER + SHIFT + L", move_active_to_workspace(3), desc_release("Move active window to workspace 3"))
 bind("SUPER + SHIFT + odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))
 bind("SUPER + SHIFT + Odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))
@@ -193,12 +212,30 @@ bind("ALT + TAB", hl.dsp.exec_cmd(scripts .. "/smart-cycle"), desc("Cycle next (
 bind("ALT + SHIFT + TAB", hl.dsp.exec_cmd(scripts .. "/smart-cycle prev"), desc("Cycle prev (group-aware)"))
 bind("ALT + SHIFT + ISO_Left_Tab", hl.dsp.exec_cmd(scripts .. "/smart-cycle prev"), desc("Cycle prev (group-aware)"))
 
--- Media controls
-bind("F7", hl.dsp.exec_cmd("playerctl --player=spotify previous"), desc_locked("Spotify previous track"))
-bind("F8", hl.dsp.exec_cmd("playerctl --player=spotify play-pause"), desc_locked("Spotify play/pause"))
-bind("F9", hl.dsp.exec_cmd("playerctl --player=spotify next"), desc_locked("Spotify next track"))
-bind("F11", hl.dsp.exec_cmd(scripts .. "/spotify-volume down"), desc_locked_repeat("Spotify volume down"))
-bind("F12", hl.dsp.exec_cmd(scripts .. "/spotify-volume up"), desc_locked_repeat("Spotify volume up"))
+-- Media controls (F-keys + XF86 for Voyager layer 2 / consumer HID)
+bind("F7", hl.dsp.exec_cmd("playerctl --player=spotify previous"), desc_media("Spotify previous track"))
+bind("F8", hl.dsp.exec_cmd("playerctl --player=spotify play-pause"), desc_media("Spotify play/pause"))
+bind("F9", hl.dsp.exec_cmd("playerctl --player=spotify next"), desc_media("Spotify next track"))
+bind("F11", hl.dsp.exec_cmd(scripts .. "/spotify-volume down"), desc_media_repeat("Spotify volume down"))
+bind("F12", hl.dsp.exec_cmd(scripts .. "/spotify-volume up"), desc_media_repeat("Spotify volume up"))
+
+bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl --player=spotify previous"), desc_media("Spotify previous track"))
+bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl --player=spotify next"), desc_media("Spotify next track"))
+bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl --player=spotify play-pause"), desc_media("Spotify play/pause"))
+bind("XF86AudioPause", hl.dsp.exec_cmd("playerctl --player=spotify play-pause"), desc_media("Spotify play/pause"))
+bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl --player=spotify stop"), desc_media("Spotify stop"))
+bind(
+  "XF86AudioRaiseVolume",
+  hl.dsp.exec_cmd("wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ 5%+"),
+  desc_media_repeat("Volume up")
+)
+bind(
+  "XF86AudioLowerVolume",
+  hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),
+  desc_media_repeat("Volume down")
+)
+bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), desc_media("Mute toggle"))
+bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), desc_media("Mic mute toggle"))
 
 -- Open project in tmux with nvim and opencode
 bind("SUPER + SHIFT + O", hl.dsp.exec_cmd(scripts .. "/open-project-tmux"), desc_release("Open project (tmux+nvim+opencode)"))

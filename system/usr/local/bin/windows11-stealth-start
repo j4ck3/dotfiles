@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Start the stealth clone with the same safety checks as windows11-start.
+# Start the stealth clone. Console (VNC) if domain has QXL; else passthrough.
 set -euo pipefail
 
 export DOMAIN="${DOMAIN:-windows11-stealth}"
 export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 export FORCE_STOP="${FORCE_STOP:-/usr/local/bin/windows11-stealth-force-stop}"
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
 
 NVRAM="/var/lib/libvirt/qemu/nvram/windows11-stealth_VARS.fd"
 GOOD_CACHE="${HOME}/.cache/windows11-stealth-debug/windows11-stealth_VARS.fd.good"
@@ -31,8 +34,6 @@ verify_nvram() {
 
 verify_network_xml() {
   # shellcheck source=/dev/null
-  source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
-  # shellcheck source=/dev/null
   source "${BRIDGE_LIB}"
 
   if domain_xml_has_lan_bridge "${DOMAIN}" "${LAN_BRIDGE:-br0}"; then
@@ -47,6 +48,31 @@ verify_network_xml() {
   "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-ensure-network"
 }
 
+is_console_mode() {
+  virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<graphics "
+}
+
+has_gpu_hostdev() {
+  virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | awk '
+    /<hostdev / { in_hostdev=1 }
+    in_hostdev && /type=.pci./ { pci=1 }
+    pci && /bus=.0x03. slot=.0x00. function=.0x0./ { found=1 }
+    /<\/hostdev>/ { in_hostdev=0; pci=0 }
+    END { exit !found }
+  '
+}
+
 verify_nvram
 verify_network_xml
+
+if is_console_mode; then
+  if has_gpu_hostdev; then
+    echo "Mixed mode: VNC present but GPU hostdev still in XML." >&2
+    echo "Run: DOMAIN=${DOMAIN} windows11-mode console" >&2
+    exit 1
+  fi
+  echo "Console mode — starting ${DOMAIN} with VNC (host keeps GPU)."
+  exec "${DOTFILES_SYSTEM}/usr/local/bin/windows11-stealth-console" "$@"
+fi
+
 exec /usr/local/bin/windows11-start "$@"

@@ -13,21 +13,22 @@ hl.on("hyprland.start", function()
   hl.exec_cmd(scripts .. "/start-keyring")
   hl.exec_cmd(scripts .. "/start-polkit-agent")
 
-  hl.exec_cmd(scripts .. "/quickshell-start")
+  -- Quickshell as user service (survives shell exit; claims notifications)
+  hl.exec_cmd("systemctl --user start quickshell.service")
   hl.exec_cmd("wl-paste --type text --watch cliphist store")
   hl.exec_cmd("wl-paste --type image --watch cliphist store")
   hl.exec_cmd("helium-browser")
   -- Software brightness + blue-light (hyprctl hyprsunset gamma|temperature)
   hl.exec_cmd("uwsm-app -- hyprsunset")
-  -- Local dictation (Ctrl+Super). Log → /tmp/openwhispr.log for bar REC/TX.
-  hl.exec_cmd("uwsm-app -- " .. scripts .. "/openwhispr-start")
-  -- Park floating mic HUD off-screen (indicator lives in Quickshell bar).
-  hl.exec_cmd("uwsm-app -- " .. scripts .. "/openwhispr-hide-hud")
+  -- Handy: background app for Super+V toggle (--toggle-transcription via Hypr bind).
+  hl.exec_cmd("uwsm-app -- " .. scripts .. "/handy-start")
   hl.exec_cmd("enable-keyboard-wake")
   hl.exec_cmd(scripts .. "/kbd-unstick")
 
   -- Spotify resets sink-input volume on new tracks; user service survives hyprctl reload (exec-once does not)
   hl.exec_cmd("systemctl --user start spotify-volume-guard.service")
+  -- Outlook OTP watcher (PowerMenu arm → Graph poll → bar chip)
+  hl.exec_cmd("systemctl --user start qs-otp-watchd.service")
 
   -- Workspace 2 monocle mode - maximize and stack all windows
   hl.exec_cmd(scripts .. "/workspace2-monocle")
@@ -38,7 +39,11 @@ end)
 
 -- Normal app windows enter the 16:9 floating group before their first frame.
 -- Initially-floating windows are dialogs/popups and keep their requested geometry.
--- DP-1 usable area: 3440x1440 - 36px bar - 4px top/bottom gaps = 3440x1396.
+-- Vertical bar (Theme.barWidth=56): full height minus gaps_out; pillarbox in remaining width.
+local bar_width = 56 -- quickshell Theme.barWidth
+local gaps_out = 4 -- looknfeel general.gaps_out
+local gap_tb = gaps_out * 2
+local bar_inset = bar_width + gaps_out * 2
 hl.window_rule({
   name = "default-16-9",
   match = {
@@ -47,12 +52,18 @@ hl.window_rule({
   },
   float = true,
   size = {
-    "(monitor_h - 44) * 16 / 9",
-    "monitor_h - 44",
+    string.format("(monitor_h - %d) * 16 / 9", gap_tb),
+    string.format("monitor_h - %d", gap_tb),
   },
   move = {
-    "(monitor_w - ((monitor_h - 44) * 16 / 9)) / 2",
-    "40",
+    string.format(
+      "%d + %d + (monitor_w - %d - (monitor_h - %d) * 16 / 9) / 2",
+      bar_width,
+      gaps_out,
+      bar_inset,
+      gap_tb
+    ),
+    tostring(gaps_out),
   },
   group = "set",
   no_anim = true,
@@ -62,6 +73,13 @@ hl.window_rule({
 hl.window_rule({
   name = "cursor-ws-2",
   match = { class = "^(cursor)$" },
+  workspace = 2,
+})
+
+-- T3 Code → Workspace 2 (must match bindings.lua + webapp-launch)
+hl.window_rule({
+  name = "t3code-ws-2",
+  match = { class = "^(t3code)$" },
   workspace = 2,
 })
 

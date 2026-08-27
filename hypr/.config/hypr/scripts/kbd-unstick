@@ -18,11 +18,13 @@ fi
 is_phantom_keyboard() {
     local name=$1
     [[ "$name" == *-keyboard ]] && return 1
+    # Voyager consumer-control carries Oryx media keys (volume/mute/play). Keep it.
+    [[ "$name" == *voyager*consumer-control* ]] && return 1
     [[ "$name" == *consumer-control* ]] && return 0
     [[ "$name" == *system-control* ]] && return 0
     [[ "$name" == razer-* ]] && return 0
     case "$name" in
-        keychron-keychron-q1 | zsa-technology-labs-voyager) return 0 ;;
+        keychron-keychron-q1 | zsa-technology-labs-voyager-keyboard) return 0 ;;
     esac
     return 1
 }

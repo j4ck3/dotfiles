@@ -10,14 +10,22 @@ WORKSPACE="$1"
 APP_CLASS="$2"
 shift 2
 
-hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
-
 find_window() {
     hyprctl clients -j | jq -r --argjson workspace "$WORKSPACE" --arg class "$APP_CLASS" \
         '[.[] | select(.workspace.id == $workspace and (.class | ascii_downcase) == ($class | ascii_downcase))] | last.address // empty'
 }
 
+ACTIVE_WORKSPACE=$(hyprctl monitors -j 2>/dev/null | jq -r '
+	.[] | select(.focused == true) | .activeWorkspace.id
+')
 ADDRESS=$(find_window)
+
+if [[ "$ACTIVE_WORKSPACE" == "$WORKSPACE" && -n "$ADDRESS" ]]; then
+	exec "$SCRIPT_DIR/smart-cycle"
+fi
+
+hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
+
 if [ -z "$ADDRESS" ]; then
     "$@" &
 

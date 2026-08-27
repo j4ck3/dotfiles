@@ -1,0 +1,28 @@
+#!/bin/bash
+# OpenWhispr: spawnSync("wl-copy", ["--", text], { timeout: 50 }).
+# Stock wl-copy parent waits ~120ms; Node kills it.
+# --paste-once is wrong here: cliphist (`wl-paste --watch cliphist store`) is
+# the first paste client, so Helium Ctrl+V gets an empty clipboard.
+# Fork a persistent copy, then wait until compositor serves exact text. This
+# gives OpenWhispr a readiness barrier before it sends Ctrl+V. Keep total wait
+# below OpenWhispr's 50ms spawnSync timeout.
+set -euo pipefail
+real=/usr/bin/wl-copy
+for a in "$@"; do
+  case "$a" in
+    -c|--clear) exec "$real" "$@" ;;
+  esac
+done
+setsid "$real" "$@" >/dev/null 2>&1 &
+
+# OpenWhispr passes text after "--". Do not use -o: cliphist consumes first
+# request. Polling is safe because persistent wl-copy serves multiple clients.
+expected="${*: -1}"
+for _ in {1..12}; do
+  current="$(timeout 0.01 /usr/bin/wl-paste -n 2>/dev/null || true)"
+  [[ "$current" == "$expected" ]] && exit 0
+  sleep 0.002
+done
+
+# Child stays alive even if compositor took longer than polling budget.
+exit 0

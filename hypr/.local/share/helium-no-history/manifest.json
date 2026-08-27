@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Helium Web Apps: No History",
+  "version": "1.0.0",
+  "description": "Removes browsing history from the isolated Helium web-app profile.",
+  "permissions": ["history"],
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}

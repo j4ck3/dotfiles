@@ -63,6 +63,8 @@ ffmpeg
 yt-dlp
 yad
 wtype
+ydotool
+python-webrtcvad
 python-vosk
 
 tesseract
@@ -99,12 +101,14 @@ docker-compose
 starship
 just
 bun
+llmfit
 
 gum
 
 ttf-cascadia-mono-nerd
 
 python
+python-httpx
 
 openssh
 rsync

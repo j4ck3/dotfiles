@@ -7,44 +7,71 @@ export LANG=C
 export VIRSH_DEFAULT_CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 
 DOMAIN="${DOMAIN:-windows11}"
-HOOK_PID_FILE="${HOOK_PID_FILE:-/run/libvirt/qemu/windows11.prepare.pid}"
 
-echo "=== windows11-unstick ==="
+run_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  elif command -v sudo >/dev/null; then
+    sudo "$@"
+  else
+    echo "Need root for: $*" >&2
+    return 1
+  fi
+}
 
-for pid in $(pgrep -f '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' 2>/dev/null || true); do
-  echo "Killing stuck passthrough hook pid ${pid}..."
-  kill -TERM "${pid}" 2>/dev/null || true
+echo "=== windows11-unstick (domain=${DOMAIN}) ==="
+
+# Stuck prepare hooks deadlock libvirtd (esp. if hook called virsh dumpxml).
+for pat in \
+  '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' \
+  '/hooks/qemu\.d/windows11(-stealth)?/' \
+  'virsh .*dumpxml windows11' \
+  'virsh .*start windows11'
+do
+  for pid in $(pgrep -f "${pat}" 2>/dev/null || true); do
+    echo "Killing pid ${pid}..."
+    kill -TERM "${pid}" 2>/dev/null || run_root kill -TERM "${pid}" 2>/dev/null || true
+  done
 done
 sleep 1
-for pid in $(pgrep -f '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' 2>/dev/null || true); do
-  kill -KILL "${pid}" 2>/dev/null || true
+for pat in \
+  '/hooks/qemu.d/windows11(-stealth)?/prepare/begin/start.sh' \
+  'virsh .*dumpxml windows11' \
+  'virsh .*start windows11'
+do
+  for pid in $(pgrep -f "${pat}" 2>/dev/null || true); do
+    kill -KILL "${pid}" 2>/dev/null || run_root kill -KILL "${pid}" 2>/dev/null || true
+  done
 done
 
-if command -v timeout >/dev/null; then
-  if timeout 5 virsh domstate "${DOMAIN}" 2>/dev/null | grep -q running; then
-    echo "Stopping running VM..."
-    if [[ -x /usr/local/bin/windows11-force-stop ]]; then
-      /usr/local/bin/windows11-force-stop
-    else
-      timeout 8 virsh destroy "${DOMAIN}" 2>/dev/null || true
-    fi
-  fi
-else
-  virsh destroy "${DOMAIN}" 2>/dev/null || true
+if ! timeout 5 virsh list --all >/dev/null 2>&1; then
+  echo "libvirtd still wedged — restarting..."
+  run_root systemctl restart libvirtd
+  sleep 2
 fi
 
-if [[ -x /usr/local/bin/windows11-revert-host ]]; then
+if timeout 5 virsh domstate "${DOMAIN}" 2>/dev/null | grep -q running; then
+  echo "Stopping running VM..."
+  if [[ -x /usr/local/bin/windows11-force-stop ]]; then
+    DOMAIN="${DOMAIN}" /usr/local/bin/windows11-force-stop
+  else
+    timeout 8 virsh destroy "${DOMAIN}" 2>/dev/null || true
+  fi
+fi
+
+if [[ "${DOMAIN}" == "windows11-stealth" ]] && [[ -x /usr/local/bin/windows11-stealth-revert-host ]]; then
+  echo "Reattaching GPU to host (stealth)..."
+  run_root /usr/local/bin/windows11-stealth-revert-host 2>/dev/null || true
+elif [[ -x /usr/local/bin/windows11-revert-host ]]; then
   echo "Reattaching GPU to host..."
-  sudo /usr/local/bin/windows11-revert-host 2>/dev/null || /usr/local/bin/windows11-revert-host
+  run_root /usr/local/bin/windows11-revert-host 2>/dev/null || true
 elif [[ "${EUID}" -eq 0 ]]; then
   virsh nodedev-reattach pci_0000_03_00_1 2>/dev/null || true
   virsh nodedev-reattach pci_0000_03_00_0 2>/dev/null || true
   modprobe amdgpu 2>/dev/null || true
-  systemctl start display-manager 2>/dev/null || true
-else
-  echo "Run: sudo windows11-revert-host" >&2
 fi
 
-echo "Done. If virsh still hangs: sudo systemctl restart libvirtd"
+echo "Done."
+timeout 5 virsh list --all 2>&1 || echo "If still hung: sudo systemctl restart libvirtd"
 echo "Hook log:  sudo tail -40 /var/log/windows11-passthrough-hook.log"
-echo "Then: windows11-mode status"
+echo "Then: DOMAIN=${DOMAIN} windows11-mode status"

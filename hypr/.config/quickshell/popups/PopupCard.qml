@@ -12,6 +12,11 @@ Item {
     property int cardWidth: 360
     property int topMargin: Theme.widgetTopGap
     property int rightMargin: 16
+    property int bottomMargin: Theme.widgetTopGap
+    // Left bar → card docks left (rightMargin reused as left edge gap).
+    readonly property bool fromLeft: Theme.barVertical
+    // Left-bar bottom triggers (power) → dock card to bottom so hover path is short.
+    property bool fromBottom: false
     property bool animateIn: false
     property bool compact: false
     default property alias body: bodyCol.data
@@ -27,10 +32,14 @@ Item {
     Rectangle {
         id: card
 
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: root.topMargin
-        anchors.rightMargin: root.rightMargin
+        anchors.top: root.fromBottom ? undefined : parent.top
+        anchors.bottom: root.fromBottom ? parent.bottom : undefined
+        anchors.left: root.fromLeft ? parent.left : undefined
+        anchors.right: root.fromLeft ? undefined : parent.right
+        anchors.topMargin: root.fromBottom ? 0 : root.topMargin
+        anchors.bottomMargin: root.fromBottom ? root.bottomMargin : 0
+        anchors.leftMargin: root.fromLeft ? root.rightMargin : 0
+        anchors.rightMargin: root.fromLeft ? 0 : root.rightMargin
         width: root.cardWidth
         implicitHeight: inner.implicitHeight + (root.compact ? 22 : 32)
         height: implicitHeight
@@ -39,16 +48,20 @@ Item {
         border.width: 1
         border.color: Qt.rgba(1, 1, 1, 0.14)
 
-        // Driven by playIn() — slide down + fade
+        // Driven by playIn() — slide in + fade
         property real slideY: 0
+        property real slideX: 0
         opacity: root.animateIn ? 0 : 1
-        transform: Translate { y: card.slideY }
+        transform: Translate {
+            x: card.slideX
+            y: card.slideY
+        }
 
         ParallelAnimation {
             id: inAnim
             NumberAnimation {
                 target: card
-                property: "slideY"
+                property: root.fromLeft ? "slideX" : "slideY"
                 from: -22
                 to: 0
                 duration: 160
@@ -91,12 +104,14 @@ Item {
 
     function playIn(): void {
         if (!root.animateIn) {
+            card.slideX = 0
             card.slideY = 0
             card.opacity = 1
             return
         }
         inAnim.stop()
-        card.slideY = -22
+        card.slideX = root.fromLeft ? -22 : 0
+        card.slideY = root.fromLeft ? 0 : (root.fromBottom ? 22 : -22)
         card.opacity = 0
         inAnim.restart()
     }
@@ -104,14 +119,16 @@ Item {
     function resetOut(): void {
         inAnim.stop()
         if (root.animateIn) {
-            card.slideY = -22
+            card.slideX = root.fromLeft ? -22 : 0
+            card.slideY = root.fromLeft ? 0 : (root.fromBottom ? 22 : -22)
             card.opacity = 0
         }
     }
 
     Component.onCompleted: {
         if (root.animateIn) {
-            card.slideY = -22
+            card.slideX = root.fromLeft ? -22 : 0
+            card.slideY = root.fromLeft ? 0 : (root.fromBottom ? 22 : -22)
             card.opacity = 0
         }
     }

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+EXTENSION_DIR="$(cd -- "$SCRIPT_DIR/../share/helium-no-history" && pwd)"
+DATA_DIR="${HELIUM_WEBAPP_DATA_DIR:-$HOME/.config/net.imput.helium-webapps}"
+
+exec "$SCRIPT_DIR/helium-browser" \
+  --user-data-dir="$DATA_DIR" \
+  --load-extension="$EXTENSION_DIR" \
+  --disable-sync \
+  --no-first-run \
+  --no-default-browser-check \
+  "$@"

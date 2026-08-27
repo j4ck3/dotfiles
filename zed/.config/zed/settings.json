@@ -12,12 +12,7 @@
         },
         {
           "paths": [
-            "/mnt/user/documents/work"
-          ]
-        },
-        {
-          "paths": [
-            "/root"
+            "/mnt/user/documents/work/projetx"
           ]
         }
       ],
@@ -27,11 +22,6 @@
       "host": "web",
       "args": [],
       "projects": [
-        {
-          "paths": [
-            "/home/ubuntu"
-          ]
-        },
         {
           "paths": [
             "/home/ubuntu/c"
@@ -44,6 +34,22 @@
       "host": "htpc",
       "args": [],
       "projects": []
+    },
+    {
+      "host": "t3code",
+      "args": [],
+      "projects": [
+        {
+          "paths": [
+            "/home/t3/work/3dcommerce"
+          ]
+        },
+        {
+          "paths": [
+            "/home/t3/work/projetx"
+          ]
+        }
+      ]
     }
   ],
   "context_servers": {

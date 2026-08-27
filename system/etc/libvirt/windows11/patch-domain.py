@@ -59,6 +59,10 @@ def add_console_inputs(devices: ET.Element) -> bool:
         i.get("type") == "tablet" and i.get("bus") == "usb"
         for i in devices.findall("input")
     )
+    has_usb_kbd = any(
+        i.get("type") == "keyboard" and i.get("bus") == "usb"
+        for i in devices.findall("input")
+    )
     has_ps2 = sum(
         1
         for i in devices.findall("input")
@@ -67,6 +71,10 @@ def add_console_inputs(devices: ET.Element) -> bool:
     if not has_tablet:
         inp = ET.SubElement(devices, "input", type="tablet", bus="usb")
         ET.SubElement(inp, "address", type="usb", bus="0", port="1")
+        changed = True
+    if not has_usb_kbd:
+        # USB HID keyboard: more reliable under VNC than PS/2 alone on Win11.
+        ET.SubElement(devices, "input", type="keyboard", bus="usb")
         changed = True
     if has_ps2 < 2:
         if not any(
@@ -111,35 +119,29 @@ def set_memballoon(devices: ET.Element, model: str) -> bool:
 
 
 def normalize_amd_gpu_hostdev_topology(devices: ET.Element) -> bool:
-    """Keep the RX 7900 GPU and HDMI audio as one guest multifunction device."""
+    """Guest topology for RX 7900 GPU only (no HDMI audio function in guest)."""
     changed = False
-    targets = {
-        ("0x03", "0x00", "0x0"): {
-            "type": "pci",
-            "domain": "0x0000",
-            "bus": "0x04",
-            "slot": "0x00",
-            "function": "0x0",
-            "multifunction": "on",
-        },
-        ("0x03", "0x00", "0x1"): {
-            "type": "pci",
-            "domain": "0x0000",
-            "bus": "0x04",
-            "slot": "0x00",
-            "function": "0x1",
-        },
+    gpu_guest = {
+        "type": "pci",
+        "domain": "0x0000",
+        "bus": "0x04",
+        "slot": "0x00",
+        "function": "0x0",
     }
 
-    for hostdev in devices.findall("hostdev"):
+    for hostdev in list(devices.findall("hostdev")):
         if hostdev.get("type") != "pci":
             continue
         src = hostdev.find("source/address")
         if src is None:
             continue
-        key = (src.get("bus"), src.get("slot"), src.get("function"))
-        wanted = targets.get(key)
-        if wanted is None:
+        bus, slot, fn = src.get("bus"), src.get("slot"), src.get("function")
+        # Drop HDMI/DP audio hostdev — Sound Blaster USB is the guest audio path.
+        if bus == "0x03" and slot == "0x00" and fn == "0x1":
+            devices.remove(hostdev)
+            changed = True
+            continue
+        if bus != "0x03" or slot != "0x00" or fn != "0x0":
             continue
 
         driver = hostdev.find("driver")
@@ -150,16 +152,23 @@ def normalize_amd_gpu_hostdev_topology(devices: ET.Element) -> bool:
             driver.set("name", "vfio")
             changed = True
 
+        # Hook owns vfio↔amdgpu; libvirt managed reattach races Navi 31 probe.
+        if hostdev.get("managed") != "no":
+            hostdev.set("managed", "no")
+            changed = True
+
         if hostdev.get("display") is not None:
             del hostdev.attrib["display"]
             changed = True
 
         addr = hostdev.find("address")
         if addr is None:
-            ET.SubElement(hostdev, "address", **wanted)
+            ET.SubElement(hostdev, "address", **gpu_guest)
             changed = True
             continue
 
+        # Drop leftover multifunction=on from old GPU+audio pairing.
+        wanted = dict(gpu_guest)
         if dict(addr.attrib) != wanted:
             addr.attrib.clear()
             addr.attrib.update(wanted)
@@ -251,15 +260,21 @@ def ensure_passthrough_features(root: ET.Element) -> bool:
 
 def remove_leaky_devices(devices: ET.Element) -> bool:
     changed = False
+    has_evdev = any(i.get("type") == "evdev" for i in devices.findall("input"))
     for tag in ("serial", "console", "parallel", "channel"):
         for el in list(devices.findall(tag)):
             devices.remove(el)
             changed = True
     for inp in list(devices.findall("input")):
-        if inp.get("type") in ("mouse", "keyboard") and inp.get("bus") == "ps2":
+        itype = inp.get("type")
+        bus = inp.get("bus")
+        # Evdev delivers through guest PS/2 — keep those sinks when evdev is present.
+        if itype in ("mouse", "keyboard") and bus == "ps2":
+            if has_evdev:
+                continue
             devices.remove(inp)
             changed = True
-        if inp.get("type") == "tablet":
+        elif itype == "tablet":
             devices.remove(inp)
             changed = True
     for g in list(devices.findall("graphics")):
@@ -275,6 +290,73 @@ def remove_leaky_devices(devices: ET.Element) -> bool:
     for ctrl in list(devices.findall("controller")):
         if ctrl.get("type") == "usb" and ctrl.get("model") == "qemu-xhci":
             ctrl.set("model", "nec-xhci")
+            changed = True
+        elif ctrl.get("type") == "virtio-serial":
+            devices.remove(ctrl)
+            changed = True
+    for rng in list(devices.findall("rng")):
+        devices.remove(rng)
+        changed = True
+    scsi_in_use = any(
+        (d.find("target") is not None and d.find("target").get("bus") == "scsi")
+        for d in devices.findall("disk")
+    )
+    if not scsi_in_use:
+        for ctrl in list(devices.findall("controller")):
+            if ctrl.get("type") == "scsi":
+                devices.remove(ctrl)
+                changed = True
+    return changed
+
+
+DISK_SERIAL = "S6XNNT0W512345"
+DISK_MODEL = "Samsung SSD 990 PRO 2TB"
+
+
+def ensure_disk_identity(devices: ET.Element) -> bool:
+    changed = False
+    for disk in devices.findall("disk"):
+        target = disk.find("target")
+        if target is None or target.get("bus") not in ("sata", "ide"):
+            continue
+        serial = disk.find("serial")
+        if serial is None:
+            ET.SubElement(disk, "serial").text = DISK_SERIAL
+            changed = True
+        elif (serial.text or "").strip() != DISK_SERIAL:
+            serial.text = DISK_SERIAL
+            changed = True
+    return changed
+
+
+def ensure_desktop_cpu_topology(root: ET.Element) -> bool:
+    """i9-14900KS presents 32 threads. 16c×2t looks like a desktop, not 32c×1t."""
+    changed = False
+    cpu = root.find("cpu")
+    if cpu is None:
+        return False
+    vcpu = root.find("vcpu")
+    try:
+        n = int((vcpu.text or "32").strip()) if vcpu is not None else 32
+    except ValueError:
+        n = 32
+    cores, threads = 16, 2
+    if n != cores * threads:
+        cores, threads = n, 1
+    wanted = {
+        "sockets": "1",
+        "dies": "1",
+        "clusters": "1",
+        "cores": str(cores),
+        "threads": str(threads),
+    }
+    topo = cpu.find("topology")
+    if topo is None:
+        ET.SubElement(cpu, "topology", **wanted)
+        return True
+    for key, value in wanted.items():
+        if topo.get(key) != value:
+            topo.set(key, value)
             changed = True
     return changed
 
@@ -414,30 +496,44 @@ def ensure_qemu_commandline(root: ET.Element) -> bool:
     smbios_pairs = [
         (
             "type=0,version="
-            f"{bios.get('version', '2802')},"
-            f"date={bios.get('date', '10/27/2023')}"
+            f"{bios.get('version', '1836')},"
+            f"date={bios.get('date', '04/16/2026')}"
         ),
         (
             "type=1,manufacturer="
             f"{system.get('manufacturer', 'ASUSTeK COMPUTER INC.')},"
-            f"product={system.get('product', 'ROG STRIX Z790-E GAMING WIFI')},"
+            f"product={system.get('product', 'TUF GAMING Z790-PLUS WIFI')},"
             f"version={system.get('version', 'Rev 1.xx')},"
-            f"serial={system.get('serial', 'To be filled by O.E.M.')}"
+            f"serial={system.get('serial', 'M7N0CV00P812345')}"
         ),
         (
             "type=2,manufacturer="
             f"{board.get('manufacturer', 'ASUSTeK COMPUTER INC.')},"
-            f"product={board.get('product', 'ROG STRIX Z790-E GAMING WIFI')},"
+            f"product={board.get('product', 'TUF GAMING Z790-PLUS WIFI')},"
             f"version={board.get('version', 'Rev 1.xx')},"
-            f"serial={board.get('serial', 'To be filled by O.E.M.')}"
+            f"serial={board.get('serial', '230712345678901')}"
         ),
-        "type=3,manufacturer=Default string",
-        "type=4,manufacturer=Intel,max-speed=6000,current-speed=3200",
-        "type=17,manufacturer=KINGSTON,loc_pfx=DDR5,speed=6000,serial=00000000,part=KHX3000",
+        (
+            "type=3,manufacturer="
+            f"{board.get('manufacturer', 'ASUSTeK COMPUTER INC.')},"
+            "version=1.0,"
+            f"serial={board.get('serial', 'M7N0CV00P812345')}"
+        ),
+        (
+            "type=4,sock_pfx=LGA1700,manufacturer=Intel,"
+            "version=Intel(R) Core(TM) i9-14900KS,"
+            "max-speed=6200,current-speed=3200"
+        ),
+        (
+            "type=17,manufacturer=Kingston,loc_pfx=DIMM_A1,"
+            "speed=6000,serial=12A34B56,part=KF560C36-16"
+        ),
     ]
     for pair in smbios_pairs:
         add_arg("-smbios")
         add_arg(pair)
+    add_arg("-global")
+    add_arg(f"ide-hd.model={DISK_MODEL}")
     return True
 
 
@@ -446,7 +542,7 @@ def ensure_lan_bridge_network(
     *,
     bridge: str = "br0",
     model: str = "e1000e",
-    mac: str = "02:74:72:32:e0:03",
+    mac: str = "04:74:72:32:e0:03",
 ) -> bool:
     """Single NIC on an existing host bridge (NetworkManager br0; managed=no)."""
     changed = False
@@ -570,21 +666,26 @@ def ensure_smbios_sysinfo(root: ET.Element) -> bool:
 
     values = {
         "bios": {
-            "vendor": "American Megatrends International, LLC.",
-            "version": "2802",
-            "date": "10/27/2023",
+            "vendor": "American Megatrends Inc.",
+            "version": "1836",
+            "date": "04/16/2026",
         },
         "system": {
             "manufacturer": "ASUSTeK COMPUTER INC.",
-            "product": "ROG STRIX Z790-E GAMING WIFI",
+            "product": "TUF GAMING Z790-PLUS WIFI",
             "version": "Rev 1.xx",
-            "serial": "System Serial Number",
+            "serial": "M7N0CV00P812345",
         },
         "baseBoard": {
             "manufacturer": "ASUSTeK COMPUTER INC.",
-            "product": "ROG STRIX Z790-E GAMING WIFI",
+            "product": "TUF GAMING Z790-PLUS WIFI",
             "version": "Rev 1.xx",
-            "serial": "Base Board Serial Number",
+            "serial": "230712345678901",
+        },
+        "chassis": {
+            "manufacturer": "ASUSTeK COMPUTER INC.",
+            "version": "1.0",
+            "serial": "M7N0CV00P812345",
         },
     }
     for section_name, entries in values.items():
@@ -627,6 +728,7 @@ def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
         changed |= set_memballoon(devices, "none")
         changed |= normalize_amd_gpu_hostdev_topology(devices)
         changed |= ensure_passthrough_cpu(root)
+        changed |= ensure_desktop_cpu_topology(root)
         changed |= ensure_passthrough_features(root)
         changed |= ensure_smbios_sysinfo(root)
         changed |= ensure_smm_on(root)
@@ -637,6 +739,7 @@ def apply_mode(tree: ET.ElementTree, mode: str) -> bool:
         os_el = root.find("os")
         if os_el is not None:
             changed |= ensure_stealth_firmware(os_el)
+        changed |= ensure_disk_identity(devices)
         changed |= ensure_emulator_path(devices)
         changed |= ensure_qemu_commandline(root)
     else:

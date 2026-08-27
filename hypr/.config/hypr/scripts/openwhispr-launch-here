@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Launch or focus OpenWhispr from the app launcher.
+# Quickshell DesktopEntries.execute() runs with a minimal env (no DISPLAY /
+# WAYLAND / DBUS), so the stock .desktop Exec line fails silently.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly START="$SCRIPT_DIR/openwhispr-start"
+
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+if [[ -z "${DISPLAY:-}" ]]; then
+  export DISPLAY=:0
+fi
+
+focus_panel() {
+  local raw addr ws
+  raw="$(hyprctl clients -j 2>/dev/null)" || return 1
+  [[ "$raw" == \[* ]] || return 1
+
+  addr="$(jq -r '
+    [.[] | select(.class == "open-whispr" and .title == "Control Panel") | .address] | last // empty
+  ' <<<"$raw")"
+  [[ -n "$addr" && "$addr" != "null" ]] || return 1
+
+  ws="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty' 2>/dev/null)" || true
+  if [[ -n "$ws" && "$ws" != "null" ]]; then
+    hyprctl dispatch movetoworkspacesilent "${ws},address:${addr}" >/dev/null 2>&1 || true
+  fi
+  hyprctl dispatch focuswindow "address:${addr}" >/dev/null 2>&1 || true
+}
+
+ow_dbus_up() {
+  dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+    /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+    string:com.openwhispr.App 2>/dev/null | rg -q 'boolean true'
+}
+
+ow_process_up() {
+  pgrep -f '/opt/openwhispr/open-whispr( |$)' >/dev/null 2>&1 \
+    || pgrep -x open-whispr-app >/dev/null 2>&1
+}
+
+kill_ow() {
+  pkill -x open-whispr-app 2>/dev/null || true
+  pkill -x open-whispr 2>/dev/null || true
+}
+
+wait_for_panel() {
+  local tries="${1:-12}"
+  for _ in $(seq 1 "$tries"); do
+    sleep 0.25
+    focus_panel && return 0
+  done
+  return 1
+}
+
+if focus_panel; then
+  exit 0
+fi
+
+if ow_dbus_up; then
+  wait_for_panel 16 || true
+  exit 0
+fi
+
+if ow_process_up; then
+  kill_ow
+  sleep 0.5
+fi
+
+setsid "$START" >/dev/null 2>&1 &
+wait_for_panel 12 || true
+exit 0

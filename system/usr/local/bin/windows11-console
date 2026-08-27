@@ -11,12 +11,16 @@ usage() {
   cat <<EOF
 Usage: ${0##*/} [--no-start]
 
-Opens the virt-manager VNC window for ${DOMAIN}.
+Opens the VNC console for ${DOMAIN}.
 
   --no-start   Only open the console; do not start a shut-off VM.
 
+On Hyprland/Wayland, virt-manager's GTK-VNC often drops keyboard input.
+This launcher forces GDK_BACKEND=x11 (fixes keys). Click the console window
+once so it has focus; Ctrl+Alt releases the grab.
+
 Console mode keeps keyboard/mouse on the HOST. If USB/evdev devices were passed
-through to the VM, the host will feel frozen — run: sudo windows11-mode console
+through to the VM, the host will feel frozen — run: windows11-mode console
 
 Emergency stop (another terminal):  windows11-stop
 EOF
@@ -36,27 +40,60 @@ esac
 
 if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" 2>/dev/null | grep -q "<graphics "; then
   echo "No VNC/QXL display on ${DOMAIN}. Console mode is not active." >&2
-  echo "Run: sudo windows11-mode console" >&2
+  echo "Run: windows11-mode console" >&2
   exit 1
 fi
 
 if virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q "type='usb' managed='yes'"; then
   echo "USB passthrough is still enabled — your keyboard/mouse may be captured by the VM." >&2
-  echo "Run: sudo windows11-mode console" >&2
+  echo "Run: windows11-mode console" >&2
   exit 1
 fi
 
 if virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q "type='evdev'"; then
   echo "Evdev passthrough is still enabled — your keyboard/mouse may be captured by the VM." >&2
-  echo "Run: sudo windows11-mode console" >&2
+  echo "Run: windows11-mode console" >&2
   exit 1
 fi
 
+# Ensure USB HID keyboard exists (hotplug if VM already running).
+ensure_usb_keyboard() {
+  virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q "<input type='keyboard' bus='usb'" && return 0
+  local xml state
+  xml="$(mktemp)"
+  cat > "${xml}" <<'EOF'
+<input type='keyboard' bus='usb'/>
+EOF
+  state="$(virsh -c "${CONNECT_URI}" domstate "${DOMAIN}" 2>/dev/null || true)"
+  if [[ "${state}" == "running" ]]; then
+    virsh -c "${CONNECT_URI}" attach-device "${DOMAIN}" "${xml}" --live --config 2>/dev/null \
+      || virsh -c "${CONNECT_URI}" attach-device "${DOMAIN}" "${xml}" --config 2>/dev/null \
+      || true
+  else
+    virsh -c "${CONNECT_URI}" attach-device "${DOMAIN}" "${xml}" --config 2>/dev/null || true
+  fi
+  rm -f "${xml}"
+}
+
+ensure_usb_keyboard
+
+vnc_url() {
+  local disp host port
+  disp="$(virsh -c "${CONNECT_URI}" vncdisplay "${DOMAIN}" 2>/dev/null || true)"
+  [[ -n "${disp}" ]] || return 1
+  # vncdisplay → 127.0.0.1:0  (display N ⇒ TCP 5900+N)
+  host="${disp%%:*}"
+  port="${disp##*:}"
+  [[ "${host}" == "${disp}" ]] && host="127.0.0.1"
+  echo "vnc://${host}:$((5900 + port))"
+}
+
 cat <<EOF >&2
 
-=== windows11 console ===
-  Stop VM:     windows11-stop          (or: virsh -c ${CONNECT_URI} destroy ${DOMAIN})
-  Host stays on Hyprland; use the mouse in the virt-manager window.
+=== ${DOMAIN} console ===
+  Stop VM:     windows11-stop
+  Keys broken in virt-manager on Wayland? This uses GDK_BACKEND=x11.
+  Click console once for focus. Ctrl+Alt = release grab.
 
 EOF
 
@@ -65,4 +102,22 @@ if [[ "${state}" == "shut off" && "${no_start}" -eq 0 ]]; then
   virsh -c "${CONNECT_URI}" start "${DOMAIN}"
 fi
 
+# Prefer a dedicated VNC client when present (better Wayland input).
+url="$(vnc_url || true)"
+if [[ -n "${url}" ]]; then
+  if command -v remote-viewer >/dev/null; then
+    exec remote-viewer -- "${url}"
+  fi
+  if command -v vncviewer >/dev/null; then
+    # tigerVNC / RealVNC style
+    exec vncviewer "${url#vnc://}"
+  fi
+  if command -v gvncviewer >/dev/null; then
+    exec gvncviewer "${url#vnc://}"
+  fi
+fi
+
+# virt-manager GTK-VNC under native Wayland often ignores keyboard.
+# XWayland backend restores key delivery into the guest.
+export GDK_BACKEND=x11
 exec virt-manager --connect "${CONNECT_URI}" --show-domain-console "${DOMAIN}"

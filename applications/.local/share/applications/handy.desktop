@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Handy
+Comment=Offline speech-to-text dictation
+Exec=handy
+Icon=handy
+Type=Application
+Categories=Utility;AudioVideo;
+StartupWMClass=handy

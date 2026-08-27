@@ -10,6 +10,7 @@ source "$(cd "${_here}/../../../../.." && pwd)/windows11/paths.sh"
 source "${GPU_HANDOFF_LIB}"
 
 export DOMAIN="${DOMAIN:-windows11}"
+read_hook_domain_xml
 
 hook_log_begin "windows11 prepare/begin/start.sh" "$@"
 hook_log_attach

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Post-VM host GPU restore. Runs outside the libvirt hook (systemd oneshot)
+# so a Navi 31 amdgpu probe / kernel BUG cannot wedge qemu release.
+#
+# Usage (root): windows11-restore-display
+# Queued automatically by release/end/revert.sh on VM shutdown.
+set -u
+
+export LC_ALL=C
+export LANG=C
+
+if [[ "${EUID}" -ne 0 ]]; then
+  exec sudo -E "$0" "$@"
+fi
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+# shellcheck source=/dev/null
+source "${HOOK_LOG_LIB}"
+# shellcheck source=/dev/null
+source "${GPU_HANDOFF_LIB}"
+
+# Full DRM wait — this is the async post-VM path, not the qemu hook.
+export WINDOWS11_FULL_DRM_WAIT=1
+
+LOG="${WINDOWS11_HOOK_LOG:-/var/log/windows11-passthrough-hook.log}"
+exec >>"${LOG}" 2>&1
+
+hook_log_begin "windows11-restore-display" "$@"
+set -x
+
+echo "STEP: post-VM GPU restore begin"
+log_pci_driver_state
+
+# Still on vfio? Release it (hook should have done this; be idempotent).
+if gpu_on_vfio; then
+  echo "STEP: GPU still on vfio — unbinding"
+  reattach_pci_node "${AUDIO_NODE}" "${AUDIO_PCI}"
+  reattach_pci_node "${GPU_NODE}" "${GPU_PCI}"
+fi
+
+# Power-cycle then load amdgpu. Never do this inside the libvirt hook.
+pci_remove_rescan_gpu || true
+if load_amdgpu_modules; then
+  echo "STEP: amdgpu + DRM ok"
+else
+  echo "WARN: amdgpu restore failed — cold reboot may be required" >&2
+fi
+
+echo "STEP: bind_vtconsoles 1"
+bind_vtconsoles 1
+echo "STEP: bind_efi_framebuffer bind"
+bind_efi_framebuffer bind
+
+settle_console_input
+start_ly_units
+safe_chvt 1 || true
+
+if drm_ready; then
+  echo "STEP: post-VM restore complete (DRM up)"
+else
+  echo "WARN: post-VM restore finished without /dev/dri — power-off cold boot needed" >&2
+fi

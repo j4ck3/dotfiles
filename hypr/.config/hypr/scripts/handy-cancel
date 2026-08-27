@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Esc: cancel Handy recording/transcription; hide overlay.
+set -uo pipefail
+
+readonly CANCEL_FLAG="${XDG_RUNTIME_DIR:-/tmp}/handy-cancel.flag"
+readonly STATUS="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/scripts/dictation-status.sh"
+readonly QS_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+status_json() {
+  bash "$STATUS" 2>/dev/null || echo '{}'
+}
+
+active() {
+  local st
+  st=$(status_json)
+  echo "$st" | rg -q 'REC|TX'
+}
+
+qs_cancel_ipc() {
+  qs ipc -p "$QS_CFG" call shell cancelDictation 2>/dev/null \
+    || qs ipc call shell cancelDictation 2>/dev/null \
+    || true
+}
+
+if ! active; then
+  exit 0
+fi
+
+date +%s >"$CANCEL_FLAG"
+qs_cancel_ipc
+
+pgrep -x handy >/dev/null 2>&1 || exit 0
+handy --cancel 2>/dev/null || true

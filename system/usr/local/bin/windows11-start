@@ -9,6 +9,96 @@ CONNECT_URI="${CONNECT_URI:-qemu:///system}"
 DOMAIN="${DOMAIN:-windows11}"
 assume_yes=0
 
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+DOTFILES_LIBVIRT="${DOTFILES_LIBVIRT:-${WINDOWS11_LIBVIRT_ETC}}"
+
+# ZSA Voyager by-id serial changes on replug. QEMU aborts if a baked evdev
+# path is missing — after the prepare hook already stole the GPU. Refresh
+# live /dev/input/by-id globs BEFORE virsh start.
+refresh_evdev_before_start() {
+  local xml tmp fragment resolve_py
+  fragment="${DOTFILES_LIBVIRT}/windows11-passthrough-evdev.xml"
+  resolve_py="${DOTFILES_LIBVIRT}/resolve-evdev.py"
+  if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q "type='evdev'"; then
+    return 0
+  fi
+  if [[ ! -f "${fragment}" || ! -f "${resolve_py}" ]]; then
+    echo "WARN: evdev fragment/resolver missing; checking baked paths only." >&2
+  fi
+  xml="$(mktemp)"
+  tmp="$(mktemp)"
+  virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" > "${xml}"
+  local rc=0
+  python3 - "${xml}" "${tmp}" "${fragment}" "${resolve_py}" <<'PY' || rc=$?
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+domain_path, out_path, fragment_path, resolve_py = sys.argv[1:5]
+tree = ET.parse(domain_path)
+devices = tree.getroot().find("devices")
+if devices is None:
+    sys.exit("no <devices> in domain XML")
+
+changed = False
+skipped = []
+if os.path.isfile(resolve_py) and os.path.isfile(fragment_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("resolve_evdev", resolve_py)
+    resolve = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(resolve)
+    for inp in list(devices.findall("input")):
+        if inp.get("type") == "evdev":
+            devices.remove(inp)
+            changed = True
+    merged, skipped = resolve.merge_evdev_inputs(devices, fragment_path)
+    changed = changed or merged
+else:
+    for inp in list(devices.findall("input")):
+        if inp.get("type") != "evdev":
+            continue
+        source = inp.find("source")
+        dev = source.get("dev") if source is not None else None
+        if not dev or not os.path.exists(dev):
+            devices.remove(inp)
+            changed = True
+            skipped.append(dev or "<missing source>")
+
+remaining = [
+    (inp.find("source").get("dev") if inp.find("source") is not None else None)
+    for inp in devices.findall("input")
+    if inp.get("type") == "evdev"
+]
+if not remaining:
+    print("No live evdev keyboards resolved. Plug Voyager/Keychron, then retry.", file=sys.stderr)
+    sys.exit(1)
+if skipped:
+    print("Skipped missing evdev devices:", file=sys.stderr)
+    for dev in skipped:
+        print(f"  {dev}", file=sys.stderr)
+print("Evdev devices:")
+for dev in remaining:
+    print(f"  {dev}")
+tree.write(out_path, encoding="unicode", xml_declaration=True)
+sys.exit(0 if changed else 2)
+PY
+  if [[ "${rc}" -eq 1 ]]; then
+    rm -f "${xml}" "${tmp}"
+    echo "Refusing to start: missing evdev would kill QEMU after GPU handoff." >&2
+    return 1
+  fi
+  if [[ "${rc}" -eq 0 ]]; then
+    echo "Updating ${DOMAIN} evdev paths (by-id serial changed)."
+    if ! virsh -c "${CONNECT_URI}" define "${tmp}"; then
+      rm -f "${xml}" "${tmp}"
+      echo "virsh define failed while refreshing evdev." >&2
+      return 1
+    fi
+  fi
+  rm -f "${xml}" "${tmp}"
+}
+
 host_ip() {
   ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1
 }
@@ -101,6 +191,7 @@ if ! virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" | grep -q 'rx7900xtx\.rom'; t
 fi
 require_vfio_available
 require_iommu
+refresh_evdev_before_start
 
 ip_addr="$(host_ip || true)"
 user="$(id -un)"
@@ -110,8 +201,8 @@ cat <<EOF
 === Passthrough start checklist ===
   Monitor:     cable on RX 7900 only (Intel/iGPU will stay black — not Windows)
   BIOS:        IOMMU/VT-d + Above 4G on
-  Recovery:    ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'windows11-force-stop'
-                 (if display broken after stop) ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'sudo windows11-revert-host'
+  Recovery:    ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'DOMAIN=${DOMAIN} windows11-force-stop'
+                 (if display broken) ssh ${user}@${ip_addr:-YOUR_HOST_IP} 'sudo DOMAIN=${DOMAIN} windows11-revert-host'
 EOF
 
 if systemctl is-active --quiet sshd 2>/dev/null; then
@@ -133,9 +224,42 @@ if [[ "${assume_yes}" -eq 0 ]]; then
   fi
 fi
 
+# Prepare hook kills Hyprland. If this script runs inside that session, SIGHUP
+# aborts virsh start mid-flight and leaves the GPU on vfio. Detach first.
+start_log="${XDG_RUNTIME_DIR:-/tmp}/windows11-${DOMAIN}-start.log"
+if [[ "${WINDOWS11_START_DETACHED:-0}" != "1" ]] \
+  && { [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -n "${DISPLAY:-}" ]]; }; then
+  echo ""
+  echo "Graphical session detected — prepare hook will kill Hyprland."
+  echo "Detaching start to background so a dying terminal cannot abort it."
+  echo "  Log:      ${start_log}"
+  if [[ "${DOMAIN}" == "windows11-stealth" ]]; then
+    echo "  Recovery: ssh ${user}@${ip_addr:-HOST} windows11-stealth-force-stop"
+  else
+    echo "  Recovery: ssh ${user}@${ip_addr:-HOST} windows11-force-stop"
+  fi
+  : > "${start_log}"
+  # Pass DOMAIN explicitly. Brief sleep so setsid -f can leave the terminal's
+  # process group before ghostty/xdg-terminal-exec tears the PTY down (race
+  # otherwise leaves an empty log and never starts the VM).
+  nohup setsid -f env WINDOWS11_START_DETACHED=1 DOMAIN="${DOMAIN}" \
+    "$(readlink -f "$0")" --yes </dev/null >>"${start_log}" 2>&1 &
+  echo "Background pid $!. Watch: tail -f ${start_log}"
+  sleep 0.15
+  exit 0
+fi
+
 echo ""
 echo "Starting ${DOMAIN}..."
-virsh -c "${CONNECT_URI}" start "${DOMAIN}"
+if ! virsh -c "${CONNECT_URI}" start "${DOMAIN}"; then
+  echo "virsh start failed — restoring host GPU/display..." >&2
+  if [[ "${DOMAIN}" == "windows11-stealth" ]] && [[ -x /usr/local/bin/windows11-stealth-force-stop ]]; then
+    /usr/local/bin/windows11-stealth-force-stop || true
+  elif [[ -x /usr/local/bin/windows11-force-stop ]]; then
+    DOMAIN="${DOMAIN}" /usr/local/bin/windows11-force-stop || true
+  fi
+  exit 1
+fi
 echo "Started. Windows appears ONLY on the RX 7900 port (not motherboard HDMI)."
 echo "Kernel text on Intel/iGPU during revert is normal (amdgpu overdrive notice)."
 echo "Black on AMD? Run: windows11-passthrough-doctor"

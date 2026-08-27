@@ -52,7 +52,7 @@ Source of truth: `[hypr/.config/hypr/bindings.lua](hypr/.config/hypr/bindings.lu
 | Super+W       | Close window (with confirm script) |
 | Super+F       | Fullscreen                         |
 | Super+←/→/↑/↓ | Move focus                         |
-| Super+T       | Toggle 16:9 group stack            |
+| Super+T       | Apply 16:9 group view              |
 | Super+Space   | Quickshell app launcher            |
 | Super+C       | Quickshell clipboard history       |
 

@@ -31,7 +31,7 @@ Item {
         }
 
         margins {
-            top: Theme.barHeight + Theme.widgetTopGap
+            top: Theme.popupTopInset + Theme.widgetTopGap
             right: Globals.notifRightMargin
         }
 

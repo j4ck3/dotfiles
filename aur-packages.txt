@@ -10,6 +10,7 @@ python-hyprland-monitors
 python-hyprland-schema
 python-hyprland-socket
 python-hyprland-state
+python-msal
 
 cursor-bin
 t3code-bin
@@ -17,5 +18,6 @@ t3code-bin
 netbird-bin
 
 lmstudio-bin
+handy-bin
 topgrade-bin
 brave-origin-nightly-bin

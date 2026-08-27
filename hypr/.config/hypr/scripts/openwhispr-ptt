@@ -1,0 +1,80 @@
+#!/bin/bash
+# Cancel OpenWhispr dictation (Esc). Hides overlay + aborts REC/TX.
+# Toggle is a plain Hypr dbus-send bind (Super+V) — not this script.
+
+set -uo pipefail
+
+readonly LOG="${OPENWHISPR_LOG:-/tmp/openwhispr.log}"
+readonly TX_STAMP="/tmp/openwhispr-tx.stamp"
+readonly CANCEL_FLAG="${XDG_RUNTIME_DIR:-/tmp}/openwhispr-cancel.flag"
+readonly STATUS="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/scripts/dictation-status.sh"
+readonly QS_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
+
+[[ "${1:-}" == "cancel" ]] || { echo "usage: $0 cancel" >&2; exit 1; }
+
+status_json() {
+    bash "$STATUS" 2>/dev/null || echo '{}'
+}
+
+phase_from_status() {
+    local st
+    st=$(status_json)
+    if echo "$st" | rg -q 'REC'; then
+        echo rec
+    elif echo "$st" | rg -q 'TX'; then
+        echo tx
+    else
+        echo idle
+    fi
+}
+
+toggle() {
+    dbus-send --session --type=method_call \
+        --dest=com.openwhispr.App /com/openwhispr/App \
+        com.openwhispr.App.Toggle 2>/dev/null || true
+}
+
+dbus_up() {
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+        /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+        string:com.openwhispr.App 2>/dev/null \
+        | rg -q 'boolean true'
+}
+
+qs_cancel_ipc() {
+    qs ipc -p "$QS_CFG" call shell cancelDictation 2>/dev/null \
+        || qs ipc call shell cancelDictation 2>/dev/null \
+        || true
+}
+
+mark_cancelled() {
+    date +%s >"$CANCEL_FLAG"
+    rm -f "$TX_STAMP"
+}
+
+ph=$(phase_from_status)
+# Idle → no-op (non_consuming Esc reaches apps)
+if [[ "$ph" != "rec" && "$ph" != "tx" ]]; then
+    exit 0
+fi
+
+qs_cancel_ipc
+mark_cancelled
+
+dbus_up || exit 0
+
+if [[ "$ph" == "rec" ]]; then
+    # OW registers Escape as cancelRecording while recording
+    if command -v ydotool >/dev/null 2>&1; then
+        ydotool key 1:1 1:0 2>/dev/null || true
+    fi
+    sleep 0.2
+    if [[ "$(phase_from_status)" == "rec" ]]; then
+        toggle
+        mark_cancelled
+    fi
+else
+    pkill -x whisper-server-linux-x64-vulkan 2>/dev/null || true
+    pkill -x whisper-server-linux-x64 2>/dev/null || true
+    mark_cancelled
+fi

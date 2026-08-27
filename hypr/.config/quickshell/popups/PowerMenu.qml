@@ -20,7 +20,8 @@ PanelWindow {
     }
 
     margins {
-        top: Theme.barHeight
+        top: Theme.popupTopInset
+        left: Theme.popupLeftInset
     }
 
     WlrLayershell.namespace: "qs-power"
@@ -46,6 +47,19 @@ PanelWindow {
     property int fanRpm: 0
     // Optimistic duty while CoolerControl catches up (-1 = trust polls).
     property int fanPendingDuty: -1
+    property bool otpOk: false
+    property bool otpWatching: false
+    property string otpCode: ""
+    property string otpFrom: ""
+    property string otpError: ""
+    property int otpArmedLeft: 0
+    property bool otpHasChip: false
+    property bool cursorOk: false
+    property bool cursorNeedLogin: false
+    property bool cursorStale: false
+    property string cursorDisplay: "--"
+    property string cursorUpdated: ""
+    property string cursorError: ""
     property int sliderDragCount: 0
     readonly property bool sliderDragging: sliderDragCount > 0
     property bool cardHovering: false
@@ -91,6 +105,68 @@ PanelWindow {
         if (!lightSlider.pressed && !hueWheel.pressed)
             haStatusProc.running = true
         fanStatusProc.running = true
+        otpStatusProc.running = true
+        cursorStatusProc.running = true
+    }
+
+    function applyOtpStatus(data: var): void {
+        root.otpOk = data.ok !== false
+        root.otpWatching = !!data.watching || data.mode === "armed"
+        root.otpCode = data.code || ""
+        root.otpFrom = data["from"] || ""
+        root.otpError = data.error || ""
+        root.otpArmedLeft = data.armed_left ?? 0
+        root.otpHasChip = !!data.has_chip
+    }
+
+    function applyCursorStatus(data: var): void {
+        root.cursorOk = !!data.ok
+        root.cursorNeedLogin = !!data.need_login
+        root.cursorStale = !!data.stale
+        root.cursorDisplay = data.display || "--"
+        root.cursorUpdated = data.updated || ""
+        root.cursorError = data.error || ""
+    }
+
+    function openCursorUsage(): void {
+        root.run([Globals.scriptsDir + "/cursor-usage.sh", "login"])
+    }
+
+    function refreshCursorUsage(): void {
+        Quickshell.execDetached([Globals.scriptsDir + "/cursor-usage.sh", "fetch"])
+        statusRefreshTimer.restart()
+    }
+
+    readonly property string cursorSubtitle: {
+        if (root.cursorNeedLogin)
+            return root.cursorError.length > 0 ? root.cursorError : "Log in via Helium"
+        const bits = []
+        if (root.cursorUpdated.length > 0)
+            bits.push(root.cursorUpdated)
+        if (root.cursorStale)
+            bits.push("stale")
+        if (root.cursorError.length > 0 && !root.cursorOk)
+            bits.push(root.cursorError)
+        return bits.length ? bits.join(" · ") : "—"
+    }
+
+    function toggleOtpWatch(): void {
+        Quickshell.execDetached([Globals.scriptsDir + "/otp-watch.sh", "toggle"])
+        statusRefreshTimer.restart()
+    }
+
+    readonly property string otpSubtitle: {
+        if (root.otpError.length > 0 && !root.otpWatching)
+            return root.otpError
+        if (root.otpWatching) {
+            const left = root.otpArmedLeft > 0 ? (" · " + root.otpArmedLeft + "s") : ""
+            return "Watching · 2s" + left
+        }
+        if (root.otpHasChip && root.otpCode.length > 0)
+            return "Last: " + root.otpCode
+        if (!root.otpOk && root.otpError.length > 0)
+            return root.otpError
+        return "Idle"
     }
 
     function flushControl(): void {
@@ -363,6 +439,30 @@ PanelWindow {
         }
     }
 
+    Process {
+        id: otpStatusProc
+        command: [Globals.scriptsDir + "/otp-watch.sh", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.applyOtpStatus(JSON.parse(text.trim()))
+                } catch (e) {}
+            }
+        }
+    }
+
+    Process {
+        id: cursorStatusProc
+        command: [Globals.scriptsDir + "/cursor-usage.sh", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.applyCursorStatus(JSON.parse(text.trim()))
+                } catch (e) {}
+            }
+        }
+    }
+
     Timer {
         id: statusRefreshTimer
         interval: 120
@@ -380,6 +480,7 @@ PanelWindow {
     onVisibleChanged: {
         if (visible) {
             shutDownArmed = false
+            Quickshell.execDetached([Globals.scriptsDir + "/cursor-usage.sh", "fetch"])
             root.refreshStatus()
             card.playIn()
         } else {
@@ -399,7 +500,9 @@ PanelWindow {
         title: "Power"
         cardWidth: 300
         topMargin: Theme.widgetTopGap
+        bottomMargin: Theme.widgetTopGap
         rightMargin: Globals.powerPopupRightMargin
+        fromBottom: Theme.barVertical
         animateIn: true
         onClosed: Globals.powerOpen = false
         onCardHover: inside => {
@@ -734,6 +837,90 @@ PanelWindow {
         }
 
         M3Section {
+            title: "CURSOR"
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                M3IconButton {
+                    icon: "󰊭"
+                    active: root.cursorOk
+                    onClicked: root.openCursorUsage()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: root.cursorNeedLogin ? "Cursor" : ("Cursor · " + root.cursorDisplay)
+                        color: "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.cursorSubtitle
+                        color: (root.cursorNeedLogin || root.cursorStale)
+                            ? "#ffb4a8"
+                            : Qt.rgba(1, 1, 1, 0.55)
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                M3IconButton {
+                    icon: "󰑐"
+                    active: false
+                    onClicked: root.refreshCursorUsage()
+                }
+            }
+        }
+
+        M3Section {
+            title: "OTP"
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                M3IconButton {
+                    icon: root.otpWatching ? "󰍡" : "󰇮"
+                    active: root.otpWatching
+                    onClicked: root.toggleOtpWatch()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: root.otpWatching ? "Watching…" : "OTP Watch"
+                        color: "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.otpSubtitle
+                        color: Qt.rgba(1, 1, 1, 0.55)
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+            }
+        }
+
+        M3Section {
             title: "VIRTUAL MACHINES"
 
             M3IconButton {
@@ -741,7 +928,8 @@ PanelWindow {
                 wide: true
                 icon: "󰖳"
                 label: "Windows 11"
-                onClicked: root.run(["xdg-terminal-exec", "--", "windows11-start", "--yes"])
+                // Direct exec — xdg-terminal-exec + setsid race kills start when PTY closes.
+                onClicked: root.run(["/usr/local/bin/windows11-start", "--yes"])
             }
 
             M3IconButton {
@@ -749,7 +937,7 @@ PanelWindow {
                 wide: true
                 icon: "󰖳"
                 label: "Windows 11 Stealth"
-                onClicked: root.run(["xdg-terminal-exec", "--", "windows11-stealth-start", "--yes"])
+                onClicked: root.run(["/usr/local/bin/windows11-stealth-start", "--yes"])
             }
         }
 

@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# VNC/QXL console for windows11-stealth — host keeps GPU + Hyprland.
+set -euo pipefail
+
+export DOMAIN="${DOMAIN:-windows11-stealth}"
+export CONNECT_URI="${CONNECT_URI:-qemu:///system}"
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../etc/libvirt/windows11" && pwd)/paths.sh"
+
+if virsh -c "${CONNECT_URI}" dumpxml "${DOMAIN}" 2>/dev/null | awk '
+  /<hostdev / { in_hostdev=1; in_source=0 }
+  in_hostdev && /<source>/ { in_source=1 }
+  in_hostdev && /<\/source>/ { in_source=0 }
+  in_hostdev && /type=.pci./ { pci=1 }
+  in_source && pci && /bus=.0x03. slot=.0x00. function=.0x0./ { found=1 }
+  /<\/hostdev>/ { in_hostdev=0; pci=0; in_source=0 }
+  END { exit !found }
+'; then
+  echo "GPU passthrough still in ${DOMAIN} XML — would kill host display." >&2
+  echo "Run: sudo DOMAIN=${DOMAIN} windows11-mode console" >&2
+  echo "  (or without sudo if you are in the libvirt group)" >&2
+  exit 1
+fi
+
+if [[ -e "${ENABLE_FILE}" ]]; then
+  echo "NOTE: ${ENABLE_FILE} still present — handoff skips because domain has no GPU hostdev." >&2
+fi
+
+exec /usr/local/bin/windows11-console "$@"

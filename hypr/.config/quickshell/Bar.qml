@@ -85,6 +85,8 @@ Item {
             Globals.volumePopupRightMargin = root.popupMarginUnder(volHit, 262)
         if (powerBtn.width > 0)
             Globals.powerPopupRightMargin = root.popupMarginUnder(powerBtn, 300)
+        if (towerHit.width > 0)
+            Globals.towerPopupRightMargin = root.popupMarginUnder(towerHit, 320)
         // Toasts sit at content-strip right edge (same inset as 16:9 window).
         const inset = Math.max(0, Math.round((root.width - contentStrip.width) / 2))
         Globals.notifRightMargin = inset + 14
@@ -668,26 +670,28 @@ Item {
             anchors.bottom: parent.bottom
             spacing: 4
 
-            // OpenWhispr: MIC/REC recording, MIC/TX transcribing, MIC/OFF if dead
+            // OTP chip (armed … or last code)
             Pill {
-                visible: dictation.visible
+                visible: otpChip.visible
                 Layout.alignment: Qt.AlignVCenter
-                pillColor: dictation.cssClass === "high"
+                pillColor: otpChip.cssClass === "high"
                     ? Qt.rgba(1, 0.3, 0.3, 0.22)
-                    : dictation.cssClass === "active"
+                    : otpChip.cssClass === "active"
                         ? Qt.rgba(1, 1, 1, 0.16)
                         : Theme.surfaceContainer
 
                 JsonScript {
-                    id: dictation
-                    scriptName: "dictation-status.sh"
-                    intervalMs: 350
+                    id: otpChip
+                    scriptName: "otp-status.sh"
+                    intervalMs: 400
                 }
 
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Quickshell.execDetached(["openwhispr"])
+                    onClicked: Quickshell.execDetached([
+                        Globals.scriptsDir + "/otp-watch.sh", "copy"
+                    ])
                 }
             }
 
@@ -868,6 +872,76 @@ Item {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
+                    }
+                }
+            }
+
+            // Tower — next to power so clock/media cannot cover it
+            Item {
+                id: towerHit
+                Layout.fillHeight: true
+                Layout.minimumWidth: 44
+                implicitWidth: Math.max(44, towerBar.implicitWidth + 8)
+                Layout.preferredWidth: implicitWidth
+                onWidthChanged: Qt.callLater(root.syncPopupAnchors)
+
+                MacStat {
+                    id: towerBar
+                    anchors.centerIn: parent
+                    Layout.fillHeight: false
+                    label: "TOWER"
+                    value: "···"
+                    tooltip: "tower status"
+
+                    Process {
+                        id: towerBarProc
+                        command: [Globals.scriptsDir + "/tower-status.sh"]
+                        stdout: StdioCollector {
+                            onStreamFinished: {
+                                const t = text.trim()
+                                if (!t.length)
+                                    return
+                                try {
+                                    const d = JSON.parse(t)
+                                    towerBar.value = d.ok ? (d.status || "online") : "--"
+                                    towerBar.tooltip = d.tooltip || "tower status"
+                                    towerBar.alert = !d.ok || d.class === "high"
+                                        || (d.alarms_crit || 0) > 0
+                                } catch (e) {
+                                    towerBar.value = "--"
+                                    towerBar.tooltip = "tower parse error"
+                                    towerBar.alert = true
+                                }
+                            }
+                        }
+                    }
+
+                    Timer {
+                        interval: 5000
+                        running: true
+                        repeat: true
+                        triggeredOnStart: true
+                        onTriggered: towerBarProc.running = true
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        root.syncPopupAnchors()
+                        Globals.setTowerHover(true)
+                    }
+                    onExited: Globals.setTowerHover(false)
+                    onClicked: mouse => {
+                        if (mouse.button === Qt.RightButton) {
+                            Quickshell.execDetached(["xdg-open", "https://netdata.hjacke.com"])
+                            return
+                        }
+                        root.syncPopupAnchors()
+                        Globals.toggleTower()
                     }
                 }
             }

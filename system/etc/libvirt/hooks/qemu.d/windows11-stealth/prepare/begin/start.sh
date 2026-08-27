@@ -10,6 +10,8 @@ source "$(cd "${_here}/../../../../.." && pwd)/windows11/paths.sh"
 source "${GPU_HANDOFF_LIB}"
 
 export DOMAIN="windows11-stealth"
+# Libvirt pipes domain XML on stdin. Must not `cat` on a TTY (hangs forever).
+read_hook_domain_xml
 
 hook_log_begin "windows11-stealth prepare/begin/start.sh" "$@"
 hook_log_attach

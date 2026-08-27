@@ -1,0 +1,6 @@
+[D-BUS Service]
+Name=org.freedesktop.Notifications
+# Prefer Quickshell NotificationServer (claims name at runtime).
+# Point activation at masked xfce4-notifyd so XFCE cannot steal the bus.
+# Do NOT use Exec=/bin/false — that breaks notify-send when QS is down mid-restart.
+SystemdService=xfce4-notifyd.service

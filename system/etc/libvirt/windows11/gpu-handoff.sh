@@ -28,18 +28,109 @@ SKIP_EFI_FB="${SKIP_EFI_FB:-0}"
 UNLOAD_AMGPU="${UNLOAD_AMGPU:-1}"
 # Max seconds to wait for compositor processes after stopping the display manager.
 DISPLAY_STOP_TIMEOUT="${DISPLAY_STOP_TIMEOUT:-12}"
-AUTO_RESTORE_HYPRLAND="${AUTO_RESTORE_HYPRLAND:-1}"
+AUTO_RESTORE_HYPRLAND="${AUTO_RESTORE_HYPRLAND:-0}"
+HOOK_DRM_WAIT_SECONDS="${HOOK_DRM_WAIT_SECONDS:-20}"
+PCI_REMOVE_RESCAN="${PCI_REMOVE_RESCAN:-1}"
+REATTACH_SETTLE="${REATTACH_SETTLE:-5}"
+AMDGPU_LOAD_RETRIES="${AMDGPU_LOAD_RETRIES:-2}"
 
 if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
   DISPLAY_MANAGER_UNITS=("${DISPLAY_MANAGER:-display-manager.service}")
 fi
 
 if ! declare -p USB_HID_IDS >/dev/null 2>&1; then
-  USB_HID_IDS=(1532:007a 3434:0108 1532:007b 361d:0100)
+  USB_HID_IDS=(1532:007a 3434:0108 1532:007b 361d:0100 041e:324d)
 fi
 
 passthrough_enabled() {
   [[ -e "${ENABLE_FILE}" ]]
+}
+
+# Read libvirt domain XML from hook stdin without hanging on a TTY.
+# Libvirt pipes XML on stdin. Manual runs (force-stop / revert-host) are on a
+# TTY — bare `cat` waits forever for keyboard input (force-stop looked hung).
+read_hook_domain_xml() {
+  if [[ -n "${DOMAIN_XML:-}" ]]; then
+    export DOMAIN_XML
+    return 0
+  fi
+  if [[ -n "${DOMAIN_XML_FILE:-}" && -f "${DOMAIN_XML_FILE}" ]]; then
+    DOMAIN_XML="$(< "${DOMAIN_XML_FILE}")"
+    export DOMAIN_XML
+    return 0
+  fi
+  if [[ -t 0 ]]; then
+    DOMAIN_XML="$(timeout 5 virsh dumpxml "${DOMAIN}" 2>/dev/null || true)"
+  else
+    DOMAIN_XML="$(cat || true)"
+  fi
+  export DOMAIN_XML
+}
+
+# True when this domain XML assigns the host AMD GPU (source BDF, not guest addr).
+# Prefer DOMAIN_XML from libvirt hook stdin — NEVER virsh dumpxml during prepare/start
+# (that deadlocks: start holds domain lock → dumpxml waits → hook never finishes).
+domain_has_gpu_hostdev() {
+  local xml="${DOMAIN_XML:-}"
+  if [[ -z "${xml}" ]]; then
+    if [[ -n "${DOMAIN_XML_FILE:-}" && -f "${DOMAIN_XML_FILE}" ]]; then
+      xml="$(< "${DOMAIN_XML_FILE}")"
+    else
+      # Safe only outside an in-flight domain start/stop hook.
+      xml="$(timeout 5 virsh dumpxml "${DOMAIN}" 2>/dev/null)" || return 1
+    fi
+  fi
+  # Match host BDF inside <hostdev><source> only (not guest <address>).
+  DOMAIN_XML_PROBE="${xml}" python3 <<'PY'
+import os, re, sys
+text = os.environ.get("DOMAIN_XML_PROBE", "")
+for hostdev in re.findall(r"<hostdev\b[^>]*>.*?</hostdev>", text, flags=re.S | re.I):
+    if not re.search(r'type\s*=\s*["\']pci["\']', hostdev, re.I):
+        continue
+    src = re.search(r"<source>(.*?)</source>", hostdev, flags=re.S | re.I)
+    if not src:
+        continue
+    body = src.group(1)
+    if (
+        re.search(r'bus\s*=\s*["\']0x03["\']', body, re.I)
+        and re.search(r'slot\s*=\s*["\']0x00["\']', body, re.I)
+        and re.search(r'function\s*=\s*["\']0x0["\']', body, re.I)
+    ):
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+gpu_on_vfio() {
+  [[ "$(pci_bound_driver "${GPU_PCI}")" == "vfio-pci" ]]
+}
+
+safe_chvt() {
+  if timeout 2 chvt "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "WARN: chvt $1 timed out" >&2
+  return 1
+}
+
+wait_for_drm() {
+  local max="${1:-${DRM_WAIT_SECONDS:-120}}" i
+  for ((i = 1; i <= max; i++)); do
+    if compgen -G '/dev/dri/card*' >/dev/null; then
+      echo "STEP: DRM ready ($(echo /dev/dri/card*)) after ${i}s"
+      return 0
+    fi
+    if (( i % 10 == 0 )); then
+      echo "STEP: waiting for /dev/dri (${i}/${max}s) gpu=$(pci_bound_driver "${GPU_PCI}")"
+    fi
+    sleep 1
+  done
+  echo "WARN: no /dev/dri/card* after ${max}s (gpu=$(pci_bound_driver "${GPU_PCI}"))" >&2
+  return 1
+}
+
+drm_ready() {
+  compgen -G '/dev/dri/card*' >/dev/null
 }
 
 bind_vtconsoles() {
@@ -48,10 +139,10 @@ bind_vtconsoles() {
   for vt in /sys/class/vtconsole/vtcon*/bind; do
     vt_dir="${vt%/bind}"
     name="$(cat "${vt_dir}/name" 2>/dev/null || true)"
-    # Unbinding the DRM frame buffer vtcon while amdgpu is loaded can block
-    # forever in kernel D-state; amdgpu unload releases it instead.
-    if [[ "${value}" == "0" && "${name}" == *"frame buffer"* ]]; then
-      echo "STEP: skip vtcon unbind for ${name} (release via amdgpu unload)"
+    # DRM framebuffer vtcon bind/unbind after VFIO often wedges in D-state;
+    # amdgpu (un)load owns that console. Dummy vtcon is enough.
+    if [[ "${name}" == *"frame buffer"* ]]; then
+      echo "STEP: skip vtcon ${value} for ${name}"
       continue
     fi
     if command -v timeout >/dev/null; then
@@ -128,7 +219,10 @@ stop_display_stack() {
   echo "STEP: stop Hyprland session (${CONSOLE_USER})"
 
   if pgrep -x Hyprland >/dev/null; then
-    if hyprctl_as_user dispatch exit; then
+    # Hyprland ≥0.56: Lua dispatcher. Fall back to legacy + loginctl.
+    if hyprctl_as_user dispatch 'hl.dsp.exit()' 2>/dev/null; then
+      echo "STEP: hyprctl dispatch hl.dsp.exit()"
+    elif hyprctl_as_user dispatch exit 2>/dev/null; then
       echo "STEP: hyprctl dispatch exit"
     else
       echo "STEP: hyprctl skipped (no socket); continuing with loginctl + display manager" >&2
@@ -173,37 +267,106 @@ start_ly_units() {
   local unit
   for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
     [[ -n "${unit}" ]] || continue
-    echo "STEP: start ${unit} (ly login fallback)"
-    systemctl start "${unit}" 2>/dev/null || true
-    break
+    echo "STEP: restart ${unit} (login manager)"
+    timeout 15 systemctl restart "${unit}" 2>/dev/null || \
+      echo "WARN: ${unit} failed to start" >&2
   done
-  chvt 1 2>/dev/null || true
+  safe_chvt 1
+}
+
+# Survives libvirt killing the qemu hook. Full GPU restore + ly live here —
+# never modprobe amdgpu inside release/end (Navi 31 BUG wedges the hook).
+queue_host_gpu_restore() {
+  local unit="windows11-restore-display.service"
+  local bin="${DOTFILES_SYSTEM}/usr/local/bin/windows11-restore-display"
+  [[ -x "${bin}" ]] || bin="/usr/local/bin/windows11-restore-display"
+  if [[ ! -x "${bin}" ]]; then
+    echo "ERROR: windows11-restore-display missing (${bin})" >&2
+    return 1
+  fi
+  systemctl reset-failed "${unit}" 2>/dev/null || true
+  systemctl stop "${unit}" 2>/dev/null || true
+  echo "STEP: queue ${unit} → ${bin}"
+  # Oneshot outlives qemu hook. --no-block so release/end returns immediately.
+  systemd-run --unit="${unit}" --collect --no-block \
+    --description="After VFIO: PCI rescan + amdgpu + ly" \
+    "${bin}" >/dev/null \
+    || echo "WARN: systemd-run ${unit} failed" >&2
+}
+
+# Back-compat name used by older comments / manual calls.
+queue_ly_after_drm() {
+  queue_host_gpu_restore
+}
+
+start_hyprland_as_user() {
+  local uid="$1" runtime="$2" home="$3" log="$4" unit="windows11-restore-hyprland.service"
+  local dbus_addr="unix:path=${runtime}/bus"
+
+  if [[ ! -x /usr/bin/start-hyprland ]]; then
+    echo "WARN: /usr/bin/start-hyprland missing" >&2
+    return 1
+  fi
+
+  # systemd --user unit outlives the libvirt hook. uwsm from the hook never
+  # gets a seat/VT, so start-hyprland is the compositor launcher.
+  if command -v systemd-run >/dev/null; then
+    echo "STEP: systemd-run --user start-hyprland"
+    systemctl --user --machine="${CONSOLE_USER}@" reset-failed "${unit}" 2>/dev/null || true
+    systemctl --user --machine="${CONSOLE_USER}@" stop "${unit}" 2>/dev/null || true
+    if systemd-run --quiet --machine="${CONSOLE_USER}@" --user \
+      --unit="${unit}" --collect \
+      --setenv=XDG_RUNTIME_DIR="${runtime}" \
+      --setenv=HOME="${home}" \
+      --setenv=XDG_VTNR=1 \
+      --setenv=XDG_SEAT=seat0 \
+      --setenv=XDG_SESSION_TYPE=wayland \
+      --setenv=XDG_CURRENT_DESKTOP=Hyprland \
+      --setenv=DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
+      /usr/bin/start-hyprland; then
+      return 0
+    fi
+    echo "WARN: systemd-run start-hyprland failed; trying runuser" >&2
+  fi
+
+  echo "STEP: runuser start-hyprland"
+  nohup runuser -u "${CONSOLE_USER}" -- env \
+    XDG_RUNTIME_DIR="${runtime}" \
+    HOME="${home}" \
+    XDG_VTNR=1 \
+    XDG_SEAT=seat0 \
+    XDG_SESSION_TYPE=wayland \
+    XDG_CURRENT_DESKTOP=Hyprland \
+    DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
+    /usr/bin/start-hyprland \
+    </dev/null >>"${log}" 2>&1 &
 }
 
 restore_hyprland_session() {
-  [[ "${AUTO_RESTORE_HYPRLAND:-1}" == "1" ]] || return 1
+  [[ "${AUTO_RESTORE_HYPRLAND:-0}" == "1" ]] || return 1
   if pgrep -x Hyprland >/dev/null; then
     echo "STEP: Hyprland already running"
-    chvt 1 2>/dev/null || true
+    safe_chvt 1
     return 0
   fi
 
-  local unit uid runtime log dbus_addr home
+  wait_for_drm || return 1
+
+  local unit uid runtime log home
   log="${WINDOWS11_HOOK_LOG:-/var/log/windows11-passthrough-hook.log}"
   echo "STEP: restore Hyprland session (${CONSOLE_USER})"
   for unit in "${DISPLAY_MANAGER_UNITS[@]}"; do
     [[ -n "${unit}" ]] || continue
-    systemctl stop "${unit}" 2>/dev/null || true
+    timeout 8 systemctl stop "${unit}" 2>/dev/null || true
   done
-  sleep 1
-  chvt 1 2>/dev/null || true
+  safe_chvt 1
 
   uid="$(id -u "${CONSOLE_USER}" 2>/dev/null)" || return 1
   runtime="/run/user/${uid}"
   if [[ ! -d "${runtime}" ]]; then
     loginctl enable-linger "${CONSOLE_USER}" 2>/dev/null || true
-    systemctl start "user@${uid}.service" 2>/dev/null || true
-    sleep 2
+    timeout 8 systemctl start "user@${uid}.service" 2>/dev/null || true
+    sleep 1
   fi
   [[ -d "${runtime}" ]] || {
     echo "WARN: missing ${runtime}; cannot start Hyprland" >&2
@@ -211,54 +374,13 @@ restore_hyprland_session() {
   }
 
   home="$(getent passwd "${CONSOLE_USER}" | cut -d: -f6)"
-  dbus_addr="unix:path=${runtime}/bus"
-  if [[ ! -S "${runtime}/bus" ]]; then
-    echo "STEP: dbus-run-session (no user bus yet)"
-    dbus_addr=""
-  fi
-
-  if command -v uwsm >/dev/null; then
-    echo "STEP: uwsm start hyprland.desktop"
-    if [[ -n "${dbus_addr}" ]]; then
-      nohup runuser -u "${CONSOLE_USER}" -- env \
-        XDG_RUNTIME_DIR="${runtime}" \
-        HOME="${home}" \
-        DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
-        uwsm start -D Hyprland hyprland.desktop \
-        </dev/null >>"${log}" 2>&1 &
-    else
-      nohup runuser -u "${CONSOLE_USER}" -- env \
-        XDG_RUNTIME_DIR="${runtime}" \
-        HOME="${home}" \
-        dbus-run-session -- uwsm start -D Hyprland hyprland.desktop \
-        </dev/null >>"${log}" 2>&1 &
-    fi
-  elif [[ -x /usr/bin/start-hyprland ]]; then
-    echo "STEP: start-hyprland"
-    if [[ -n "${dbus_addr}" ]]; then
-      nohup runuser -u "${CONSOLE_USER}" -- env \
-        XDG_RUNTIME_DIR="${runtime}" \
-        HOME="${home}" \
-        DBUS_SESSION_BUS_ADDRESS="${dbus_addr}" \
-        /usr/bin/start-hyprland \
-        </dev/null >>"${log}" 2>&1 &
-    else
-      nohup runuser -u "${CONSOLE_USER}" -- env \
-        XDG_RUNTIME_DIR="${runtime}" \
-        HOME="${home}" \
-        dbus-run-session -- /usr/bin/start-hyprland \
-        </dev/null >>"${log}" 2>&1 &
-    fi
-  else
-    echo "WARN: uwsm/start-hyprland missing; falling back to ly" >&2
-    return 1
-  fi
+  start_hyprland_as_user "${uid}" "${runtime}" "${home}" "${log}" || return 1
 
   local i
   for ((i = 1; i <= 60; i++)); do
     if pgrep -x Hyprland >/dev/null; then
       echo "STEP: Hyprland running after restore"
-      chvt 1 2>/dev/null || true
+      safe_chvt 1
       return 0
     fi
     sleep 0.5
@@ -268,12 +390,14 @@ restore_hyprland_session() {
 }
 
 start_display_stack() {
-  if restore_hyprland_session; then
-    settle_console_input
-    return 0
-  fi
-  settle_console_input
+  # Always bring ly back. Skipping it after a failed Hyprland restore is what
+  # left a black screen (no login, no compositor) and forced a power-button reboot.
+  echo "STEP: start login manager after VM"
   start_ly_units
+  settle_console_input
+  if [[ "${AUTO_RESTORE_HYPRLAND:-0}" == "1" ]]; then
+    restore_hyprland_session || true
+  fi
 }
 
 pci_sysfs_dir() {
@@ -374,15 +498,118 @@ unload_amdgpu_modules() {
   fi
 }
 
-load_amdgpu_modules() {
-  if [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]]; then
-    echo "STEP: ${GPU_PCI} already on amdgpu"
-    return 0
+pci_reset_device() {
+  local pci="$1" reset_path
+  reset_path="$(pci_sysfs_dir "${pci}")/reset"
+  [[ -f "${reset_path}" ]] || return 0
+  echo "STEP: PCI FLR reset ${pci}"
+  if ! echo 1 >"${reset_path}" 2>/dev/null; then
+    echo "WARN: PCI reset failed for ${pci}" >&2
+    return 1
   fi
-  echo "STEP: modprobe amdgpu"
-  timeout 10 modprobe amdgpu 2>/dev/null || true
+  return 0
+}
+
+pci_remove_device() {
+  local pci="$1" remove_path
+  remove_path="$(pci_sysfs_dir "${pci}")/remove"
+  [[ -f "${remove_path}" ]] || return 0
+  echo "STEP: PCI remove ${pci}"
+  echo 1 >"${remove_path}" 2>/dev/null || \
+    echo "WARN: PCI remove failed for ${pci}" >&2
+}
+
+pci_bus_rescan() {
+  echo "STEP: PCI bus rescan"
+  echo 1 >/sys/bus/pci/rescan 2>/dev/null || \
+    echo "WARN: PCI rescan failed" >&2
+  sleep 1
   timeout 5 udevadm settle 2>/dev/null || true
-  bind_pci_to_amdgpu "${GPU_PCI}"
+}
+
+# Power-cycle GPU+audio via sysfs remove/rescan before amdgpu probe.
+# Bare modprobe / udev auto-bind after VFIO hits amdgpu_device_mm_access BUG on Navi 31.
+pci_remove_rescan_gpu() {
+  [[ "${PCI_REMOVE_RESCAN}" == "1" ]] || return 0
+  echo "STEP: PCI remove/rescan GPU path (settle=${REATTACH_SETTLE}s)"
+  unbind_pci_device "${AUDIO_PCI}" 2>/dev/null || true
+  unbind_pci_device "${GPU_PCI}" 2>/dev/null || true
+  # Drop half-loaded amdgpu from a prior BUG so udev cannot re-bind mid-rescan.
+  modprobe -r amdgpu 2>/dev/null || true
+  pci_reset_device "${AUDIO_PCI}" 2>/dev/null || true
+  pci_reset_device "${GPU_PCI}" 2>/dev/null || true
+  pci_remove_device "${AUDIO_PCI}"
+  pci_remove_device "${GPU_PCI}"
+  sleep "${REATTACH_SETTLE}"
+  # Freeze udev so rescan does not race a naked amdgpu probe.
+  udevadm control --stop-exec-queue 2>/dev/null || true
+  pci_bus_rescan
+  # Prefer explicit bind after settle; clear any stale override.
+  if [[ -e "$(pci_sysfs_dir "${GPU_PCI}")/driver_override" ]]; then
+    echo >"$(pci_sysfs_dir "${GPU_PCI}")/driver_override" 2>/dev/null || true
+  fi
+  udevadm control --start-exec-queue 2>/dev/null || true
+  log_pci_driver_state
+}
+
+load_amdgpu_modules() {
+  local attempt max_attempts rc
+  max_attempts="${AMDGPU_LOAD_RETRIES:-2}"
+  echo "STEP: load amdgpu (Navi 31 after VFIO — remove/rescan first; probe can take ~90s)"
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if drm_ready && [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]]; then
+      echo "STEP: DRM already up on attempt ${attempt}"
+      return 0
+    fi
+
+    if [[ "${attempt}" -gt 1 ]]; then
+      pci_remove_rescan_gpu || true
+    elif [[ ! -e "$(pci_sysfs_dir "${GPU_PCI}")" ]]; then
+      echo "STEP: ${GPU_PCI} missing after reattach — rescan"
+      pci_remove_rescan_gpu || true
+    fi
+
+    if [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]] && drm_ready; then
+      echo "STEP: udev already bound amdgpu with DRM"
+      return 0
+    fi
+
+    if ! lsmod | grep -q '^amdgpu '; then
+      echo "STEP: modprobe amdgpu (attempt ${attempt}/${max_attempts})"
+      rc=0
+      modprobe amdgpu || rc=$?
+      if [[ "${rc}" -ne 0 ]]; then
+        echo "WARN: modprobe amdgpu returned ${rc} (139=SIGSEGV/kernel BUG)" >&2
+        # Half-bound driver after BUG is useless — force remove before retry.
+        if [[ -e "$(pci_sysfs_dir "${GPU_PCI}")" ]]; then
+          unbind_pci_device "${GPU_PCI}" 2>/dev/null || true
+        fi
+        modprobe -r amdgpu 2>/dev/null || true
+        continue
+      fi
+    else
+      echo "STEP: amdgpu module already loaded; binding ${GPU_PCI}"
+      bind_pci_to_amdgpu "${GPU_PCI}" || true
+    fi
+
+    timeout 5 udevadm settle 2>/dev/null || true
+    bind_pci_to_amdgpu "${GPU_PCI}" || true
+
+    # Async restore uses full DRM wait; in-hook path stays short.
+    local wait_s="${HOOK_DRM_WAIT_SECONDS:-20}"
+    if [[ "${WINDOWS11_FULL_DRM_WAIT:-0}" == "1" ]]; then
+      wait_s="${DRM_WAIT_SECONDS:-120}"
+    fi
+    if wait_for_drm "${wait_s}"; then
+      return 0
+    fi
+    echo "WARN: DRM not ready after attempt ${attempt}/${max_attempts}" >&2
+  done
+
+  echo "ERROR: amdgpu failed to produce /dev/dri after ${max_attempts} attempts" >&2
+  echo "ERROR: RX 7900 XTX after Windows VFIO often needs a cold reboot (power off)" >&2
+  return 1
 }
 
 load_vfio_modules() {
@@ -402,7 +629,14 @@ unbind_pci_device() {
     return 1
   }
   echo "STEP: sysfs unbind ${pci} from ${driver}"
-  echo "${pci}" > "${unbind_path}"
+  if command -v timeout >/dev/null; then
+    timeout 3 sh -c "echo '${pci}' > '${unbind_path}'" || {
+      echo "WARN: unbind ${pci} from ${driver} timed out" >&2
+      return 1
+    }
+  else
+    echo "${pci}" > "${unbind_path}"
+  fi
 }
 
 register_vfio_pci_id() {
@@ -438,18 +672,44 @@ unbind_pci_from_vfio() {
   unbind_path="/sys/bus/pci/drivers/vfio-pci/unbind"
   [[ -w "${unbind_path}" ]] || return 1
   echo "STEP: sysfs unbind ${pci} from vfio-pci"
-  echo "${pci}" > "${unbind_path}"
+  if command -v timeout >/dev/null; then
+    timeout 3 sh -c "echo '${pci}' > '${unbind_path}'" || {
+      echo "WARN: vfio unbind timed out for ${pci}; continue recovery path" >&2
+      return 1
+    }
+  else
+    echo "${pci}" > "${unbind_path}"
+  fi
+}
+
+unregister_vfio_pci_id() {
+  local pci="$1" vendor device remove_id
+  remove_id="/sys/bus/pci/drivers/vfio-pci/remove_id"
+  [[ -e "$(pci_sysfs_dir "${pci}")/vendor" ]] || return 0
+  [[ -w "${remove_id}" ]] || return 0
+  vendor="$(< "$(pci_sysfs_dir "${pci}")/vendor")"
+  device="$(< "$(pci_sysfs_dir "${pci}")/device")"
+  vendor="${vendor#0x}"
+  device="${device#0x}"
+  echo "STEP: vfio-pci remove_id ${vendor} ${device} (${pci})"
+  echo "${vendor} ${device}" > "${remove_id}" 2>/dev/null || true
 }
 
 bind_pci_to_amdgpu() {
   local pci="$1"
+  # HDMI audio is snd_hda_intel, never amdgpu.
+  [[ "${pci}" == "${AUDIO_PCI}" ]] && return 0
   if [[ "$(pci_bound_driver "${pci}")" == "amdgpu" ]]; then
     return 0
   fi
   local bind_path="/sys/bus/pci/drivers/amdgpu/bind"
-  [[ -w "${bind_path}" ]] || return 0
+  [[ -w "${bind_path}" ]] || {
+    echo "WARN: amdgpu bind path missing for ${pci}" >&2
+    return 1
+  }
   echo "STEP: sysfs bind ${pci} to amdgpu"
   echo "${pci}" > "${bind_path}" 2>/dev/null || true
+  [[ "$(pci_bound_driver "${pci}")" == "amdgpu" ]]
 }
 
 detach_pci_node() {
@@ -488,14 +748,18 @@ detach_gpu_from_host() {
 reattach_pci_node() {
   local node="$1" pci="$2"
   unbind_pci_from_vfio "${pci}" || true
-  echo "STEP: nodedev-reattach ${node}"
-  virsh nodedev-reattach "${node}" 2>/dev/null || true
-  bind_pci_to_amdgpu "${pci}"
+  unregister_vfio_pci_id "${pci}"
+  # With managed=no we own rebinding. Skip virsh nodedev-reattach — it can
+  # trigger a naked amdgpu probe before PCI remove/rescan.
+  echo "STEP: vfio released ${pci} (node=${node}; host bind deferred)"
 }
 
 reattach_gpu_to_host() {
+  # Hook path: only peel vfio. PCI remove/rescan + amdgpu happen in
+  # windows11-restore-display (async) — never block/bug qemu release.
   reattach_pci_node "${AUDIO_NODE}" "${AUDIO_PCI}"
   reattach_pci_node "${GPU_NODE}" "${GPU_PCI}"
+  log_pci_driver_state
 }
 
 gpu_handoff_prepare_begin() {
@@ -504,11 +768,16 @@ gpu_handoff_prepare_begin() {
     return 0
   }
 
+  if ! domain_has_gpu_hostdev; then
+    echo "Domain ${DOMAIN} has no GPU PCI hostdev — skip display kill / VFIO handoff (VNC/console)."
+    return 0
+  fi
+
   require_iommu || return 1
   load_vfio_modules
 
   stop_display_stack
-  chvt 63 2>/dev/null || chvt 2 2>/dev/null || true
+  safe_chvt 63 || safe_chvt 2 || true
   release_dri_device_users
   echo "STEP: bind_vtconsoles 0"
   bind_vtconsoles 0
@@ -528,14 +797,28 @@ gpu_handoff_release_end() {
     return 0
   fi
 
+  if [[ "${GPU_HANDOFF_FORCE:-0}" == "1" ]]; then
+    if ! gpu_on_vfio && pgrep -x Hyprland >/dev/null && drm_ready; then
+      echo "FORCE: GPU already on host driver and Hyprland up — nothing to do."
+      return 0
+    fi
+    echo "FORCE: restoring host GPU/display (vfio=$(gpu_on_vfio && echo yes || echo no))"
+  elif ! domain_has_gpu_hostdev; then
+    echo "Domain ${DOMAIN} has no GPU PCI hostdev — skip GPU reattach / display restore."
+    return 0
+  fi
+
+  # 1) Peel vfio off GPU (fast, safe).
   reattach_gpu_to_host
-  load_amdgpu_modules
-  echo "STEP: bind_vtconsoles 1"
-  bind_vtconsoles 1
-  echo "STEP: bind_efi_framebuffer bind"
-  bind_efi_framebuffer bind
-  start_display_stack
-  echo "STEP: release/end complete"
+  # 2) Queue durable oneshot: remove/rescan + modprobe amdgpu + ly.
+  #    Do NOT modprobe here — kernel BUG at amdgpu_device_mm_access kills display
+  #    and can stall this hook until libvirt times out → black screen.
+  queue_host_gpu_restore
+  # 3) Bring ly up immediately (text console). Async job restarts it after DRM.
+  settle_console_input
+  start_ly_units
+  safe_chvt 1 || true
+  echo "STEP: release/end complete (GPU restore running async)"
 }
 
 gpu_handoff_rollback() {
@@ -543,10 +826,9 @@ gpu_handoff_rollback() {
   set +e
   echo "ROLLBACK: prepare failed (exit=${exit_code})"
   reattach_gpu_to_host
-  load_amdgpu_modules
-  bind_vtconsoles 1
-  bind_efi_framebuffer bind
-  start_display_stack
-  echo "ROLLBACK: done"
+  queue_host_gpu_restore
+  settle_console_input
+  start_ly_units
+  echo "ROLLBACK: done (GPU restore queued)"
   exit "${exit_code}"
 }

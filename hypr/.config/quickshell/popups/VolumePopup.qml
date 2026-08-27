@@ -22,7 +22,8 @@ PanelWindow {
     }
 
     margins {
-        top: Theme.barHeight
+        top: Theme.popupTopInset
+        left: Theme.popupLeftInset
     }
 
     WlrLayershell.namespace: "qs-volume"
@@ -151,17 +152,25 @@ PanelWindow {
     // ── Liquid-glass card ───────────────────────────────────────
     Item {
         id: card
-        anchors.top: parent.top
-        anchors.right: parent.right
-        anchors.topMargin: Theme.widgetTopGap
-        anchors.rightMargin: Globals.volumePopupRightMargin
+        anchors.top: Theme.barVertical ? undefined : parent.top
+        anchors.bottom: Theme.barVertical ? parent.bottom : undefined
+        anchors.left: Theme.barVertical ? parent.left : undefined
+        anchors.right: Theme.barVertical ? undefined : parent.right
+        anchors.topMargin: Theme.barVertical ? 0 : Theme.widgetTopGap
+        anchors.bottomMargin: Theme.barVertical ? Theme.widgetTopGap : 0
+        anchors.leftMargin: Theme.barVertical ? Globals.volumePopupRightMargin : 0
+        anchors.rightMargin: Theme.barVertical ? 0 : Globals.volumePopupRightMargin
         width: root.cardW
         implicitHeight: inner.implicitHeight + 28
         height: implicitHeight
 
         property real slideY: 0
+        property real slideX: 0
         opacity: 0
-        transform: Translate { y: card.slideY }
+        transform: Translate {
+            x: card.slideX
+            y: card.slideY
+        }
 
         HoverHandler {
             id: cardHover
@@ -181,8 +190,12 @@ PanelWindow {
         ParallelAnimation {
             id: inAnim
             NumberAnimation {
-                target: card; property: "slideY"
-                from: -20; to: 0; duration: 170; easing.type: Easing.OutCubic
+                target: card
+                property: Theme.barVertical ? "slideX" : "slideY"
+                from: -20
+                to: 0
+                duration: 170
+                easing.type: Easing.OutCubic
             }
             NumberAnimation {
                 target: card; property: "opacity"
@@ -561,19 +574,22 @@ PanelWindow {
 
         function playIn(): void {
             inAnim.stop()
-            card.slideY = -20
+            card.slideX = Theme.barVertical ? -20 : 0
+            card.slideY = Theme.barVertical ? 0 : -20
             card.opacity = 0
             inAnim.restart()
         }
 
         function resetOut(): void {
             inAnim.stop()
-            card.slideY = -20
+            card.slideX = Theme.barVertical ? -20 : 0
+            card.slideY = Theme.barVertical ? 0 : -20
             card.opacity = 0
         }
 
         Component.onCompleted: {
-            card.slideY = -20
+            card.slideX = Theme.barVertical ? -20 : 0
+            card.slideY = Theme.barVertical ? 0 : -20
             card.opacity = 0
         }
     }

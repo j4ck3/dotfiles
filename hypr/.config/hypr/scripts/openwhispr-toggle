@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Super+V dictation toggle — ensure OpenWhispr D-Bus is up, then Toggle.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly START="$SCRIPT_DIR/openwhispr-start"
+readonly LOG="${OPENWHISPR_LOG:-/tmp/openwhispr.log}"
+
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+if [[ -z "${DISPLAY:-}" ]]; then
+  export DISPLAY=:0
+fi
+
+# One toggle per keypress — skip if called again within 400ms (Hypr + script double-fire).
+readonly TOGGLE_STAMP="${XDG_RUNTIME_DIR}/openwhispr-toggle.stamp"
+now=$(date +%s%3N 2>/dev/null || date +%s)
+if [[ -f "$TOGGLE_STAMP" ]]; then
+  last=$(cat "$TOGGLE_STAMP" 2>/dev/null) || last=0
+  if (( now - last < 400 )); then
+    exit 0
+  fi
+fi
+echo "$now" >"$TOGGLE_STAMP"
+
+dbus_up() {
+  dbus-send --session --print-reply --dest=org.freedesktop.DBus \
+    /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+    string:com.openwhispr.App 2>/dev/null | rg -q 'boolean true'
+}
+
+ow_process_up() {
+  pgrep -f '/opt/openwhispr/open-whispr( |$)' >/dev/null 2>&1 \
+    || pgrep -x open-whispr-app >/dev/null 2>&1
+}
+
+kill_ow() {
+  pkill -x open-whispr-app 2>/dev/null || true
+  pkill -x open-whispr 2>/dev/null || true
+}
+
+toggle() {
+  dbus-send --session --type=method_call \
+    --dest=com.openwhispr.App /com/openwhispr/App \
+    com.openwhispr.App.Toggle 2>/dev/null
+}
+
+ensure_dbus() {
+  if dbus_up; then
+    return 0
+  fi
+
+  # Zombie: process without D-Bus (common after launcher double-start).
+  if ow_process_up; then
+    echo "===== $(date -Is) openwhispr-toggle: restarting broken instance =====" >>"$LOG"
+    kill_ow
+    sleep 0.5
+  fi
+
+  setsid "$START" >/dev/null 2>&1 &
+
+  for _ in $(seq 1 40); do
+    sleep 0.5
+    dbus_up && return 0
+  done
+  return 1
+}
+
+ensure_dbus || exit 1
+toggle

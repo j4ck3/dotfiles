@@ -1,25 +1,20 @@
 <!--
-  USB devices for passthrough gaming (keyboard/mouse dongles).
-  Do NOT use in console mode — the host loses these devices and you cannot
-  stop the VM from Hyprland.
+  USB devices for passthrough gaming (required when plugged in).
 
-  Merged by: sudo windows11-mode passthrough
+  Only list devices that must be in the guest. Missing vendor/product
+  with default startupPolicy aborts virsh start → release hook → ly login.
+
+  startupPolicy=optional: skip quietly if unplugged (still prefer present).
 -->
 <hostdev mode="subsystem" type="usb" managed="yes">
-  <source>
-    <vendor id="0x1532"/>
-    <product id="0x007a"/>
+  <source startupPolicy="optional">
+    <vendor id="0x361d"/>
+    <product id="0x0100"/>
   </source>
 </hostdev>
 <hostdev mode="subsystem" type="usb" managed="yes">
-  <source>
-    <vendor id="0x3434"/>
-    <product id="0x0108"/>
-  </source>
-</hostdev>
-<hostdev mode="subsystem" type="usb" managed="yes">
-  <source>
-    <vendor id="0x1532"/>
-    <product id="0x007b"/>
+  <source startupPolicy="optional">
+    <vendor id="0x041e"/>
+    <product id="0x324d"/>
   </source>
 </hostdev>

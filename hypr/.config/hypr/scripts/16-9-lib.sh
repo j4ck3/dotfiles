@@ -12,11 +12,13 @@ sixteen_nine_geometry() {
 	mon_json=$(hyprctl monitors -j 2>/dev/null | jq -c --argjson id "$mon_id" '.[] | select(.id == $id)')
 	[[ -z "$mon_json" ]] && return 1
 
-	local mon_x mon_y mon_w mon_h top bottom
+	local mon_x mon_y mon_w mon_h left right top bottom
 	mon_x=$(jq -r '.x' <<<"$mon_json")
 	mon_y=$(jq -r '.y' <<<"$mon_json")
 	mon_w=$(jq -r '.width' <<<"$mon_json")
 	mon_h=$(jq -r '.height' <<<"$mon_json")
+	left=$(jq -r '.reserved[0]' <<<"$mon_json")
+	right=$(jq -r '.reserved[2]' <<<"$mon_json")
 	top=$(jq -r '.reserved[1]' <<<"$mon_json")
 	bottom=$(jq -r '.reserved[3]' <<<"$mon_json")
 
@@ -29,9 +31,9 @@ sixteen_nine_geometry() {
 	[[ -n "$gaps_str" ]] && read -r gaps_l gaps_t gaps_r gaps_b <<<"$gaps_str"
 
 	local work_left work_top work_w work_h
-	work_left=$((mon_x + gaps_l))
+	work_left=$((mon_x + left + gaps_l))
 	work_top=$((mon_y + top + gaps_t))
-	work_w=$((mon_w - gaps_l - gaps_r))
+	work_w=$((mon_w - left - right - gaps_l - gaps_r))
 	work_h=$((mon_h - top - bottom - gaps_t - gaps_b))
 
 	SIXTEEN_NINE_H=$work_h
@@ -39,7 +41,7 @@ sixteen_nine_geometry() {
 	SIXTEEN_NINE_LEFT=$((work_left + (work_w - SIXTEEN_NINE_W) / 2))
 	SIXTEEN_NINE_TOP=$work_top
 	# Hyprland windowrule move/size use monitor-local coordinates.
-	SIXTEEN_NINE_MOVE_X=$((gaps_l + (work_w - SIXTEEN_NINE_W) / 2))
+	SIXTEEN_NINE_MOVE_X=$((left + gaps_l + (work_w - SIXTEEN_NINE_W) / 2))
 	SIXTEEN_NINE_MOVE_Y=$((top + gaps_t))
 }
 
@@ -67,7 +69,12 @@ sixteen_nine_deactivate_terminal_open_rule() {
 
 sixteen_nine_float_resize() {
 	local addr="$1"
-	hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$addr\" })"
+	# hl.dsp.window.float action=set toggles — only call when not already floating.
+	local is_float
+	is_float=$(hyprctl clients -j 2>/dev/null | jq -r --arg a "$addr" '.[] | select(.address == $a) | .floating')
+	if [[ "$is_float" != "true" ]]; then
+		hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$addr\" })"
+	fi
 	hyprctl dispatch "hl.dsp.window.resize({ x = $SIXTEEN_NINE_W, y = $SIXTEEN_NINE_H, relative = false, window = \"address:$addr\" })"
 	hyprctl dispatch "hl.dsp.window.move({ x = $SIXTEEN_NINE_LEFT, y = $SIXTEEN_NINE_TOP, relative = false, window = \"address:$addr\" })"
 }
