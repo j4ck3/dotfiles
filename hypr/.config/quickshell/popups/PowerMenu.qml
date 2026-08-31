@@ -58,6 +58,9 @@ PanelWindow {
     property bool cursorNeedLogin: false
     property bool cursorStale: false
     property string cursorDisplay: "--"
+    property string cursorModels: "--"
+    property string cursorOther: "--"
+    property string cursorOnDemand: "--"
     property string cursorUpdated: ""
     property string cursorError: ""
     property bool netbirdOk: false
@@ -69,6 +72,12 @@ PanelWindow {
     property int netbirdPeersTotal: 0
     property string netbirdRelays: "0/0"
     property string netbirdError: ""
+    property bool mouseOk: false
+    property int mousePct: -1
+    property int mouseMv: 0
+    property bool mouseCharging: false
+    property string mouseDisplay: "--"
+    property string mouseError: ""
     property int sliderDragCount: 0
     readonly property bool sliderDragging: sliderDragCount > 0
     property bool cardHovering: false
@@ -171,6 +180,9 @@ PanelWindow {
         root.cursorNeedLogin = !!data.need_login
         root.cursorStale = !!data.stale
         root.cursorDisplay = data.display || "--"
+        root.cursorModels = data.models || data.display || "--"
+        root.cursorOther = data.other || "--"
+        root.cursorOnDemand = data.on_demand || "--"
         root.cursorUpdated = data.updated || ""
         root.cursorError = data.error || ""
     }
@@ -195,6 +207,45 @@ PanelWindow {
         if (root.cursorError.length > 0 && !root.cursorOk)
             bits.push(root.cursorError)
         return bits.length ? bits.join(" · ") : "—"
+    }
+
+    function applyMouseStatus(data: var): void {
+        root.mouseOk = !!data.ok
+        root.mousePct = data.pct ?? -1
+        root.mouseMv = data.mv ?? 0
+        root.mouseCharging = !!data.charging
+        root.mouseDisplay = data.display || "--"
+        root.mouseError = data.error || ""
+    }
+
+    function openMouseXpanel(): void {
+        root.run(["xdg-open", "https://xpanel.finalmouse.com/overview"])
+    }
+
+    readonly property string mouseSubtitle: {
+        if (!root.mouseOk) {
+            if (root.mouseError.length > 0 && root.mouseError !== "offline")
+                return root.mouseError
+            return "No dongle"
+        }
+        const bits = []
+        bits.push(root.mouseDisplay)
+        if (root.mouseMv > 0)
+            bits.push((root.mouseMv / 1000).toFixed(2) + "V")
+        if (root.mouseCharging)
+            bits.push("charging")
+        return bits.join(" · ")
+    }
+
+    readonly property string mouseIcon: {
+        if (!root.mouseOk)
+            return "󰂎"
+        if (root.mouseCharging)
+            return "󰂄"
+        const pct = root.mousePct
+        const icons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+        const idx = Math.min(icons.length - 1, Math.max(0, Math.floor(pct / 10)))
+        return icons[idx]
     }
 
     function toggleOtpWatch(): void {
@@ -522,6 +573,18 @@ PanelWindow {
         }
     }
 
+    Process {
+        id: mouseStatusProc
+        command: [Globals.scriptsDir + "/ulx-battery.py"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.applyMouseStatus(JSON.parse(text.trim()))
+                } catch (e) {}
+            }
+        }
+    }
+
     Timer {
         id: statusRefreshTimer
         interval: 120
@@ -540,6 +603,7 @@ PanelWindow {
         if (visible) {
             shutDownArmed = false
             Quickshell.execDetached([Globals.scriptsDir + "/cursor-usage.sh", "fetch"])
+            mouseStatusProc.running = true
             root.refreshStatus()
             card.playIn()
         } else {
@@ -958,7 +1022,27 @@ PanelWindow {
                     spacing: 2
 
                     Text {
-                        text: root.cursorNeedLogin ? "Cursor" : ("Cursor · " + root.cursorDisplay)
+                        text: root.cursorNeedLogin ? "Cursor" : ("Cursor models  " + root.cursorModels)
+                        color: "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        visible: !root.cursorNeedLogin
+                        text: "Other models  " + root.cursorOther
+                        color: root.cursorOther === "100%"
+                            ? "#ffb4a8"
+                            : "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        visible: !root.cursorNeedLogin
+                        text: "On-demand  " + root.cursorOnDemand
                         color: "#ffffff"
                         font.pixelSize: 13
                         font.family: Theme.fontFamily
@@ -969,7 +1053,7 @@ PanelWindow {
                         text: root.cursorSubtitle
                         color: (root.cursorNeedLogin || root.cursorStale)
                             ? "#ffb4a8"
-                            : Qt.rgba(1, 1, 1, 0.55)
+                            : Qt.rgba(1, 1, 1, 0.45)
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                         font.family: Theme.fontFamily
@@ -1042,6 +1126,48 @@ PanelWindow {
                 icon: "󰖳"
                 label: "Windows 11 Stealth"
                 onClicked: root.run(["/usr/local/bin/windows11-stealth-start", "--yes"])
+            }
+        }
+
+        M3Section {
+            title: "MOUSE"
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                M3IconButton {
+                    icon: root.mouseIcon
+                    active: root.mouseOk && root.mousePct > 20
+                    danger: root.mouseOk && root.mousePct >= 0 && root.mousePct <= 20
+                    onClicked: root.openMouseXpanel()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        text: "Mouse"
+                        color: "#ffffff"
+                        font.pixelSize: 13
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: root.mouseSubtitle
+                        color: (!root.mouseOk || (root.mousePct >= 0 && root.mousePct <= 20))
+                            ? "#ffb4a8"
+                            : Qt.rgba(1, 1, 1, 0.55)
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.family: Theme.fontFamily
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
             }
         }
 
