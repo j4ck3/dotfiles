@@ -31,5 +31,10 @@ hook_log_attach() {
     return 0
   fi
   chmod 0644 "${WINDOWS11_HOOK_LOG}" 2>/dev/null || true
-  exec >> >(tee -a "${WINDOWS11_HOOK_LOG}") 2>&1
+  # File redirects are fully buffered; a hung amdgpu probe used to hide all STEPs.
+  if command -v stdbuf >/dev/null; then
+    exec >> >(stdbuf -oL -eL tee -a "${WINDOWS11_HOOK_LOG}") 2>&1
+  else
+    exec >> >(tee -a "${WINDOWS11_HOOK_LOG}") 2>&1
+  fi
 }

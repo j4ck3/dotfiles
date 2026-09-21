@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
-# Connect NetBird on LAN hosts: fix DNS for management gRPC, then run netbird up.
+# Connect NetBird. If management gRPC fails (Cloudflare 403), point
+# netbird.hjacke.com at LAN Traefik (10.0.0.25) and retry.
 set -euo pipefail
 
 DOTFILES="${DOTFILES:-$HOME/dotfiles}"
 INSTALL_HOSTS="$DOTFILES/system/install-netbird-hosts.sh"
+MGMT_URL="${NETBIRD_MGMT_URL:-https://netbird.hjacke.com:443}"
 
-if ! getent hosts netbird.hjacke.com | awk '{print $1}' | grep -qxF '10.0.0.25'; then
-  if [[ -x "$INSTALL_HOSTS" ]]; then
-    "$INSTALL_HOSTS"
-  else
-    echo "netbird.hjacke.com does not resolve to 10.0.0.25 (Cloudflare blocks gRPC)." >&2
-    echo "Run: sudo $INSTALL_HOSTS" >&2
-    exit 1
-  fi
+if netbird up --management-url "$MGMT_URL" --disable-dns "$@"; then
+  exit 0
 fi
 
-MGMT_URL="${NETBIRD_MGMT_URL:-https://netbird.hjacke.com:443}"
-exec netbird up --management-url "$MGMT_URL" "$@"
+if getent ahostsv4 netbird.hjacke.com 2>/dev/null | awk '{print $1}' | grep -qxF '10.0.0.25'; then
+  echo "netbird up failed; DNS already LAN (10.0.0.25)." >&2
+  exit 1
+fi
+
+if [[ -x "$INSTALL_HOSTS" ]]; then
+  "$INSTALL_HOSTS"
+else
+  echo "netbird.hjacke.com does not resolve to 10.0.0.25 (Cloudflare may block gRPC)." >&2
+  echo "Run: sudo $INSTALL_HOSTS" >&2
+  exit 1
+fi
+
+exec netbird up --management-url "$MGMT_URL" --disable-dns "$@"

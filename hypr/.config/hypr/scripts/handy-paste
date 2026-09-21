@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Handy external paste — refocus dictation target, wl-copy + ydotool Ctrl+V.
+# wtype Ctrl+V often misses Electron/Chromium inputs (t3code); uinput reaches them.
+set -euo pipefail
+
+text="${1:-}"
+[[ -n "$text" ]] || exit 0
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export YDOTOOL_SOCKET="${YDOTOOL_SOCKET:-$XDG_RUNTIME_DIR/.ydotool_socket}"
+
+readonly FOCUS_FILE="/tmp/handy-focus.address"
+readonly CLIPBOARD_TIMEOUT_MS="${HANDY_CLIPBOARD_TIMEOUT_MS:-500}"
+readonly LOG="/tmp/handy-paste.log"
+
+log() { echo "[$(date '+%T')] $*" >>"$LOG"; }
+
+refocus_target() {
+  local addr
+  [[ -f "$FOCUS_FILE" ]] || return 0
+  addr=$(tr -d '[:space:]' <"$FOCUS_FILE") || return 0
+  [[ -n "$addr" && "$addr" != "0x0" ]] || return 0
+  timeout 2 hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
+  sleep 0.05
+}
+
+log "start text='${text:0:60}'"
+
+refocus_target
+
+command -v wl-copy >/dev/null 2>&1 || { log "wl-copy missing"; exit 1; }
+command -v wl-paste >/dev/null 2>&1 || { log "wl-paste missing"; exit 1; }
+
+log "copying to clipboard"
+if ! printf '%s' "$text" | timeout 2 wl-copy; then
+  log "wl-copy failed or timed out"
+  exit 1
+fi
+
+# Clipboard ownership is asynchronous. Paste only after compositor serves exact text;
+# fixed sleeps intermittently race wl-copy, especially with cliphist watching requests.
+readonly deadline=$(( $(date +%s%N) / 1000000 + CLIPBOARD_TIMEOUT_MS ))
+while :; do
+  current=$(timeout 0.05 wl-paste -n 2>/dev/null || true)
+  [[ "$current" == "$text" ]] && break
+  (( $(date +%s%N) / 1000000 >= deadline )) && { log "clipboard poll timeout"; exit 1; }
+  sleep 0.01
+done
+
+log "clipboard verified, sending paste"
+
+if command -v ydotool >/dev/null 2>&1; then
+  # Release stuck modifiers first (ydotool/uinput can leave them down).
+  # Ctrl=29, Shift=42/54, Alt=56, Super=125/126
+  if timeout 2 ydotool key 29:0 42:0 54:0 56:0 125:0 126:0 2>/dev/null; then
+    log "modifiers released"
+  else
+    log "modifier release failed or timed out"
+  fi
+
+  # Left Ctrl + V — app reads Unicode from clipboard (layout-safe on sv-SE).
+  if timeout 2 ydotool key 29:1 47:1 47:0 29:0 2>/dev/null; then
+    log "ydotool paste sent"
+    exit 0
+  fi
+  log "ydotool paste failed or timed out, falling back"
+fi
+
+if command -v wtype >/dev/null 2>&1; then
+  if wtype -M ctrl v -m ctrl; then
+    log "wtype paste sent"
+    exit 0
+  fi
+  log "wtype paste failed"
+fi
+
+log "no paste tool worked"
+exit 1

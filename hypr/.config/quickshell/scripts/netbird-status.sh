@@ -17,6 +17,9 @@ if ! command -v netbird >/dev/null 2>&1; then
   fail_json "netbird missing"
 fi
 
+MGMT_URL="${NETBIRD_MGMT_URL:-https://netbird.hjacke.com:443}"
+nb_up() { netbird up --management-url "$MGMT_URL" --disable-dns >/dev/null 2>&1 || true; }
+
 is_connected() {
   local raw
   raw="$(netbird status --json 2>/dev/null)" || return 1
@@ -28,14 +31,15 @@ except Exception:
     raise SystemExit(1)
 mgmt = (d.get("management") or {}).get("connected")
 daemon = (d.get("daemonStatus") or "") == "Connected"
-raise SystemExit(0 if daemon and mgmt else 1)
+ip = ((d.get("netbirdIp") or "").split("/")[0])
+raise SystemExit(0 if daemon and (mgmt or ip) else 1)
 ' 2>/dev/null
 }
 
 case "$cmd" in
   status) ;;
   up)
-    netbird up >/dev/null 2>&1 || true
+    nb_up
     ;;
   down)
     netbird down >/dev/null 2>&1 || true
@@ -44,7 +48,7 @@ case "$cmd" in
     if is_connected; then
       netbird down >/dev/null 2>&1 || true
     else
-      netbird up >/dev/null 2>&1 || true
+      nb_up
     fi
     ;;
   *)
@@ -73,10 +77,10 @@ except Exception:
 mgmt = bool((d.get("management") or {}).get("connected"))
 sig = bool((d.get("signal") or {}).get("connected"))
 daemon = (d.get("daemonStatus") or "") == "Connected"
-connected = daemon and mgmt
 
 ip_raw = d.get("netbirdIp") or ""
 ip = ip_raw.split("/", 1)[0] if ip_raw else ""
+connected = daemon and (mgmt or bool(ip))
 
 fqdn = d.get("fqdn") or ""
 host = fqdn.split(".", 1)[0] if fqdn else ""

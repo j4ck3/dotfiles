@@ -31,6 +31,8 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("systemctl --user start spotify-volume-guard.service")
   -- Outlook OTP watcher (PowerMenu arm → Graph poll → bar chip)
   hl.exec_cmd("systemctl --user start qs-otp-watchd.service")
+  -- NetBird: `netbird down` persists Idle; --disable-dns keeps mgmt URL off mesh DNS
+  hl.exec_cmd("netbird up --management-url https://netbird.hjacke.com:443 --disable-dns || true")
 
   -- Workspace 2 monocle mode - maximize and stack all windows
   hl.exec_cmd(scripts .. "/workspace2-monocle")
@@ -71,18 +73,18 @@ hl.window_rule({
   no_anim = true,
 })
 
--- Cursor → Workspace 2
-hl.window_rule({
-  name = "cursor-ws-2",
-  match = { class = "^(cursor)$" },
-  workspace = 2,
-})
-
 -- T3 Code → Workspace 2 (must match bindings.lua + webapp-launch)
 hl.window_rule({
   name = "t3code-ws-2",
   match = { class = "^(t3code)$" },
   workspace = 2,
+})
+
+-- Zed → Workspace 5 (must match bindings.lua + webapp-launch)
+hl.window_rule({
+  name = "zed-ws-5",
+  match = { class = "^(dev.zed.Zed)$" },
+  workspace = 5,
 })
 
 -- Spotify → Workspace 3

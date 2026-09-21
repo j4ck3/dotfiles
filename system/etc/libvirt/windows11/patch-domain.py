@@ -326,6 +326,13 @@ def ensure_disk_identity(devices: ET.Element) -> bool:
         elif (serial.text or "").strip() != DISK_SERIAL:
             serial.text = DISK_SERIAL
             changed = True
+        # SSD model string makes the guest issue TRIM/UNMAP. The AutoVirt QEMU
+        # 10.2.2 AHCI discard path segfaults on completion (ahci_commit_buf).
+        # Force discard=ignore so guest TRIM is not advertised/passed through.
+        driver = disk.find("driver")
+        if driver is not None and driver.get("discard") != "ignore":
+            driver.set("discard", "ignore")
+            changed = True
     return changed
 
 

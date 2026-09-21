@@ -23,10 +23,10 @@ source "${GPU_HANDOFF_LIB}"
 # Full DRM wait — this is the async post-VM path, not the qemu hook.
 export WINDOWS11_FULL_DRM_WAIT=1
 
-LOG="${WINDOWS11_HOOK_LOG:-/var/log/windows11-passthrough-hook.log}"
-exec >>"${LOG}" 2>&1
+trap 'udev_thaw || true' EXIT
 
 hook_log_begin "windows11-restore-display" "$@"
+hook_log_attach
 set -x
 
 echo "STEP: post-VM GPU restore begin"

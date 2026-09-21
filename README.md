@@ -14,7 +14,7 @@ Personal configs for **CachyOS** (Arch-based).
 
 **Shell & prompt:** Bash, Starship.
 
-**Editors & coding:** Lazyvim, Zed (LazyVim-style keymaps), Cursor, t3code, Ghostty.
+**Editors & coding:** Lazyvim, Zed, Cursor, t3code, Ghostty, Pi ([`pi/README.md`](pi/README.md)), agent skills ([`agents/README.md`](agents/README.md)).
 
 **Network / infra:** Docker, Netbird.
 
@@ -34,7 +34,7 @@ Source of truth: `[hypr/.config/hypr/bindings.lua](hypr/.config/hypr/bindings.lu
 | Super+Shift+Alt+B  | Browser private window (Helium)         |
 | Super+Shift+M      | Spotify                                 |
 | Super+M            | Spotify, workspace 15                   |
-| Super+K            | t3code workspace script                 |
+| Super+K            | Switch/cycle workspace 2                |
 | Super+Shift+N      | Cursor                                  |
 | Super+Shift+D      | Lazydocker in terminal                  |
 | Super+Ctrl+Shift+S | Suspend                                 |

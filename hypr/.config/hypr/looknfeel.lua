@@ -138,7 +138,7 @@ hl.layer_rule({ match = { namespace = "quickshell-bar" }, ignore_alpha = 0 })
 hl.layer_rule({ match = { namespace = "qs-volume" }, ignore_alpha = 0.2, no_anim = true })
 hl.layer_rule({ match = { namespace = "qs-power" }, no_anim = true })
 hl.layer_rule({ match = { namespace = "qs-media" }, no_anim = true })
-hl.layer_rule({ match = { namespace = "qs-shortcuts" }, ignore_alpha = 0.2, no_anim = true })
+hl.layer_rule({ match = { namespace = "qs-shortcuts" }, ignore_alpha = 0, no_anim = true })
 hl.layer_rule({ match = { namespace = "qs-notifications" }, no_anim = true, ignore_alpha = 0.2 })
 
 -- Confirmation dialog for SUPER+W

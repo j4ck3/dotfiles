@@ -12,6 +12,7 @@ Singleton {
     property bool displayOpen: false
     property bool mediaOpen: false
     property bool powerOpen: false
+    property bool utilitiesOpen: false
     property bool shortcutsOpen: false
     property bool launcherOpen: false
     property bool clipboardOpen: false
@@ -39,6 +40,7 @@ Singleton {
     property bool displayPinned: false
     readonly property bool displayHover: displayBarHover || displayCardHover || displayPinned
     property bool powerHover: false
+    property bool utilitiesHover: false
     property bool mediaHover: false
     property bool towerHover: false
 
@@ -49,6 +51,7 @@ Singleton {
     property int volumePopupRightMargin: 210
     property int displayPopupRightMargin: 210
     property int powerPopupRightMargin: 16
+    property int utilitiesPopupRightMargin: 210
     property int towerPopupRightMargin: 210
     property int notifRightMargin: 14
 
@@ -94,6 +97,15 @@ Singleton {
     }
 
     Timer {
+        id: utilitiesCloseTimer
+        interval: Theme.barVertical ? 220 : 80
+        onTriggered: {
+            if (!root.utilitiesHover)
+                root.utilitiesOpen = false
+        }
+    }
+
+    Timer {
         id: mediaCloseTimer
         interval: 80
         onTriggered: {
@@ -120,6 +132,8 @@ Singleton {
             mediaOpen = false
         if (except !== "power")
             powerOpen = false
+        if (except !== "utilities")
+            utilitiesOpen = false
         shortcutsOpen = false
         launcherOpen = false
         clipboardOpen = false
@@ -140,6 +154,10 @@ Singleton {
         if (except !== "power") {
             powerHover = false
             powerCloseTimer.stop()
+        }
+        if (except !== "utilities") {
+            utilitiesHover = false
+            utilitiesCloseTimer.stop()
         }
         if (except !== "media") {
             mediaHover = false
@@ -221,6 +239,20 @@ Singleton {
         }
     }
 
+    function setUtilitiesHover(inside: bool): void {
+        utilitiesHover = inside
+        if (inside) {
+            utilitiesCloseTimer.stop()
+            if (!utilitiesOpen) {
+                playHoverSound()
+                closeOthers("utilities")
+                utilitiesOpen = true
+            }
+        } else {
+            utilitiesCloseTimer.restart()
+        }
+    }
+
     function setMediaHover(inside: bool): void {
         mediaHover = inside
         if (inside) {
@@ -269,6 +301,7 @@ Singleton {
         displayOpen = false
         mediaOpen = false
         powerOpen = false
+        utilitiesOpen = false
         shortcutsOpen = false
         launcherOpen = false
         clipboardOpen = false
@@ -279,11 +312,13 @@ Singleton {
         displayCardHover = false
         displayPinned = false
         powerHover = false
+        utilitiesHover = false
         mediaHover = false
         towerHover = false
         volumeCloseTimer.stop()
         displayCloseTimer.stop()
         powerCloseTimer.stop()
+        utilitiesCloseTimer.stop()
         mediaCloseTimer.stop()
         towerCloseTimer.stop()
     }
@@ -317,6 +352,13 @@ Singleton {
         const next = !powerOpen
         closeAll()
         powerOpen = next
+    }
+
+    function toggleUtilities(): void {
+        cancelSuperTap()
+        const next = !utilitiesOpen
+        closeAll()
+        utilitiesOpen = next
     }
 
     function toggleShortcuts(): void {

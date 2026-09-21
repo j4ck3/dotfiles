@@ -58,14 +58,13 @@ bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- /home/jacke/.local/bin/do
 bind("SUPER + SHIFT + ALT + B", hl.dsp.exec_cmd(browser .. " --private"), desc_release("Browser (private)"))
 bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("uwsm-app -- flatpak run com.spotify.Client"), desc_release("Music"))
 bind("SUPER + M", hl.dsp.exec_cmd(scripts .. "/spotify-workspace 15"), desc_release("Spotify (workspace 15)"))
-bind(
-  "SUPER + K",
-  hl.dsp.exec_cmd(
-    scripts .. "/webapp-launch 2 t3code uwsm-app -- t3code --password-store=gnome-libsecret"
-  ),
-  desc_release("T3 Code (workspace 2)")
-)
+bind("SUPER + K", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 2"), desc_release("Switch/cycle workspace 2"))
 bind("SUPER + SHIFT + N", hl.dsp.exec_cmd("uwsm-app -- cursor"), desc_release("Editor"))
+bind(
+  "SUPER + N",
+  hl.dsp.exec_cmd(scripts .. "/webapp-launch 5 dev.zed.Zed uwsm-app -- zed"),
+  desc_release("Zed (workspace 5)")
+)
 bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"), desc_release("Docker"))
 -- Lock (Super+L is workspace 3). hyprlock — QS WlSessionLock crashed Hyprland.
 bind("SUPER + CTRL + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), desc_release("Lock screen"))
@@ -98,10 +97,11 @@ bind("SUPER + DOWN", hl.dsp.focus({ direction = "down" }), desc_release("Move fo
 -- Fullscreen games use keyboard inhibitors; keep 16:9 recovery bind available.
 bind("SUPER + T", hl.dsp.exec_cmd(scripts .. "/toggle-group-workspace"), desc_release_inhibit("Apply 16:9 group view"))
 
--- Keyboard shortcuts guide (Super+?)
+-- Keyboard shortcuts guide (Super+? — Quickshell ShortcutsPopup)
+-- Swedish: ? is Shift on the + key. US: ? is Shift+/.
 bind("SUPER + SHIFT + plus", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
 bind("SUPER + SHIFT + slash", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
-bind("SUPER + question", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
+bind("SUPER + SHIFT + question", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
 
 -- App launcher + clipboard (Quickshell)
 bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call shell toggleLauncher"), desc_release("Launch apps"))
@@ -138,7 +138,7 @@ bind(
 bind("SUPER + SHIFT + V", hl.dsp.exec_cmd(scripts .. "/ocr-region"), desc_release("OCR region to clipboard"))
 bind("SUPER + ALT + V", hl.dsp.exec_cmd(scripts .. "/tts-speak"), desc_release("Text to speech (TTS)"))
 
--- Web apps / pinned apps - switch to workspace, launch if not already there
+-- Move windows to their corresponding pinned-app workspaces
 bind("SUPER + SHIFT + K", move_active_to_workspace(2), desc_release("Move active window to workspace 2"))
 
 -- SUPER I: Trilium (workspace 10)
@@ -196,7 +196,7 @@ bind("SUPER + 9", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 9"), desc_rele
 -- Move active window to a workspace with SUPER + SHIFT + letter/number
 -- Swedish Ö: Shift may report Odiaeresis — bind both.
 bind("SUPER + SHIFT + J", move_active_to_workspace(1), desc_release("Move active window to workspace 1"))
--- SUPER + SHIFT + K: defined with T3 Code binds above
+-- SUPER + SHIFT + K: defined with workspace 2 binds above
 bind("SUPER + SHIFT + L", move_active_to_workspace(3), desc_release("Move active window to workspace 3"))
 bind("SUPER + SHIFT + odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))
 bind("SUPER + SHIFT + Odiaeresis", move_active_to_workspace(4), desc_release("Move active window to workspace 4"))

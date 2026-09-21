@@ -1,0 +1,3 @@
+[submodule "pi/vendor/pi-config"]
+	path = pi/vendor/pi-config
+	url = https://github.com/amosblomqvist/pi-config.git

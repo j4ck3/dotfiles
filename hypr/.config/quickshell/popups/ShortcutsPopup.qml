@@ -33,18 +33,24 @@ PanelWindow {
         path: Qt.resolvedUrl("../data/shortcuts.json")
         blockLoading: true
         watchChanges: true
-        onFileChanged: reload()
+        onFileChanged: {
+            reload()
+            root.reloadTabs()
+        }
     }
 
-    Component.onCompleted: {
+    function reloadTabs(): void {
         try {
-            root.tabs = JSON.parse(shortcutsFile.text())
-            if (root.tabs.length)
-                root.activeTab = root.tabs[0].id
+            const parsed = JSON.parse(shortcutsFile.text())
+            root.tabs = parsed
+            if (parsed.length && !parsed.some(t => t.id === root.activeTab))
+                root.activeTab = parsed[0].id
         } catch (e) {
             root.tabs = []
         }
     }
+
+    Component.onCompleted: reloadTabs()
 
     function matchesItem(item: var, q: string): bool {
         if (!q.length)
@@ -62,10 +68,15 @@ PanelWindow {
         onCleared: Globals.shortcutsOpen = false
     }
 
-    // Click-catcher (no dim)
+    // Scrim — dim wallpaper so card reads clearly.
     Rectangle {
         anchors.fill: parent
-        color: "transparent"
+        color: Qt.rgba(0, 0, 0, 0.62)
+        opacity: root.visible ? 1 : 0
+
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.animFast }
+        }
 
         MouseArea {
             anchors.fill: parent
@@ -86,9 +97,9 @@ PanelWindow {
         width: Math.min(980, parent.width - 80)
         height: Math.min(720, parent.height - 80)
         radius: 28
-        color: Theme.surfaceContainerHighest
+        color: "#000000"
         border.width: 1
-        border.color: Theme.hairlineMuted
+        border.color: Theme.hairline
         scale: root.visible ? 1 : 0.94
         opacity: root.visible ? 1 : 0
 
@@ -121,7 +132,7 @@ PanelWindow {
                     Layout.fillWidth: true
                     height: 44
                     radius: 22
-                    color: Theme.surfaceContainer
+                    color: Theme.surfaceContainerHigh
 
                     RowLayout {
                         anchors.fill: parent
@@ -245,7 +256,7 @@ PanelWindow {
 
                                             Text {
                                                 text: modelData.desc
-                                                color: Theme.inkMuted
+                                                color: Theme.secondary
                                                 Layout.fillWidth: true
                                                 wrapMode: Text.Wrap
                                                 font.pixelSize: 12
@@ -253,7 +264,7 @@ PanelWindow {
                                             }
 
                                             Rectangle {
-                                                color: Theme.surfaceContainer
+                                                color: Theme.surfaceContainerHigh
                                                 radius: 10
                                                 implicitHeight: keyLabel.implicitHeight + 8
                                                 implicitWidth: keyLabel.implicitWidth + 14
@@ -278,7 +289,7 @@ PanelWindow {
             }
 
             Text {
-                text: "Esc to close · Super Shift + ? to toggle"
+                text: "Esc to close · Super+? to toggle (Shift+/ on US, Shift++ on Swedish)"
                 color: Theme.inkMuted
                 font.pixelSize: 11
             }

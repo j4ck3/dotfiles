@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Patch t3code 0.0.35: Cursor provider never loads skills into the $ menu.
+# Adds filesystem discovery for ~/.cursor/skills (and project .cursor/skills when cwd known).
+set -euo pipefail
+
+T3_ASAR="${T3_ASAR:-/opt/t3code-bin/resources/app.asar}"
+BACKUP="${T3_ASAR}.pre-cursor-skills.bak"
+
+if [[ ! -f "$T3_ASAR" ]]; then
+  echo "t3code asar not found at $T3_ASAR" >&2
+  exit 1
+fi
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "npx required" >&2
+  exit 1
+fi
+
+if pgrep -x t3code >/dev/null 2>&1; then
+  echo "Quit t3code first, then re-run this patch." >&2
+  exit 1
+fi
+
+if [[ ! -f "$BACKUP" ]]; then
+  cp -a "$T3_ASAR" "$BACKUP"
+  echo "Backup: $BACKUP"
+fi
+
+workdir="$(mktemp -d)"
+cleanup() { rm -rf "$workdir"; }
+trap cleanup EXIT
+
+npx --yes asar extract "$T3_ASAR" "$workdir/asar" >/dev/null
+bin="$workdir/asar/apps/server/dist/bin.mjs"
+
+node <<'NODE' "$bin"
+const fs = require("fs");
+const binPath = process.argv[1];
+let s = fs.readFileSync(binPath, "utf8");
+
+if (s.includes("discoverCursorSkills")) {
+  console.log("Already patched — nothing to do.");
+  process.exit(0);
+}
+
+const marker =
+  'return [...skillsByName.values()].sort((left, right) => left.name.localeCompare(right.name));\n});\n//#endregion\n//#region src/provider/Layers/ClaudeProvider.ts';
+
+const discoverCursorSkills = `return [...skillsByName.values()].sort((left, right) => left.name.localeCompare(right.name));
+});
+const discoverCursorSkills = fn$1("discoverCursorSkills")(function* (cwd) {
+	const fileSystem = yield* FileSystem;
+	const path = yield* Path$1;
+	const roots = [{
+		directory: path.join(NodeOS.homedir(), ".cursor", "skills"),
+		scope: "user"
+	}, ...cwd ? [{
+		directory: path.join(cwd, ".cursor", "skills"),
+		scope: "project"
+	}, {
+		directory: path.join(cwd, ".agents", "skills"),
+		scope: "project"
+	}] : []];
+	const skillsByName = /* @__PURE__ */ new Map();
+	for (const root of roots) {
+		const entries = yield* fileSystem.readDirectory(root.directory).pipe(orElseSucceed(() => []));
+		for (const entry of [...entries].sort()) {
+			const skillPath = path.join(root.directory, entry, "SKILL.md");
+			const contents = yield* fileSystem.readFileString(skillPath).pipe(orElseSucceed(() => void 0));
+			if (contents === void 0) continue;
+			const frontmatter = parseSkillFrontmatter(contents);
+			if (frontmatter.kind === "malformed") continue;
+			const name = (frontmatter.kind === "parsed" ? frontmatter.name : void 0) ?? entry.trim();
+			if (!name) continue;
+			skillsByName.set(name, {
+				name,
+				path: skillPath,
+				enabled: true,
+				scope: root.scope,
+				...frontmatter.kind === "parsed" && frontmatter.description ? { description: frontmatter.description } : {}
+			});
+		}
+	}
+	return [...skillsByName.values()].sort((left, right) => left.name.localeCompare(right.name));
+});
+//#endregion
+//#region src/provider/Layers/ClaudeProvider.ts`;
+
+if (!s.includes(marker)) {
+  console.error("Patch anchor not found — t3code version may differ from 0.0.35");
+  process.exit(1);
+}
+s = s.replace(marker, discoverCursorSkills);
+
+const snapshotOld =
+  'models: providerModelsFromSettings(input.discoveredModels ?? [], input.cursorSettings.customModels, EMPTY_CAPABILITIES$1),\n\t\tprobe: {';
+const snapshotNew =
+  'models: providerModelsFromSettings(input.discoveredModels ?? [], input.cursorSettings.customModels, EMPTY_CAPABILITIES$1),\n\t\tskills: input.skills ?? [],\n\t\tprobe: {';
+if (!s.includes(snapshotOld)) {
+  console.error("buildCursorProviderSnapshot anchor not found");
+  process.exit(1);
+}
+s = s.replace(snapshotOld, snapshotNew);
+
+const probeOld =
+  '\treturn buildCursorProviderSnapshot({\n\t\tcheckedAt,\n\t\tcursorSettings,\n\t\tparsed,\n\t\tdiscoveredModels: getOrElse(filter(discoveredModels, (models) => models.length > 0), () => []),\n\t\t...discoveryWarning ? { discoveryWarning } : {}\n\t});';
+const probeNew =
+  '\tconst skills = yield* discoverCursorSkills(environment?.T3_PROJECT_CWD ?? environment?.PWD);\n\treturn buildCursorProviderSnapshot({\n\t\tcheckedAt,\n\t\tcursorSettings,\n\t\tparsed,\n\t\tdiscoveredModels: getOrElse(filter(discoveredModels, (models) => models.length > 0), () => []),\n\t\tskills,\n\t\t...discoveryWarning ? { discoveryWarning } : {}\n\t});';
+if (!s.includes(probeOld)) {
+  console.error("checkCursorProviderStatus anchor not found");
+  process.exit(1);
+}
+s = s.replace(probeOld, probeNew);
+
+fs.writeFileSync(binPath, s);
+console.log("Patched bin.mjs with discoverCursorSkills");
+NODE
+
+npx --yes asar pack "$workdir/asar" "$T3_ASAR" >/dev/null
+echo "Repacked $T3_ASAR"
+echo "Start t3code, then type \$ in composer."

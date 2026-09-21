@@ -1,6 +1,8 @@
 VolumePopup 1.0 VolumePopup.qml
 MediaPopup 1.0 MediaPopup.qml
 PowerMenu 1.0 PowerMenu.qml
+UtilitiesPopup 1.0 UtilitiesPopup.qml
+DisplayPopup 1.0 DisplayPopup.qml
 ShortcutsPopup 1.0 ShortcutsPopup.qml
 LauncherPopup 1.0 LauncherPopup.qml
 ClipboardPopup 1.0 ClipboardPopup.qml

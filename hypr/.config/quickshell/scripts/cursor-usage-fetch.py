@@ -43,49 +43,70 @@ def num(v):
         return None
 
 
-def parse_usage(summary: dict) -> dict:
+def fmt_usd(n: float) -> str:
+    n = max(0.0, float(n))
+    if abs(n - round(n)) < 0.005:
+        return f"${n:.0f}"
+    return f"${n:.2f}"
+
+
+def cents_to_usd(v) -> float | None:
+    n = num(v)
+    if n is None:
+        return None
+    return n / 100.0
+
+
+def parse_usage(summary: dict, hard_limit_usd: float | None = None) -> dict:
     plan = (summary.get("individualUsage") or {}).get("plan") or {}
     on_demand = (summary.get("individualUsage") or {}).get("onDemand") or {}
     membership = summary.get("membershipType") or ""
-    pct = num(plan.get("totalPercentUsed"))
-    auto_pct = num(plan.get("autoPercentUsed"))
-    api_pct = num(plan.get("apiPercentUsed"))
+    # Dashboard: Cursor Models ← autoPercentUsed, Other Models ← apiPercentUsed.
+    models_pct = num(plan.get("autoPercentUsed"))
+    other_pct = num(plan.get("apiPercentUsed"))
     start = (summary.get("billingCycleStart") or "")[:10]
     end = (summary.get("billingCycleEnd") or "")[:10]
 
-    if pct is None:
-        display = "--"
-    else:
-        display = f"{int(round(pct))}%"
+    od_used = cents_to_usd(on_demand.get("used"))
+    od_lim = cents_to_usd(on_demand.get("limit"))
+    if od_lim is None and hard_limit_usd is not None:
+        od_lim = hard_limit_usd
 
-    css = "high" if pct is not None and pct >= 90 else ""
-    bits = []
-    if membership:
-        bits.append(str(membership))
-    if start or end:
-        bits.append(f"{start or '?'} → {end or '?'}")
-    msg = summary.get("autoModelSelectedDisplayMessage") or ""
-    if msg:
-        bits.append(msg)
-    if auto_pct is not None:
-        bits.append(f"auto {int(round(auto_pct))}%")
-    if api_pct is not None:
-        bits.append(f"API {int(round(api_pct))}%")
-    od_used, od_lim = num(on_demand.get("used")), num(on_demand.get("limit"))
-    if on_demand.get("enabled") and od_used is not None:
-        if od_lim:
-            bits.append(f"on-demand {od_used:g}/{od_lim:g}")
-        else:
-            bits.append(f"on-demand {od_used:g}")
+    models_s = f"{int(round(models_pct))}%" if models_pct is not None else "--"
+    other_s = f"{int(round(other_pct))}%" if other_pct is not None else "--"
+    if od_used is not None and od_lim:
+        od_s = f"{fmt_usd(od_used)} / {fmt_usd(od_lim)}"
+    elif od_used is not None:
+        od_s = fmt_usd(od_used)
+    else:
+        od_s = "--"
+
+    hot = (
+        (other_pct is not None and other_pct >= 90)
+        or (models_pct is not None and models_pct >= 90)
+        or (od_used is not None and od_lim and od_lim > 0 and (od_used / od_lim) >= 0.9)
+    )
+    bits = [
+        *( [str(membership)] if membership else [] ),
+        *( [f"{start or '?'} → {end or '?'}"] if (start or end) else [] ),
+        f"Cursor models {models_s}",
+        f"Other models {other_s}",
+        f"On-demand {od_s}",
+    ]
 
     return {
         "ok": True,
         "need_login": False,
         "error": "",
         "membership": membership,
-        "display": display,
-        "percent": pct,
-        "class": css,
+        "models_pct": models_pct,
+        "other_pct": other_pct,
+        "models": models_s,
+        "other": other_s,
+        "on_demand": od_s,
+        "display": models_s,
+        "percent": models_pct,
+        "class": "high" if hot else "",
         "tooltip": "\n".join(bits) or "Cursor usage",
     }
 
@@ -204,14 +225,20 @@ def load_cookiejar() -> tuple[CookieJar | None, str]:
     return None, last
 
 
-def http_json(opener, url: str) -> tuple[int, dict | None, str]:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        },
-    )
+def http_json(
+    opener,
+    url: str,
+    method: str = "GET",
+    data: bytes | None = None,
+) -> tuple[int, dict | None, str]:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0",
+        "Origin": "https://cursor.com",
+    }
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with opener.open(req, timeout=20) as resp:
             raw = resp.read()
@@ -267,7 +294,17 @@ def fetch() -> dict:
             "class": "high",
             "tooltip": err or f"usage-summary http {status}",
         }
-    parsed = parse_usage(summary)
+    hard_usd = None
+    _, hard, _ = http_json(
+        opener,
+        "https://cursor.com/api/dashboard/get-hard-limit",
+        method="POST",
+        data=b"{}",
+    )
+    if isinstance(hard, dict) and num(hard.get("hardLimit")) is not None:
+        hard_usd = num(hard.get("hardLimit"))
+
+    parsed = parse_usage(summary, hard_limit_usd=hard_usd)
     parsed["cookie_src"] = Path(src).parent.parent.name
     return parsed
 

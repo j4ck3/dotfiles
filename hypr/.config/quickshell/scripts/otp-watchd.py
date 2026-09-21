@@ -374,39 +374,44 @@ def imap_close(imap: imaplib.IMAP4_SSL | None) -> None:
 
 
 def scan_imap(imap: imaplib.IMAP4_SSL, armed_at: float) -> bool:
-    typ, data = imap.search(None, "ALL")
-    if typ != "OK" or not data or data[0] is None:
-        return False
     cutoff = armed_at - LOOKBACK_S
-    ids = data[0].split()
-    for num in reversed(ids[-MSG_TOP:]):
-        typ, msg_data = imap.fetch(num, "(RFC822)")
-        if typ != "OK" or not msg_data or not msg_data[0]:
+    # Outlook commonly exposes Junk; Spam is used by some IMAP providers.
+    for folder in ("INBOX", "Junk", "Spam"):
+        typ, _ = imap.select(folder, readonly=True)
+        if typ != "OK":
             continue
-        raw = msg_data[0][1]
-        if not isinstance(raw, (bytes, bytearray)):
+        typ, data = imap.search(None, "ALL")
+        if typ != "OK" or not data or data[0] is None:
             continue
-        msg = email_lib.message_from_bytes(raw)
-        date_hdr = msg.get("Date")
-        recv = 0.0
-        if date_hdr:
-            try:
-                dt = parsedate_to_datetime(date_hdr)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                recv = dt.timestamp()
-            except Exception:
-                recv = 0.0
-        if recv and recv + 2 < cutoff:
-            continue
-        subject = decode_mime(msg.get("Subject"))
-        _name, addr = parseaddr(msg.get("From") or "")
-        frm = decode_mime(msg.get("From") or "") or addr or "mail"
-        body = msg_body_text(msg)
-        code = extract_otp(subject, body[:500], body)
-        if code:
-            on_hit(code, frm, subject)
-            return True
+        ids = data[0].split()
+        for num in reversed(ids[-MSG_TOP:]):
+            typ, msg_data = imap.fetch(num, "(RFC822)")
+            if typ != "OK" or not msg_data or not msg_data[0]:
+                continue
+            raw = msg_data[0][1]
+            if not isinstance(raw, (bytes, bytearray)):
+                continue
+            msg = email_lib.message_from_bytes(raw)
+            date_hdr = msg.get("Date")
+            recv = 0.0
+            if date_hdr:
+                try:
+                    dt = parsedate_to_datetime(date_hdr)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    recv = dt.timestamp()
+                except Exception:
+                    recv = 0.0
+            if recv and recv + 2 < cutoff:
+                continue
+            subject = decode_mime(msg.get("Subject"))
+            _name, addr = parseaddr(msg.get("From") or "")
+            frm = decode_mime(msg.get("From") or "") or addr or "mail"
+            body = msg_body_text(msg)
+            code = extract_otp(subject, body[:500], body)
+            if code:
+                on_hit(code, frm, subject)
+                return True
     return False
 
 
@@ -423,34 +428,35 @@ def graph_get(token: str, path: str, params: dict | None = None) -> dict:
 
 
 def scan_graph(token: str, armed_at: float) -> bool:
-    data = graph_get(
-        token,
-        "/me/mailFolders/inbox/messages",
-        {
-            "$top": str(MSG_TOP),
-            "$orderby": "receivedDateTime desc",
-            "$select": "id,from,subject,bodyPreview,receivedDateTime,body",
-        },
-    )
     cutoff = armed_at - LOOKBACK_S
-    for msg in data.get("value") or []:
-        recv = parse_graph_time(msg.get("receivedDateTime"))
-        if recv and recv + 2 < cutoff:
-            continue
-        subject = msg.get("subject") or ""
-        preview = msg.get("bodyPreview") or ""
-        body_obj = msg.get("body") or {}
-        raw_body = body_obj.get("content") or ""
-        if (body_obj.get("contentType") or "").lower() == "html":
-            raw_body = strip_html(raw_body)
-        fr = (msg.get("from") or {}).get("emailAddress") or {}
-        name = (fr.get("name") or "").strip()
-        addr = (fr.get("address") or "").strip()
-        frm = f"{name} <{addr}>" if name and addr else (name or addr or "mail")
-        code = extract_otp(subject, preview, raw_body)
-        if code:
-            on_hit(code, frm, subject)
-            return True
+    for folder in ("inbox", "junkemail"):
+        data = graph_get(
+            token,
+            f"/me/mailFolders/{folder}/messages",
+            {
+                "$top": str(MSG_TOP),
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,from,subject,bodyPreview,receivedDateTime,body",
+            },
+        )
+        for msg in data.get("value") or []:
+            recv = parse_graph_time(msg.get("receivedDateTime"))
+            if recv and recv + 2 < cutoff:
+                continue
+            subject = msg.get("subject") or ""
+            preview = msg.get("bodyPreview") or ""
+            body_obj = msg.get("body") or {}
+            raw_body = body_obj.get("content") or ""
+            if (body_obj.get("contentType") or "").lower() == "html":
+                raw_body = strip_html(raw_body)
+            fr = (msg.get("from") or {}).get("emailAddress") or {}
+            name = (fr.get("name") or "").strip()
+            addr = (fr.get("address") or "").strip()
+            frm = f"{name} <{addr}>" if name and addr else (name or addr or "mail")
+            code = extract_otp(subject, preview, raw_body)
+            if code:
+                on_hit(code, frm, subject)
+                return True
     return False
 
 

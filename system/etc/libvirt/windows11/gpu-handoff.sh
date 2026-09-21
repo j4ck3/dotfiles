@@ -32,7 +32,10 @@ AUTO_RESTORE_HYPRLAND="${AUTO_RESTORE_HYPRLAND:-0}"
 HOOK_DRM_WAIT_SECONDS="${HOOK_DRM_WAIT_SECONDS:-20}"
 PCI_REMOVE_RESCAN="${PCI_REMOVE_RESCAN:-1}"
 REATTACH_SETTLE="${REATTACH_SETTLE:-5}"
+# Extra wait after rescan before amdgpu probe (PSP/SMU). udev stays frozen.
+AMDGPU_PROBE_SETTLE="${AMDGPU_PROBE_SETTLE:-10}"
 AMDGPU_LOAD_RETRIES="${AMDGPU_LOAD_RETRIES:-2}"
+UDEV_EXEC_QUEUE_FROZEN="${UDEV_EXEC_QUEUE_FROZEN:-0}"
 
 if ! declare -p DISPLAY_MANAGER_UNITS >/dev/null 2>&1; then
   DISPLAY_MANAGER_UNITS=("${DISPLAY_MANAGER:-display-manager.service}")
@@ -524,43 +527,119 @@ pci_bus_rescan() {
   echo 1 >/sys/bus/pci/rescan 2>/dev/null || \
     echo "WARN: PCI rescan failed" >&2
   sleep 1
+  # Do not udevadm settle here while frozen — settle can wait on a hung probe.
+}
+
+udev_freeze() {
+  [[ "${UDEV_EXEC_QUEUE_FROZEN}" == "1" ]] && return 0
+  echo "STEP: udevadm stop-exec-queue (block auto amdgpu/snd bind)"
+  udevadm control --stop-exec-queue 2>/dev/null || true
+  UDEV_EXEC_QUEUE_FROZEN=1
+}
+
+udev_thaw() {
+  [[ "${UDEV_EXEC_QUEUE_FROZEN}" == "1" ]] || return 0
+  echo "STEP: udevadm start-exec-queue"
+  udevadm control --start-exec-queue 2>/dev/null || true
+  UDEV_EXEC_QUEUE_FROZEN=0
   timeout 5 udevadm settle 2>/dev/null || true
 }
 
+pci_set_driver_override() {
+  local pci="$1" val="${2-}" path
+  path="$(pci_sysfs_dir "${pci}")/driver_override"
+  [[ -e "${path}" ]] || return 0
+  echo "STEP: ${pci} driver_override=${val:-<empty>}"
+  printf '%s\n' "${val}" >"${path}" 2>/dev/null || true
+}
+
+pci_wait_sysfs() {
+  local pci="$1" max="${2:-15}" i
+  for ((i = 1; i <= max; i++)); do
+    [[ -e "$(pci_sysfs_dir "${pci}")" ]] && return 0
+    sleep 1
+  done
+  echo "WARN: ${pci} sysfs missing after ${max}s" >&2
+  return 1
+}
+
 # Power-cycle GPU+audio via sysfs remove/rescan before amdgpu probe.
-# Bare modprobe / udev auto-bind after VFIO hits amdgpu_device_mm_access BUG on Navi 31.
+# Leave udev frozen and driver_override=none so udev cannot probe amdgpu.
+# Clearing override + start-exec-queue was racing a naked Navi 31 probe
+# (kernel BUG amdgpu_device_mm_access).
 pci_remove_rescan_gpu() {
   [[ "${PCI_REMOVE_RESCAN}" == "1" ]] || return 0
-  echo "STEP: PCI remove/rescan GPU path (settle=${REATTACH_SETTLE}s)"
+  echo "STEP: PCI remove/rescan GPU path (settle=${REATTACH_SETTLE}s probe=${AMDGPU_PROBE_SETTLE}s)"
+  udev_freeze
   unbind_pci_device "${AUDIO_PCI}" 2>/dev/null || true
   unbind_pci_device "${GPU_PCI}" 2>/dev/null || true
-  # Drop half-loaded amdgpu from a prior BUG so udev cannot re-bind mid-rescan.
+  # Drop half-loaded amdgpu from a prior BUG so it cannot re-bind mid-rescan.
   modprobe -r amdgpu 2>/dev/null || true
   pci_reset_device "${AUDIO_PCI}" 2>/dev/null || true
   pci_reset_device "${GPU_PCI}" 2>/dev/null || true
   pci_remove_device "${AUDIO_PCI}"
   pci_remove_device "${GPU_PCI}"
   sleep "${REATTACH_SETTLE}"
-  # Freeze udev so rescan does not race a naked amdgpu probe.
-  udevadm control --stop-exec-queue 2>/dev/null || true
   pci_bus_rescan
-  # Prefer explicit bind after settle; clear any stale override.
-  if [[ -e "$(pci_sysfs_dir "${GPU_PCI}")/driver_override" ]]; then
-    echo >"$(pci_sysfs_dir "${GPU_PCI}")/driver_override" 2>/dev/null || true
-  fi
-  udevadm control --start-exec-queue 2>/dev/null || true
+  pci_wait_sysfs "${GPU_PCI}" 15 || true
+  pci_wait_sysfs "${AUDIO_PCI}" 5 || true
+  pci_set_driver_override "${GPU_PCI}" none
+  pci_set_driver_override "${AUDIO_PCI}" none
+  echo "STEP: wait ${AMDGPU_PROBE_SETTLE}s after rescan before amdgpu probe"
+  sleep "${AMDGPU_PROBE_SETTLE}"
   log_pci_driver_state
 }
 
+bind_pci_to_snd_hda() {
+  local pci="${AUDIO_PCI}" bind_path drv
+  drv="$(pci_bound_driver "${pci}")"
+  [[ "${drv}" == "snd_hda_intel" ]] && return 0
+  if [[ -n "${drv}" ]]; then
+    unbind_pci_device "${pci}" 2>/dev/null || true
+  fi
+  bind_path="/sys/bus/pci/drivers/snd_hda_intel/bind"
+  [[ -w "${bind_path}" ]] || {
+    echo "WARN: snd_hda_intel bind path missing" >&2
+    return 1
+  }
+  echo "STEP: sysfs bind ${pci} to snd_hda_intel"
+  echo "${pci}" >"${bind_path}" 2>/dev/null || true
+}
+
+load_amdgpu_finish() {
+  local rc="$1"
+  if [[ "${rc}" -eq 0 ]]; then
+    bind_pci_to_snd_hda || true
+    pci_set_driver_override "${GPU_PCI}" ""
+    pci_set_driver_override "${AUDIO_PCI}" ""
+  else
+    # Keep none so thaw does not immediately udev-probe a dead GPU.
+    pci_set_driver_override "${GPU_PCI}" none
+    pci_set_driver_override "${AUDIO_PCI}" none
+  fi
+  udev_thaw
+  return "${rc}"
+}
+
 load_amdgpu_modules() {
-  local attempt max_attempts rc
+  local attempt max_attempts rc wait_s
   max_attempts="${AMDGPU_LOAD_RETRIES:-2}"
   echo "STEP: load amdgpu (Navi 31 after VFIO — remove/rescan first; probe can take ~90s)"
+  udev_freeze
 
   for ((attempt = 1; attempt <= max_attempts; attempt++)); do
     if drm_ready && [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]]; then
       echo "STEP: DRM already up on attempt ${attempt}"
+      load_amdgpu_finish 0
       return 0
+    fi
+
+    # Half-bound amdgpu with no DRM is the BUG leftover. Do not FLR/rescan —
+    # sysfs reset after amdgpu_device_mm_access hangs in D-state.
+    if [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]] && ! drm_ready; then
+      echo "ERROR: ${GPU_PCI} on amdgpu without DRM after failed probe — abort (no FLR). Cold power-off required." >&2
+      load_amdgpu_finish 1
+      return 1
     fi
 
     if [[ "${attempt}" -gt 1 ]]; then
@@ -570,10 +649,8 @@ load_amdgpu_modules() {
       pci_remove_rescan_gpu || true
     fi
 
-    if [[ "$(pci_bound_driver "${GPU_PCI}")" == "amdgpu" ]] && drm_ready; then
-      echo "STEP: udev already bound amdgpu with DRM"
-      return 0
-    fi
+    pci_set_driver_override "${GPU_PCI}" amdgpu
+    pci_set_driver_override "${AUDIO_PCI}" none
 
     if ! lsmod | grep -q '^amdgpu '; then
       echo "STEP: modprobe amdgpu (attempt ${attempt}/${max_attempts})"
@@ -581,11 +658,18 @@ load_amdgpu_modules() {
       modprobe amdgpu || rc=$?
       if [[ "${rc}" -ne 0 ]]; then
         echo "WARN: modprobe amdgpu returned ${rc} (139=SIGSEGV/kernel BUG)" >&2
-        # Half-bound driver after BUG is useless — force remove before retry.
+        if [[ "${rc}" -eq 139 ]]; then
+          # Navi 31: amdgpu_device_mm_access BUG. FLR/remove/rescan after
+          # this D-states restore-display and wedges udev until cold reboot.
+          echo "ERROR: amdgpu probe BUG — abort restore (no FLR/rescan). Cold power-off required." >&2
+          load_amdgpu_finish 1
+          return 1
+        fi
         if [[ -e "$(pci_sysfs_dir "${GPU_PCI}")" ]]; then
           unbind_pci_device "${GPU_PCI}" 2>/dev/null || true
         fi
         modprobe -r amdgpu 2>/dev/null || true
+        pci_set_driver_override "${GPU_PCI}" none
         continue
       fi
     else
@@ -593,22 +677,23 @@ load_amdgpu_modules() {
       bind_pci_to_amdgpu "${GPU_PCI}" || true
     fi
 
-    timeout 5 udevadm settle 2>/dev/null || true
     bind_pci_to_amdgpu "${GPU_PCI}" || true
 
-    # Async restore uses full DRM wait; in-hook path stays short.
-    local wait_s="${HOOK_DRM_WAIT_SECONDS:-20}"
+    wait_s="${HOOK_DRM_WAIT_SECONDS:-20}"
     if [[ "${WINDOWS11_FULL_DRM_WAIT:-0}" == "1" ]]; then
       wait_s="${DRM_WAIT_SECONDS:-120}"
     fi
     if wait_for_drm "${wait_s}"; then
+      load_amdgpu_finish 0
       return 0
     fi
     echo "WARN: DRM not ready after attempt ${attempt}/${max_attempts}" >&2
+    pci_set_driver_override "${GPU_PCI}" none
   done
 
   echo "ERROR: amdgpu failed to produce /dev/dri after ${max_attempts} attempts" >&2
   echo "ERROR: RX 7900 XTX after Windows VFIO often needs a cold reboot (power off)" >&2
+  load_amdgpu_finish 1
   return 1
 }
 

@@ -74,6 +74,8 @@ Item {
     function syncPopupAnchors(): void {
         // Cards sit just past left bar (reuse *RightMargin as edge gap).
         Globals.volumePopupRightMargin = Theme.widgetTopGap
+        Globals.displayPopupRightMargin = Theme.widgetTopGap
+        Globals.utilitiesPopupRightMargin = Theme.widgetTopGap
         Globals.powerPopupRightMargin = Theme.widgetTopGap
         Globals.towerPopupRightMargin = Theme.widgetTopGap
         Globals.notifRightMargin = 14
@@ -447,6 +449,92 @@ Item {
                         onClicked: Quickshell.execDetached([
                             Globals.scriptsDir + "/otp-watch.sh", "copy"
                         ])
+                    }
+                }
+            }
+
+            // Display (brightness + night light) — before volume
+            Item {
+                id: displayHit
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                implicitWidth: 36
+                implicitHeight: 36
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: displayMouse.containsMouse ? Theme.hover : "transparent"
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animFast }
+                    }
+
+                    BarIcon {
+                        anchors.centerIn: parent
+                        text: "󰛨"
+                        color: displayMouse.containsMouse ? "#ffcc66" : Theme.secondary
+                        font.pixelSize: 13
+                    }
+                }
+
+                MouseArea {
+                    id: displayMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        root.syncPopupAnchors()
+                        Globals.setDisplayBarHover(true)
+                    }
+                    onExited: Globals.setDisplayBarHover(false)
+                    onClicked: {
+                        root.syncPopupAnchors()
+                        Globals.setDisplayBarHover(true)
+                    }
+                }
+            }
+
+            // Utilities — Cursor, NetBird, mouse, OTP Watch
+            Item {
+                id: utilitiesHit
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                implicitWidth: 36
+                implicitHeight: 36
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: utilitiesMouse.containsMouse ? Theme.hover : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animFast } }
+                    BarIcon {
+                        anchors.centerIn: parent
+                        text: "󰒓"
+                        color: utilitiesMouse.containsMouse ? "#7dd3c0" : Theme.secondary
+                        font.pixelSize: 13
+                    }
+                }
+
+                MouseArea {
+                    id: utilitiesMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        root.syncPopupAnchors()
+                        Globals.setUtilitiesHover(true)
+                    }
+                    onExited: Globals.setUtilitiesHover(false)
+                    onClicked: {
+                        root.syncPopupAnchors()
+                        Globals.toggleUtilities()
                     }
                 }
             }

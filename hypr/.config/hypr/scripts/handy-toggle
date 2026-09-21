@@ -4,11 +4,14 @@ set -uo pipefail
 
 readonly START="${BASH_SOURCE%/*}/handy-start"
 readonly TOGGLE_STAMP="${XDG_RUNTIME_DIR:-/tmp}/handy-toggle.stamp"
+readonly FOCUS_FILE="/tmp/handy-focus.address"
 
 export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
+# Handy CLI (toggle/cancel IPC) segfaults in libXext when GDK_BACKEND=x11 on Wayland.
+export GDK_BACKEND=wayland
 
 now=$(date +%s%3N 2>/dev/null || date +%s)
 if [[ -f "$TOGGLE_STAMP" ]]; then
@@ -39,6 +42,12 @@ was_rec=0
 if pactl list source-outputs 2>/dev/null \
   | rg -q 'PipeWire ALSA \[handy\]|application\.name = "PipeWire ALSA \[handy\]"'; then
   was_rec=1
+fi
+
+# Remember focus when starting REC so paste returns to the right field (t3code, etc.).
+if (( was_rec == 0 )); then
+  hyprctl activewindow -j 2>/dev/null \
+    | jq -r '.address // empty' >"$FOCUS_FILE" 2>/dev/null || true
 fi
 
 # Prefer S1-mini post-process when local proxy is up; else plain transcription.

@@ -74,6 +74,14 @@ ShellRoot {
         screen: Globals.focusedScreen()
     }
 
+    UtilitiesPopup {
+        screen: Globals.focusedScreen()
+    }
+
+    DisplayPopup {
+        screen: Globals.focusedScreen()
+    }
+
     ShortcutsPopup {
         screen: Globals.focusedScreen()
     }
@@ -104,6 +112,7 @@ ShellRoot {
         function toggleVolume(): void { Globals.toggleVolume() }
         function toggleMedia(): void { Globals.toggleMedia() }
         function togglePower(): void { Globals.togglePower() }
+        function toggleUtilities(): void { Globals.toggleUtilities() }
         function toggleShortcuts(): void { Globals.toggleShortcuts() }
         function toggleLauncher(): void { Globals.toggleLauncher() }
         function toggleClipboard(): void { Globals.toggleClipboard() }

@@ -7,6 +7,8 @@ readonly STATUS="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/scripts/dictation-
 readonly QS_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+export GDK_BACKEND=wayland
 
 status_json() {
   bash "$STATUS" 2>/dev/null || echo '{}'

@@ -83,6 +83,10 @@ Item {
     function syncPopupAnchors(): void {
         if (volHit.width > 0)
             Globals.volumePopupRightMargin = root.popupMarginUnder(volHit, 262)
+        if (displayHit.width > 0)
+            Globals.displayPopupRightMargin = root.popupMarginUnder(displayHit, 300)
+        if (utilitiesHit.width > 0)
+            Globals.utilitiesPopupRightMargin = root.popupMarginUnder(utilitiesHit, 300)
         if (powerBtn.width > 0)
             Globals.powerPopupRightMargin = root.popupMarginUnder(powerBtn, 300)
         if (towerHit.width > 0)
@@ -700,6 +704,92 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
                 Layout.fillHeight: true
                 spacing: 2
+
+                // Display (brightness + night light) — before volume
+                Item {
+                    id: displayHit
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 36
+                    implicitWidth: 36
+                    onWidthChanged: Qt.callLater(root.syncPopupAnchors)
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 26
+                        height: 26
+                        radius: 13
+                        color: displayMouse.containsMouse ? Theme.hover : "transparent"
+
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.animFast }
+                        }
+
+                        BarIcon {
+                            anchors.centerIn: parent
+                            text: "󰛨"
+                            color: displayMouse.containsMouse ? "#ffcc66" : Theme.secondary
+                            font.pixelSize: 13
+                        }
+                    }
+
+                    MouseArea {
+                        id: displayMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            root.syncPopupAnchors()
+                            Globals.setDisplayBarHover(true)
+                        }
+                        onExited: Globals.setDisplayBarHover(false)
+                        onClicked: {
+                            root.syncPopupAnchors()
+                            Globals.setDisplayBarHover(true)
+                        }
+                    }
+                }
+
+                // Utilities — Cursor, NetBird, mouse, OTP Watch
+                Item {
+                    id: utilitiesHit
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: 36
+                    implicitWidth: 36
+                    onWidthChanged: Qt.callLater(root.syncPopupAnchors)
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 26
+                        height: 26
+                        radius: 13
+                        color: utilitiesMouse.containsMouse ? Theme.hover : "transparent"
+
+                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
+
+                        BarIcon {
+                            anchors.centerIn: parent
+                            text: "󰒓"
+                            color: utilitiesMouse.containsMouse ? "#7dd3c0" : Theme.secondary
+                            font.pixelSize: 13
+                        }
+                    }
+
+                    MouseArea {
+                        id: utilitiesMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: {
+                            root.syncPopupAnchors()
+                            Globals.setUtilitiesHover(true)
+                        }
+                        onExited: Globals.setUtilitiesHover(false)
+                        onClicked: {
+                            root.syncPopupAnchors()
+                            Globals.toggleUtilities()
+                        }
+                    }
+                }
 
                 // Full-bar-height hit target for volume widget
                 Item {

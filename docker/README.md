@@ -11,20 +11,27 @@ docker compose up -d
 
 **Private URL (Netbird mesh):** http://cachyos-jacke.netbird.hjacke.com:19999
 
-Requires `netbird status` → Management: Connected, with DNS enabled (do not use `--disable-dns`).
+Requires `netbird status` → Daemon: Connected (mesh IP assigned).
 
-### Netbird broken on LAN (`LoginFailed` / gRPC 403)
+This desktop client uses `--disable-dns` so management hostname stays on Pi-hole (`10.0.0.25`) instead of Cloudflare. Peer names like `trilium.netbird.hjacke.com` also come from Pi-hole.
 
-Cloudflare blocks management gRPC. On this LAN, point `netbird.hjacke.com` at Traefik (`10.0.0.25`), then connect:
+### Netbird broken on LAN (`LoginFailed` / `DeadlineExceeded`)
+
+Two separate problems:
+
+1. **DNS:** Cloudflare (and NetBird mesh DNS) for `netbird.hjacke.com` breaks management gRPC. Pi-hole A record must be `10.0.0.25` (no AAAA `::`). This machine: NetworkManager DNS `10.0.0.53` first.
+2. **Traefik 2.11+:** default `readTimeout=60s` kills the idle `/management.ManagementService/Job` stream. On tower: `websecure` `readTimeout`/`idleTimeout` = `24h`, plus `serversTransport` `idleConnTimeout=24h` on the netbird services.
+
+Connect:
 
 ```bash
-sudo ~/dotfiles/system/install-netbird-hosts.sh   # must show 10.0.0.25
-netbird up --management-url https://netbird.hjacke.com:443
+netbird up --management-url https://netbird.hjacke.com:443 --disable-dns
+# or: netbird-up
 ```
 
-Or Pi-hole → Local DNS: `netbird.hjacke.com` → `10.0.0.25` (same as `cachyos-jacke.netbird.hjacke.com` already has).
+Optional hosts fallback: `sudo ~/dotfiles/system/install-netbird-hosts.sh`
 
-After fix: `getent ahostsv4 netbird.hjacke.com` must be `10.0.0.25`, not Cloudflare IPv6.
+After fix: `getent ahostsv4 netbird.hjacke.com` = `10.0.0.25`. Tunnel up even if Management line briefly shows `DeadlineExceeded`.
 
 ## Dockhand (tower)
 

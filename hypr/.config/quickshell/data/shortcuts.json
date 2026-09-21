@@ -1,323 +1,117 @@
 [
   {
-    "id": "apps",
-    "label": "Apps",
+    "id": "system",
+    "label": "System",
     "sections": [
       {
         "title": "Launch & open",
         "items": [
-          {
-            "keys": "Super Space",
-            "desc": "App launcher (Quickshell)"
-          },
-          {
-            "keys": "Super Return",
-            "desc": "Terminal (16:9)"
-          },
-          {
-            "keys": "Super Backspace",
-            "desc": "File manager"
-          },
-          {
-            "keys": "Super Shift N",
-            "desc": "Cursor editor"
-          },
-          {
-            "keys": "Super Shift D",
-            "desc": "Docker (lazydocker)"
-          },
-          {
-            "keys": "Super Shift O",
-            "desc": "Open project (tmux + nvim + opencode)"
-          }
-        ]
-      },
-      {
-        "title": "Clipboard (Super C)",
-        "items": [
-          {
-            "keys": "Super C",
-            "desc": "Clipboard history (Quickshell)"
-          },
-          {
-            "keys": "j / Down",
-            "desc": "Next entry"
-          },
-          {
-            "keys": "k / Up",
-            "desc": "Previous entry"
-          },
-          {
-            "keys": "Enter / l",
-            "desc": "Paste selected entry to clipboard"
-          },
-          {
-            "keys": "Ctrl D",
-            "desc": "Remove entry"
-          },
-          {
-            "keys": "Ctrl Shift D",
-            "desc": "Clear all history"
-          },
-          {
-            "keys": "Esc",
-            "desc": "Close clipboard history"
-          }
+          { "keys": "Super Space", "desc": "App launcher (Quickshell)" },
+          { "keys": "Super Return", "desc": "Terminal (16:9)" },
+          { "keys": "Super Backspace", "desc": "File manager (Dolphin)" },
+          { "keys": "Super Shift N", "desc": "Cursor editor" },
+          { "keys": "Super N", "desc": "Zed editor (workspace 5)" },
+          { "keys": "Super Shift D", "desc": "Docker (lazydocker)" },
+          { "keys": "Super Shift O", "desc": "Open project (tmux + nvim + opencode)" },
+          { "keys": "Super ?", "desc": "This keyboard shortcuts guide" }
         ]
       },
       {
         "title": "Web apps",
         "items": [
-          {
-            "keys": "Super K",
-            "desc": "T3 Code (workspace 2)"
-          },
-          {
-            "keys": "Super I",
-            "desc": "Trilium (workspace 10)"
-          },
-          {
-            "keys": "Super U",
-            "desc": "ChatGPT (workspace 11)"
-          },
-          {
-            "keys": "Super Y",
-            "desc": "YouTube (workspace 12)"
-          },
-          {
-            "keys": "Super H",
-            "desc": "Discord (workspace 13)"
-          },
-          {
-            "keys": "Super B",
-            "desc": "Steam (workspace 14)"
-          },
-          {
-            "keys": "Super M",
-            "desc": "Spotify (workspace 15)"
-          },
-          {
-            "keys": "Super Shift M",
-            "desc": "Spotify (Flatpak, any workspace)"
-          },
-          {
-            "keys": "Super Shift Alt B",
-            "desc": "Browser (private window)"
-          }
+          { "keys": "Super K", "desc": "T3 Code (workspace 2)" },
+          { "keys": "Super I", "desc": "Trilium (workspace 10)" },
+          { "keys": "Super U", "desc": "ChatGPT (workspace 11)" },
+          { "keys": "Super Y", "desc": "YouTube (workspace 12)" },
+          { "keys": "Super H", "desc": "Discord (workspace 13)" },
+          { "keys": "Super B", "desc": "Steam (workspace 14)" },
+          { "keys": "Super M", "desc": "Spotify (workspace 15)" },
+          { "keys": "Super Shift M", "desc": "Spotify (Flatpak, any workspace)" },
+          { "keys": "Super Shift Alt B", "desc": "Browser (private window)" }
+        ]
+      },
+      {
+        "title": "Windows & workspaces",
+        "items": [
+          { "keys": "Super ←↑→↓", "desc": "Move focus" },
+          { "keys": "Super W", "desc": "Close window (confirm)" },
+          { "keys": "Super F", "desc": "Fullscreen" },
+          { "keys": "Super T", "desc": "Apply 16:9 group view" },
+          { "keys": "Alt Tab", "desc": "Cycle next (group-aware)" },
+          { "keys": "Alt Shift Tab", "desc": "Cycle previous" },
+          { "keys": "Super J / L / Ö", "desc": "Workspaces 1 / 3 / 4" },
+          { "keys": "Super 5–9", "desc": "Workspaces 5–9 (cycle on repeat)" },
+          { "keys": "Super Shift J–9", "desc": "Move window to workspace" },
+          { "keys": "Super Shift K/I/U/Y/H/B", "desc": "Move window to app workspace" }
+        ]
+      },
+      {
+        "title": "Screenshots & screen",
+        "items": [
+          { "keys": "Super Mouse1", "desc": "Screenshot region → clipboard" },
+          { "keys": "Shift PgUp", "desc": "Screenshot region → Satty editor" },
+          { "keys": "PgDn", "desc": "Full screen → clipboard" },
+          { "keys": "Super PgUp", "desc": "Color picker (hyprpicker)" }
+        ]
+      },
+      {
+        "title": "Voice & OCR",
+        "items": [
+          { "keys": "Super V", "desc": "Handy dictation — toggle record / transcribe" },
+          { "keys": "Esc", "desc": "Cancel Handy recording or transcription" },
+          { "keys": "Super Shift V", "desc": "OCR region → clipboard" },
+          { "keys": "Super Alt V", "desc": "Read clipboard aloud (Piper TTS)" }
+        ]
+      },
+      {
+        "title": "System & recovery",
+        "items": [
+          { "keys": "Super Ctrl L", "desc": "Lock screen (hyprlock)" },
+          { "keys": "Ctrl Alt Del", "desc": "System monitor (btop)" },
+          { "keys": "Super G", "desc": "Focus / cycle game (auto-snapped ≥16)" },
+          { "keys": "Super Shift G", "desc": "Move games → free game workspace (≥16)" },
+          { "keys": "Super Alt U", "desc": "Unstick keyboard (stuck modifiers)" },
+          { "keys": "Scroll Lock", "desc": "Unstick keyboard" },
+          { "keys": "Super Ctrl Shift S", "desc": "Suspend" },
+          { "keys": "Ctrl Alt Shift S", "desc": "Suspend (alternate)" }
+        ]
+      },
+      {
+        "title": "Quickshell overlays",
+        "items": [
+          { "keys": "Super C", "desc": "Clipboard history" },
+          { "keys": "Super", "desc": "Dashboard (bare tap — clock, media, apps, notifs)" },
+          { "keys": "Hover speaker", "desc": "Volume mixer popup" },
+          { "keys": "Hover media art", "desc": "Media player popup" },
+          { "keys": "Click power", "desc": "Power menu (display, lights, fans, VMs)" }
+        ]
+      },
+      {
+        "title": "Clipboard popup",
+        "items": [
+          { "keys": "j / Down", "desc": "Next entry" },
+          { "keys": "k / Up", "desc": "Previous entry" },
+          { "keys": "Enter / l", "desc": "Paste selected entry" },
+          { "keys": "Ctrl D", "desc": "Remove entry" },
+          { "keys": "Ctrl Shift D", "desc": "Clear all history" },
+          { "keys": "Esc", "desc": "Close" }
         ]
       },
       {
         "title": "App launcher",
         "items": [
-          {
-            "keys": "j / Down",
-            "desc": "Next item"
-          },
-          {
-            "keys": "k / Up",
-            "desc": "Previous item"
-          },
-          {
-            "keys": "Enter",
-            "desc": "Launch selection"
-          },
-          {
-            "keys": "Esc",
-            "desc": "Close launcher"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "windows",
-    "label": "Windows",
-    "sections": [
-      {
-        "title": "Focus & layout",
-        "items": [
-          {
-            "keys": "Super \u2190\u2191\u2192\u2193",
-            "desc": "Move focus"
-          },
-          {
-            "keys": "Super W",
-            "desc": "Close window (confirm)"
-          },
-          {
-            "keys": "Super F",
-            "desc": "Fullscreen"
-          },
-          {
-            "keys": "Super T",
-            "desc": "Apply 16:9 group view"
-          },
-          {
-            "keys": "Alt Tab",
-            "desc": "Cycle next (group-aware)"
-          },
-          {
-            "keys": "Alt Shift Tab",
-            "desc": "Cycle previous"
-          }
-        ]
-      },
-      {
-        "title": "Workspaces (current monitor)",
-        "items": [
-          {
-            "keys": "Super J",
-            "desc": "Workspace 1"
-          },
-          {
-            "keys": "Super L",
-            "desc": "Workspace 3"
-          },
-          {
-            "keys": "Super \u00d6",
-            "desc": "Workspace 4"
-          },
-          {
-            "keys": "Super 5\u20139",
-            "desc": "Workspaces 5\u20139 (top row keys)"
-          },
-          {
-            "keys": "Super Shift J\u20269",
-            "desc": "Move window to workspace"
-          },
-          {
-            "keys": "Super Shift K/I/U/Y/H/B",
-            "desc": "Move window to app workspace"
-          }
+          { "keys": "j / Down", "desc": "Next item" },
+          { "keys": "k / Up", "desc": "Previous item" },
+          { "keys": "Enter", "desc": "Launch selection" },
+          { "keys": "Esc", "desc": "Close" }
         ]
       },
       {
         "title": "Bar workspace icons",
         "items": [
-          {
-            "keys": "j",
-            "desc": "Workspace 1"
-          },
-          {
-            "keys": "k",
-            "desc": "Workspace 2"
-          },
-          {
-            "keys": "l",
-            "desc": "Workspace 3"
-          },
-          {
-            "keys": "\u00f6",
-            "desc": "Workspace 4"
-          },
-          {
-            "keys": "i / u / y",
-            "desc": "Workspaces 10 / 11 / 12"
-          },
-          {
-            "keys": "h / b",
-            "desc": "Workspaces 13 / 14 (Discord / Steam)"
-          },
-          {
-            "keys": "m",
-            "desc": "Workspace 15 (Spotify)"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "tools",
-    "label": "Tools",
-    "sections": [
-      {
-        "title": "Screenshots & screen",
-        "items": [
-          {
-            "keys": "Super Mouse1",
-            "desc": "Screenshot region \u2192 clipboard"
-          },
-          {
-            "keys": "Shift PgUp",
-            "desc": "Screenshot region \u2192 Satty editor"
-          },
-          {
-            "keys": "PgDn",
-            "desc": "Full screen \u2192 clipboard"
-          },
-          {
-            "keys": "Super PgUp",
-            "desc": "Color picker (hyprpicker)"
-          }
-        ]
-      },
-      {
-        "title": "Handy dictation",
-        "items": [
-          {
-            "keys": "Super V",
-            "desc": "Toggle record / stop\u2192transcribe"
-          },
-          {
-            "keys": "Esc",
-            "desc": "Cancel recording / transcription + hide overlay"
-          }
-        ]
-      },
-      {
-        "title": "Speech to text (legacy)",
-        "items": [
-          {
-            "keys": "Super Shift V",
-            "desc": "OCR region \u2192 clipboard"
-          }
-        ]
-      },
-      {
-        "title": "Text to speech (Super Alt V)",
-        "items": [
-          {
-            "keys": "Super Alt V",
-            "desc": "Read clipboard aloud (Piper TTS)"
-          }
-        ]
-      },
-      {
-        "title": "OCR & capture",
-        "items": [
-          {
-            "keys": "Super Shift V",
-            "desc": "OCR region \u2192 clipboard"
-          }
-        ]
-      },
-      {
-        "title": "System",
-        "items": [
-          {
-            "keys": "Super Ctrl L",
-            "desc": "Lock screen (hyprlock)"
-          },
-          {
-            "keys": "Ctrl Alt Del",
-            "desc": "System monitor (btop)"
-          },
-          {
-            "keys": "Super G",
-            "desc": "Focus / cycle game (auto-snapped \u226516)"
-          },
-          {
-            "keys": "Super Shift G",
-            "desc": "Move games \u2192 free game workspace (\u226516)"
-          },
-          {
-            "keys": "Super Ctrl Shift S",
-            "desc": "Suspend"
-          },
-          {
-            "keys": "Super ?",
-            "desc": "This shortcuts guide"
-          }
+          { "keys": "j / k / l / ö", "desc": "Workspaces 1–4" },
+          { "keys": "i / u / y", "desc": "Workspaces 10 / 11 / 12" },
+          { "keys": "h / b / m", "desc": "Workspaces 13 / 14 / 15" }
         ]
       }
     ]
@@ -329,47 +123,167 @@
       {
         "title": "Spotify (keyboard)",
         "items": [
-          {
-            "keys": "F7",
-            "desc": "Previous track"
-          },
-          {
-            "keys": "F8",
-            "desc": "Play / pause"
-          },
-          {
-            "keys": "F9",
-            "desc": "Next track"
-          },
-          {
-            "keys": "F11",
-            "desc": "Volume down"
-          },
-          {
-            "keys": "F12",
-            "desc": "Volume up"
-          }
+          { "keys": "F7", "desc": "Previous track" },
+          { "keys": "F8", "desc": "Play / pause" },
+          { "keys": "F9", "desc": "Next track" },
+          { "keys": "F11", "desc": "Volume down" },
+          { "keys": "F12", "desc": "Volume up" }
+        ]
+      },
+      {
+        "title": "Media keys (Voyager / XF86)",
+        "items": [
+          { "keys": "XF86AudioPrev", "desc": "Spotify previous" },
+          { "keys": "XF86AudioNext", "desc": "Spotify next" },
+          { "keys": "XF86AudioPlay / Pause", "desc": "Spotify play / pause" },
+          { "keys": "XF86AudioStop", "desc": "Spotify stop" },
+          { "keys": "XF86AudioRaiseVolume", "desc": "System volume up" },
+          { "keys": "XF86AudioLowerVolume", "desc": "System volume down" },
+          { "keys": "XF86AudioMute", "desc": "Mute toggle" },
+          { "keys": "XF86AudioMicMute", "desc": "Mic mute toggle" }
         ]
       },
       {
         "title": "Bar",
         "items": [
-          {
-            "keys": "Hover cover art",
-            "desc": "Open media player popup"
-          },
-          {
-            "keys": "Click cover art",
-            "desc": "Jump to Spotify workspace"
-          },
-          {
-            "keys": "Click speaker",
-            "desc": "Volume mixer popup"
-          },
-          {
-            "keys": "Click power",
-            "desc": "Power menu"
-          }
+          { "keys": "Hover cover art", "desc": "Open media player popup" },
+          { "keys": "Click cover art", "desc": "Jump to Spotify workspace" },
+          { "keys": "Click speaker", "desc": "Volume mixer popup" }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cursor",
+    "label": "Cursor",
+    "sections": [
+      {
+        "title": "Navigation",
+        "items": [
+          { "keys": "Ctrl P", "desc": "Quick open file" },
+          { "keys": "Ctrl Shift P", "desc": "Command palette" },
+          { "keys": "Ctrl G", "desc": "Go to line" },
+          { "keys": "Ctrl Tab", "desc": "Next editor tab" },
+          { "keys": "Ctrl Shift Tab", "desc": "Previous editor tab" },
+          { "keys": "Ctrl B", "desc": "Toggle sidebar" },
+          { "keys": "Ctrl J", "desc": "Toggle panel (terminal)" },
+          { "keys": "Ctrl `", "desc": "Toggle integrated terminal" }
+        ]
+      },
+      {
+        "title": "Editing",
+        "items": [
+          { "keys": "Ctrl D", "desc": "Add next match to selection" },
+          { "keys": "Ctrl Shift L", "desc": "Select all matches" },
+          { "keys": "Alt Up / Down", "desc": "Move line up / down" },
+          { "keys": "Shift Alt Up / Down", "desc": "Copy line up / down" },
+          { "keys": "Ctrl /", "desc": "Toggle line comment" },
+          { "keys": "Ctrl Shift K", "desc": "Delete line" },
+          { "keys": "Ctrl Space", "desc": "Trigger suggest (Copilot / IntelliSense)" }
+        ]
+      },
+      {
+        "title": "Search & refactor",
+        "items": [
+          { "keys": "Ctrl Shift F", "desc": "Search in files" },
+          { "keys": "Ctrl H", "desc": "Find and replace" },
+          { "keys": "F2", "desc": "Rename symbol" },
+          { "keys": "F12", "desc": "Go to definition" },
+          { "keys": "Alt F12", "desc": "Peek definition" },
+          { "keys": "Shift F12", "desc": "Find all references" }
+        ]
+      },
+      {
+        "title": "AI (Cursor)",
+        "items": [
+          { "keys": "Ctrl K", "desc": "Inline edit (selection)" },
+          { "keys": "Ctrl L", "desc": "Open chat" },
+          { "keys": "Ctrl I", "desc": "Composer / agent" },
+          { "keys": "Ctrl Shift I", "desc": "Composer in sidebar" }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "nvim",
+    "label": "Neovim",
+    "sections": [
+      {
+        "title": "LazyVim — files & search",
+        "items": [
+          { "keys": "Space f f", "desc": "Find files" },
+          { "keys": "Space f g", "desc": "Live grep" },
+          { "keys": "Space f r", "desc": "Recent files" },
+          { "keys": "Space f b", "desc": "Buffers" },
+          { "keys": "Space e", "desc": "File explorer" },
+          { "keys": "Space /", "desc": "Search in buffer" }
+        ]
+      },
+      {
+        "title": "LazyVim — code & LSP",
+        "items": [
+          { "keys": "Space c a", "desc": "Code action" },
+          { "keys": "Space c r", "desc": "Rename" },
+          { "keys": "Space c f", "desc": "Format" },
+          { "keys": "Space c s", "desc": "Document symbols" },
+          { "keys": "g d", "desc": "Go to definition" },
+          { "keys": "g r", "desc": "References" },
+          { "keys": "] d", "desc": "Next diagnostic" },
+          { "keys": "[ d", "desc": "Previous diagnostic" }
+        ]
+      },
+      {
+        "title": "LazyVim — windows & tabs",
+        "items": [
+          { "keys": "Space w", "desc": "Other window" },
+          { "keys": "Ctrl h/j/k/l", "desc": "Navigate splits" },
+          { "keys": "Space -", "desc": "Split below" },
+          { "keys": "Space |", "desc": "Split right" },
+          { "keys": "Space q", "desc": "Quit window" },
+          { "keys": "Space Q", "desc": "Quit all" }
+        ]
+      },
+      {
+        "title": "LazyVim — misc",
+        "items": [
+          { "keys": "Space l", "desc": "Lazy plugin manager" },
+          { "keys": "Space u", "desc": "Undo tree" },
+          { "keys": "Space b d", "desc": "Delete buffer" },
+          { "keys": "Space g g", "desc": "LazyGit" },
+          { "keys": "Esc Esc", "desc": "Clear search / close float" }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "browser",
+    "label": "Browser",
+    "sections": [
+      {
+        "title": "Helium / Chromium",
+        "items": [
+          { "keys": "Ctrl T", "desc": "New tab" },
+          { "keys": "Ctrl W", "desc": "Close tab" },
+          { "keys": "Ctrl Shift T", "desc": "Reopen closed tab" },
+          { "keys": "Ctrl Tab", "desc": "Next tab" },
+          { "keys": "Ctrl Shift Tab", "desc": "Previous tab" },
+          { "keys": "Ctrl L", "desc": "Focus address bar" },
+          { "keys": "Ctrl R", "desc": "Reload" },
+          { "keys": "Ctrl Shift R", "desc": "Hard reload" },
+          { "keys": "Ctrl H", "desc": "History" },
+          { "keys": "Ctrl Shift N", "desc": "New private window" },
+          { "keys": "Ctrl Shift Delete", "desc": "Clear browsing data" }
+        ]
+      },
+      {
+        "title": "Page",
+        "items": [
+          { "keys": "Ctrl F", "desc": "Find in page" },
+          { "keys": "Ctrl +", "desc": "Zoom in" },
+          { "keys": "Ctrl -", "desc": "Zoom out" },
+          { "keys": "Ctrl 0", "desc": "Reset zoom" },
+          { "keys": "F11", "desc": "Fullscreen" },
+          { "keys": "Ctrl D", "desc": "Bookmark page" }
         ]
       }
     ]
@@ -381,127 +295,55 @@
       {
         "title": "Sync & upgrade",
         "items": [
-          {
-            "keys": "pacman -Sy",
-            "desc": "Refresh package databases only"
-          },
-          {
-            "keys": "pacman -Sy pkg",
-            "desc": "Refresh DB and install or upgrade one package only"
-          },
-          {
-            "keys": "pacman -Sy --needed pkg",
-            "desc": "Same; skip if already at latest version"
-          },
-          {
-            "keys": "pacman -Syu",
-            "desc": "Refresh databases and upgrade all packages"
-          },
-          {
-            "keys": "pacman -Syuu",
-            "desc": "Upgrade; allow package downgrades"
-          }
+          { "keys": "pacman -Sy", "desc": "Refresh package databases only" },
+          { "keys": "pacman -Sy pkg", "desc": "Refresh DB and install or upgrade one package" },
+          { "keys": "pacman -Sy --needed pkg", "desc": "Same; skip if already at latest version" },
+          { "keys": "pacman -Syu", "desc": "Refresh databases and upgrade all packages" },
+          { "keys": "pacman -Syuu", "desc": "Upgrade; allow package downgrades" }
         ]
       },
       {
         "title": "Install",
         "items": [
-          {
-            "keys": "pacman -S pkg",
-            "desc": "Install a package"
-          },
-          {
-            "keys": "pacman -S \"pkg>=ver\"",
-            "desc": "Install with version constraint"
-          },
-          {
-            "keys": "pacman -S group",
-            "desc": "Install package group (interactive)"
-          },
-          {
-            "keys": "pacman -S repo/pkg",
-            "desc": "Install from named repository"
-          },
-          {
-            "keys": "pacman -U file.tar.zst",
-            "desc": "Install or upgrade local package file"
-          }
+          { "keys": "pacman -S pkg", "desc": "Install a package" },
+          { "keys": "pacman -S \"pkg>=ver\"", "desc": "Install with version constraint" },
+          { "keys": "pacman -S group", "desc": "Install package group (interactive)" },
+          { "keys": "pacman -S repo/pkg", "desc": "Install from named repository" },
+          { "keys": "pacman -U file.tar.zst", "desc": "Install or upgrade local package file" }
         ]
       },
       {
         "title": "Remove",
         "items": [
-          {
-            "keys": "pacman -R pkg",
-            "desc": "Remove package; keep config as .pacsave"
-          },
-          {
-            "keys": "pacman -Rs pkg",
-            "desc": "Remove package and unneeded dependencies"
-          },
-          {
-            "keys": "pacman -Rns pkg",
-            "desc": "Remove package, deps, and config files"
-          }
+          { "keys": "pacman -R pkg", "desc": "Remove package; keep config as .pacsave" },
+          { "keys": "pacman -Rs pkg", "desc": "Remove package and unneeded dependencies" },
+          { "keys": "pacman -Rns pkg", "desc": "Remove package, deps, and config files" }
         ]
       },
       {
         "title": "Search repositories",
         "items": [
-          {
-            "keys": "pacman -Ss regex",
-            "desc": "Search package names and descriptions in repos"
-          },
-          {
-            "keys": "pacman -F /path",
-            "desc": "Which repo package provides a file path"
-          },
-          {
-            "keys": "pacman -Fl pkg",
-            "desc": "List files from sync database for package"
-          }
+          { "keys": "pacman -Ss regex", "desc": "Search package names and descriptions in repos" },
+          { "keys": "pacman -F /path", "desc": "Which repo package provides a file path" },
+          { "keys": "pacman -Fl pkg", "desc": "List files from sync database for package" }
         ]
       },
       {
         "title": "Query installed",
         "items": [
-          {
-            "keys": "pacman -Q",
-            "desc": "List all installed packages"
-          },
-          {
-            "keys": "pacman -Qi pkg",
-            "desc": "Detailed info: description, deps, install date"
-          },
-          {
-            "keys": "pacman -Ql pkg",
-            "desc": "List files owned by installed package"
-          },
-          {
-            "keys": "pacman -Qo /path",
-            "desc": "Which installed package owns a file"
-          },
-          {
-            "keys": "pacman -Qs regex",
-            "desc": "Search locally installed packages"
-          },
-          {
-            "keys": "pacman -Qdt",
-            "desc": "List orphaned dependencies (unused)"
-          }
+          { "keys": "pacman -Q", "desc": "List all installed packages" },
+          { "keys": "pacman -Qi pkg", "desc": "Detailed info: description, deps, install date" },
+          { "keys": "pacman -Ql pkg", "desc": "List files owned by installed package" },
+          { "keys": "pacman -Qo /path", "desc": "Which installed package owns a file" },
+          { "keys": "pacman -Qs regex", "desc": "Search locally installed packages" },
+          { "keys": "pacman -Qdt", "desc": "List orphaned dependencies (unused)" }
         ]
       },
       {
         "title": "Database marks",
         "items": [
-          {
-            "keys": "pacman -D --asdeps pkg",
-            "desc": "Mark package as dependency"
-          },
-          {
-            "keys": "pacman -D --asexplicit pkg",
-            "desc": "Mark package as explicitly installed"
-          }
+          { "keys": "pacman -D --asdeps pkg", "desc": "Mark package as dependency" },
+          { "keys": "pacman -D --asexplicit pkg", "desc": "Mark package as explicitly installed" }
         ]
       }
     ]

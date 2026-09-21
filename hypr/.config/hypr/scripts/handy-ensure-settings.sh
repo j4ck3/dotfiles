@@ -4,6 +4,7 @@
 set -euo pipefail
 
 readonly SETTINGS="${XDG_DATA_HOME:-$HOME/.local/share}/com.pais.handy/settings_store.json"
+readonly PASTE_SCRIPT="${HANDY_PASTE_SCRIPT:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr/scripts/handy-paste}"
 readonly DEFAULT_MODEL="handy-computer/parakeet-unified-en-0.6b-gguf/parakeet-unified-en-0.6b-Q8_0.gguf"
 readonly S1_PROMPT_ID="s1_mini_normalize"
 readonly S1_PROMPT='${output}'
@@ -18,14 +19,16 @@ jq \
   --arg prompt_id "$S1_PROMPT_ID" \
   --arg prompt "$S1_PROMPT" \
   --arg base_url "$S1_BASE_URL" \
+  --arg paste_script "$PASTE_SCRIPT" \
   '
   .settings.push_to_talk = false
   | .settings.selected_language = "en"
-  | .settings.typing_tool = "wtype"
-  # ctrl_v not direct: wtype direct typing garbles on se layout (Hyprland
-  # virtual-keyboard keymap race → digits). Clipboard paste is layout-safe;
-  # dont_modify restores the previous clipboard afterwards.
-  | .settings.paste_method = "ctrl_v"
+  | .settings.typing_tool = "ydotool"
+  # External paste: refocus + wl-copy + ydotool Ctrl+V. Built-in wtype Ctrl+V
+  # misses Electron inputs (t3code). Direct wtype still garbles on sv-SE layout.
+  | .settings.paste_method = "external_script"
+  | .settings.external_script_path = $paste_script
+  | .settings.clipboard_handling = "dont_modify"
   | .settings.start_hidden = true
   | .settings.autostart_enabled = false
   | .settings.experimental_enabled = true

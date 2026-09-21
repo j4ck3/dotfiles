@@ -1,0 +1,14 @@
+# /home/jacke/.config/systemd/user/heretic-rvn.service -> /home/jacke/dotfiles/hypr/.config/systemd/user/heretic-rvn.service
+[Unit]
+Description=Heretic RVN (Qwen3.8-27B) llama-server — MTP speculative decoding
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/hypr/scripts/heretic-rvn-server
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Copy agent skills into ~/.cursor/skills for Cursor + t3code $ menu.
+# Symlinks do NOT work: t3code's discoverSkills skips symlinked dirs.
+set -euo pipefail
+
+src="${SKILLS_SRC:-$HOME/.agents/skills}"
+dest="${SKILLS_DEST:-$HOME/.cursor/skills}"
+project_dest=""
+
+usage() {
+  cat <<'EOF'
+Usage: sync-cursor-skills [--project DIR]
+
+Copy skill directories (with SKILL.md) from the canonical skills tree
+(usually ~/.agents/skills after `stow agents`) into ~/.cursor/skills.
+
+Options:
+  --project DIR   Also sync into DIR/.cursor/skills (e.g. current repo)
+  -h, --help      Show this help
+
+After syncing, restart t3code or re-select the Cursor provider so the
+$ skill picker refreshes.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project)
+      [[ $# -ge 2 ]] || { echo "Missing path for --project" >&2; exit 1; }
+      project_dest="$2/.cursor/skills"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -d "$src" ]]; then
+  echo "No skills source at $src" >&2
+  echo "Install first: npx skills add mattpocock/skills -g -a cursor -s '*' -y" >&2
+  exit 1
+fi
+
+sync_tree() {
+  local target="$1"
+  mkdir -p "$target"
+  find "$target" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  for skill in "$src"/*/; do
+    [[ -f "${skill}SKILL.md" ]] || continue
+    cp -a "$skill" "$target/$(basename "$skill")"
+  done
+  find "$target" -mindepth 1 -maxdepth 1 -type d | wc -l
+}
+
+global_count="$(sync_tree "$dest")"
+echo "Synced $global_count skills -> $dest"
+
+if [[ -n "$project_dest" ]]; then
+  project_count="$(sync_tree "$project_dest")"
+  echo "Synced $project_count skills -> $project_dest"
+fi
+
+echo "Restart t3code to refresh the \$ skill menu."
