@@ -453,136 +453,9 @@ Item {
                 }
             }
 
-            // Display (brightness + night light) — before volume
-            Item {
-                id: displayHit
+            MouseBattery {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                implicitWidth: 36
-                implicitHeight: 36
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 26
-                    height: 26
-                    radius: 13
-                    color: displayMouse.containsMouse ? Theme.hover : "transparent"
-
-                    Behavior on color {
-                        ColorAnimation { duration: Theme.animFast }
-                    }
-
-                    BarIcon {
-                        anchors.centerIn: parent
-                        text: "󰛨"
-                        color: displayMouse.containsMouse ? "#ffcc66" : Theme.secondary
-                        font.pixelSize: 13
-                    }
-                }
-
-                MouseArea {
-                    id: displayMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onEntered: {
-                        root.syncPopupAnchors()
-                        Globals.setDisplayBarHover(true)
-                    }
-                    onExited: Globals.setDisplayBarHover(false)
-                    onClicked: {
-                        root.syncPopupAnchors()
-                        Globals.setDisplayBarHover(true)
-                    }
-                }
-            }
-
-            // Utilities — Cursor, NetBird, mouse, OTP Watch
-            Item {
-                id: utilitiesHit
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                implicitWidth: 36
-                implicitHeight: 36
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 26
-                    height: 26
-                    radius: 13
-                    color: utilitiesMouse.containsMouse ? Theme.hover : "transparent"
-                    Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                    BarIcon {
-                        anchors.centerIn: parent
-                        text: "󰒓"
-                        color: utilitiesMouse.containsMouse ? "#7dd3c0" : Theme.secondary
-                        font.pixelSize: 13
-                    }
-                }
-
-                MouseArea {
-                    id: utilitiesMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onEntered: {
-                        root.syncPopupAnchors()
-                        Globals.setUtilitiesHover(true)
-                    }
-                    onExited: Globals.setUtilitiesHover(false)
-                    onClicked: {
-                        root.syncPopupAnchors()
-                        Globals.toggleUtilities()
-                    }
-                }
-            }
-
-            Item {
-                id: volHit
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: volStat.implicitWidth
-                Layout.preferredHeight: volStat.implicitHeight
-                implicitWidth: volStat.implicitWidth
-                implicitHeight: volStat.implicitHeight
-
-                MacStat {
-                    id: volStat
-                    anchors.centerIn: parent
-                    Layout.fillHeight: false
-                    label: "VOL"
-                    value: root.sinkMuted ? "MUT" : (root.sinkVol + "%")
-                    muted: root.sinkMuted
-                    tooltip: "Output at " + root.sinkVol + "%"
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.PointingHandCursor
-                    onEntered: {
-                        root.syncPopupAnchors()
-                        Globals.setVolumeHover(true)
-                    }
-                    onExited: Globals.setVolumeHover(false)
-                    onClicked: mouse => {
-                        if (mouse.button === Qt.RightButton)
-                            Quickshell.execDetached(["pavucontrol"])
-                        else {
-                            root.syncPopupAnchors()
-                            Globals.setVolumeHover(true)
-                        }
-                    }
-                    onWheel: event => {
-                        if (!root.sink || !root.sink.audio)
-                            return
-                        const step = 0.05
-                        let v = root.sink.audio.volume + (event.angleDelta.y > 0 ? step : -step)
-                        root.sink.audio.volume = Math.max(0, Math.min(1.5, v))
-                    }
-                }
+                Layout.fillHeight: false
             }
 
             JsonScript {
@@ -625,7 +498,7 @@ Item {
                             if (parts.length >= 3) {
                                 const pct = parseInt(parts[0])
                                 ramStat.value = pct + "%"
-                                ramStat.alert = pct >= 70
+                                ramStat.alert = pct > 90
                                 ramStat.tooltip = parts[1] + "G / " + parts[2] + "G used"
                             }
                         }
@@ -657,7 +530,7 @@ Item {
                             if (parts.length >= 3) {
                                 const pct = parseInt(parts[0])
                                 diskStat.value = pct + "%"
-                                diskStat.alert = pct >= 70
+                                diskStat.alert = pct > 90
                                 const used = (parseFloat(parts[1]) / 1073741824).toFixed(1)
                                 const total = (parseFloat(parts[2]) / 1073741824).toFixed(1)
                                 diskStat.tooltip = used + "G / " + total + "G used on /"
@@ -723,7 +596,7 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
+                        onClicked: Quickshell.execDetached([Globals.sessionActionScript, "poweroff"])
                     }
                 }
             }
@@ -740,6 +613,7 @@ Item {
                 MacStat {
                     id: towerBar
                     anchors.centerIn: parent
+                    centerText: true
                     Layout.fillHeight: false
                     label: "TOWER"
                     value: "···"
@@ -755,14 +629,13 @@ Item {
                                     return
                                 try {
                                     const d = JSON.parse(t)
-                                    towerBar.value = d.ok ? (d.status || "online") : "--"
+                                    towerBar.value = d.ok && typeof d.ram_pct === "number" ? (d.ram_pct + "%") : "--"
                                     towerBar.tooltip = d.tooltip || "tower status"
-                                    towerBar.alert = !d.ok || d.class === "high"
-                                        || (d.alarms_crit || 0) > 0
+                                    towerBar.alert = !!d.ok && typeof d.ram_pct === "number" && d.ram_pct > 90
                                 } catch (e) {
                                     towerBar.value = "--"
                                     towerBar.tooltip = "tower parse error"
-                                    towerBar.alert = true
+                                    towerBar.alert = false
                                 }
                             }
                         }
@@ -794,6 +667,92 @@ Item {
                         }
                         root.syncPopupAnchors()
                         Globals.toggleTower()
+                    }
+                }
+            }
+
+            // Display (brightness + night light)
+            Item {
+                id: displayHit
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                implicitWidth: 36
+                implicitHeight: 36
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: displayMouse.containsMouse ? Theme.hover : "transparent"
+
+                    Behavior on color {
+                        ColorAnimation { duration: Theme.animFast }
+                    }
+
+                    BarIcon {
+                        anchors.centerIn: parent
+                        text: "󰛨"
+                        color: displayMouse.containsMouse ? "#ffcc66" : Theme.secondary
+                        font.pixelSize: 13
+                    }
+                }
+
+                MouseArea {
+                    id: displayMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        root.syncPopupAnchors()
+                        Globals.setDisplayBarHover(true)
+                    }
+                    onExited: Globals.setDisplayBarHover(false)
+                    onClicked: {
+                        root.syncPopupAnchors()
+                        Globals.setDisplayBarHover(true)
+                    }
+                }
+            }
+
+            // Settings — NetBird, audio, OTP Watch
+            Item {
+                id: utilitiesHit
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                implicitWidth: 36
+                implicitHeight: 36
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 26
+                    height: 26
+                    radius: 13
+                    color: utilitiesMouse.containsMouse ? Theme.hover : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.animFast } }
+                    BarIcon {
+                        anchors.centerIn: parent
+                        text: "󰒓"
+                        color: utilitiesMouse.containsMouse ? "#7dd3c0" : Theme.secondary
+                        font.pixelSize: 13
+                    }
+                }
+
+                MouseArea {
+                    id: utilitiesMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: {
+                        root.syncPopupAnchors()
+                        Globals.setUtilitiesHover(true)
+                    }
+                    onExited: Globals.setUtilitiesHover(false)
+                    onClicked: {
+                        root.syncPopupAnchors()
+                        Globals.toggleUtilities()
                     }
                 }
             }

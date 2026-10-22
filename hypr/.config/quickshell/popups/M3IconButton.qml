@@ -22,7 +22,7 @@ Rectangle {
     radius: wide ? 12 : 18
     color: {
         if (root.active)
-            return root.hovered ? "#f0f0f0" : "#ffffff"
+            return root.hovered ? "#339aff" : Theme.popupAccent
         if (root.hovered)
             return root.danger ? Qt.rgba(1, 0.35, 0.35, 0.22) : Theme.hoverStrong
         return Qt.rgba(1, 1, 1, 0.10)
@@ -44,9 +44,8 @@ Rectangle {
 
         Text {
             text: root.icon
-            color: root.active ? "#000000"
-                 : root.danger ? (root.hovered ? "#ff8888" : "#ff6666")
-                 : "#ffffff"
+            color: root.danger && !root.active ? (root.hovered ? "#ff8888" : "#ff6666")
+                 : Theme.popupText
             font.family: Theme.iconFontFallback
             font.pixelSize: 15
             Layout.alignment: Qt.AlignVCenter
@@ -59,7 +58,7 @@ Rectangle {
         Text {
             visible: root.label.length > 0
             text: root.label
-            color: root.active ? "#000000" : "#ffffff"
+            color: Theme.popupText
             opacity: root.hovered && !root.active ? 1 : (root.active ? 1 : 0.92)
             font.family: Theme.fontFamily
             font.pixelSize: 13

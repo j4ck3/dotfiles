@@ -1,55 +1,27 @@
--- See https://wiki.hypr.land/Configuring/Basics/Monitors/
--- List: hyprctl monitors all
-
--- Safe defaults for the current AMD desktop (primary on DP-2; DP-1 is often empty).
+-- ASUS PG32UCWM on the RX 7900 XTX. The EDID preferred mode is only 60 Hz,
+-- so select the advertised native 4K 240 Hz mode explicitly.
+-- Scale 1.5 preserves 4K output and provides a 2560x1440 logical desktop.
 hl.env("GDK_SCALE", "1")
 
--- LG 3440x1440: EDID advertises two different "preferred" 3440x1440 modes (~100 Hz and ~240 Hz).
--- Lock the exact peak mode so Hyprland never picks the wrong one.
--- (Kernel can still be verified with: modetest -M amdgpu -c | sed -n '/^DP-2/,/^[^ ]/p')
---
--- SDR 8-bit (no cm, hdr, or bitdepth 10): best text anti-aliasing in Helium/Electron.
--- HDR tonemapping made the desktop look brighter but crushed font edges; 10-bit also
--- correlates with Chromium glitches in this repo (see commit 77eb64a).
--- If the panel feels dim: raise brightness in the LG OSD and turn off the monitor's
--- "HDR" picture mode while the compositor stays in SDR.
--- Also disable FreeSync/Adaptive-Sync in the LG OSD when misc:vrr=0 (OSD VRR still flickers).
+-- Keep XWayland pixels sharp; Steam handles its own readable 200% UI scale.
+hl.config({ xwayland = { force_zero_scaling = true } })
+hl.env("STEAM_FORCE_DESKTOPUI_SCALING", "2")
+
 hl.monitor({
-  output = "DP-2",
-  mode = "3440x1440@240.09",
-  position = "auto",
-  scale = 1,
-  vrr = 0,
-})
--- Keep DP-1 rule in case the panel moves connectors after a cable swap.
-hl.monitor({
-  output = "DP-1",
-  mode = "3440x1440@240.09",
-  position = "auto",
-  scale = 1,
+  output = "desc:ASUSTek COMPUTER INC PG32UCWM",
+  mode = "3840x2160@240.02",
+  position = "0x0",
+  scale = 1.5,
+  bitdepth = 8,
+  cm = "srgb",
   vrr = 0,
 })
 
--- HDMI disabled — same panel may appear on HDMI when both cables are attached.
-hl.monitor({ output = "HDMI-A-1", disabled = true })
-hl.monitor({ output = "HDMI-A-2", disabled = true })
-hl.monitor({ output = "HDMI-A-3", disabled = true })
-
--- Fallback for any other connector you plug in later.
+-- Use this display profile after a connector change. Other displays retain
+-- their preferred mode and automatic positioning instead of old LG modes.
 hl.monitor({
   output = "",
   mode = "preferred",
   position = "auto",
   scale = 1,
 })
-
--- Optional: mild compositor HDR if SDR + OSD brightness is not enough (test text after enabling).
--- hl.monitor({
---   output = "DP-1",
---   mode = "3440x1440@240.09",
---   position = "auto",
---   scale = 1,
---   cm = "hdr",
---   sdrbrightness = 1.35,
---   sdrsaturation = 1.05,
--- })

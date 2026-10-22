@@ -1,0 +1,17 @@
+\.git
+\.gitignore
+\.gitmodules
+.+~
+\#.*\#
+^/README.*
+^/LICENSE.*
+__pycache__
+^/99-keyboard-wake\.rules
+^/install-deps\.sh
+^/install\.sh
+^/revert-htpc-local\.sh
+^/tests
+node_modules
+.+\.backup-.+
+.+\.bak-.+
+^/\.config/systemd/user/xfce4-notifyd\.service

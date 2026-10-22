@@ -15,6 +15,7 @@ Singleton {
     property bool utilitiesOpen: false
     property bool shortcutsOpen: false
     property bool launcherOpen: false
+    property bool sessionOpen: false
     property bool clipboardOpen: false
     property bool dashboardOpen: false
     property bool towerOpen: false
@@ -287,6 +288,11 @@ Singleton {
         return u.replace(/^file:\/\//, "")
     }
 
+    readonly property string sessionActionScript: {
+        const home = Quickshell.env("HOME") || ""
+        return home + "/.config/hypr/scripts/session-action"
+    }
+
     readonly property string superTapScript: {
         const home = Quickshell.env("HOME") || ""
         return home + "/.config/hypr/scripts/super-tap-dashboard"
@@ -304,6 +310,7 @@ Singleton {
         utilitiesOpen = false
         shortcutsOpen = false
         launcherOpen = false
+        sessionOpen = false
         clipboardOpen = false
         dashboardOpen = false
         towerOpen = false
@@ -373,6 +380,13 @@ Singleton {
         const next = !launcherOpen
         closeAll()
         launcherOpen = next
+    }
+
+    function toggleSession(): void {
+        cancelSuperTap()
+        const next = !sessionOpen
+        closeAll()
+        sessionOpen = next
     }
 
     function toggleClipboard(): void {

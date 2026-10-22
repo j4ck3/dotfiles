@@ -13,6 +13,7 @@ Item {
     property string tooltip: ""
     property bool alert: false
     property bool muted: false
+    property bool centerText: false
     readonly property bool hovered: hover.hovered
 
     implicitWidth: Math.max(labelText.implicitWidth, valueText.implicitWidth) + 4
@@ -34,12 +35,15 @@ Item {
 
     Column {
         id: col
-        anchors.left: parent.left
+        anchors.left: root.centerText ? undefined : parent.left
+        anchors.horizontalCenter: root.centerText ? parent.horizontalCenter : undefined
+        width: Math.max(labelText.implicitWidth, valueText.implicitWidth)
         anchors.verticalCenter: parent.verticalCenter
         spacing: -1
 
         Text {
             id: labelText
+            anchors.horizontalCenter: root.centerText ? parent.horizontalCenter : undefined
             text: root.label
             color: root.hovered ? Theme.ink : Theme.inkMuted
             font.family: Theme.fontFamily
@@ -59,6 +63,7 @@ Item {
 
         Text {
             id: valueText
+            anchors.horizontalCenter: root.centerText ? parent.horizontalCenter : undefined
             text: root.value
             color: root.alert ? "#ff4d4d"
                  : root.muted ? Theme.inkMuted

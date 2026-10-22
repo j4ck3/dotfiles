@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Play a bounded Quickshell CRT close, then perform the requested action.
+set -euo pipefail
+
+preview=false
+if [[ ${1:-} == --preview ]]; then
+  preview=true
+  shift
+fi
+case "${1:-}" in
+  suspend|poweroff|reboot) action=(/usr/bin/systemctl "$1") ;;
+  logout) action=(/usr/bin/hyprctl dispatch exit) ;;
+  *)
+    echo "usage: ${0##*/} [--preview] {suspend|poweroff|reboot|logout}" >&2
+    exit 64
+    ;;
+esac
+[[ $# == 1 ]] || exit 64
+
+# Reject overlapping requests rather than queueing another power action.
+exec 9>"${XDG_RUNTIME_DIR:?}/quickshell-session-action.lock"
+flock -n 9 || { echo "Session action already running" >&2; exit 1; }
+config="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"
+ipc() { timeout 2s qs ipc -p "$config" call shell "$1"; }
+
+if [[ $(ipc playSessionAnimation) != started ]]; then
+  echo "Session animation unavailable or busy; no action performed" >&2
+  exit 1
+fi
+
+# Wait for actual completion, not an assumed animation duration. Fail closed.
+complete=false
+for ((i = 0; i < 30; i++)); do
+  phase=$(ipc sessionAnimationStatus) || exit 1
+  case "$phase" in
+    complete) complete=true; break ;;
+    active) sleep 0.05 ;;
+    *) echo "Session animation interrupted; no action performed" >&2; exit 1 ;;
+  esac
+done
+if [[ $complete != true ]]; then
+  echo "Session animation timed out; no action performed" >&2
+  exit 1
+fi
+
+if $preview; then
+  printf 'Preview complete; skipped: %s\n' "${action[*]}"
+  exit 0
+fi
+exec "${action[@]}"

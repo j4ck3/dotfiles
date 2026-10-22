@@ -1,0 +1,9 @@
+\.git
+\.gitignore
+\.gitmodules
+.+~
+\#.*\#
+^/README.*
+^/LICENSE.*
+__pycache__
+^/systemd

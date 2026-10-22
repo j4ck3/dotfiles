@@ -237,14 +237,6 @@ PanelWindow {
                                     Layout.fillWidth: true
                                     spacing: 8
 
-                                    Text {
-                                        text: modelData.title
-                                        color: Theme.primary
-                                        font.bold: true
-                                        font.pixelSize: 12
-                                        font.letterSpacing: 0.4
-                                    }
-
                                     Repeater {
                                         model: modelData.items
 

@@ -1,23 +1,27 @@
-# Install command: 
+# AUR packages (not in any configured repo).
+#
+# Install command:
 #  grep -v '^#' aur-packages.txt | grep -v '^$' | xargs -r paru -S --needed --noconfirm --
 
-xdg-terminal-exec
+# Hyprland settings app (pulls in the python-hyprland-* libraries)
+hyprmod-git
 
-helium-browser-bin
+# AGS widgets (~/.config/ags)
+aylurs-gtk-shell-git
 
-python-hyprland-config
-python-hyprland-monitors
-python-hyprland-schema
-python-hyprland-socket
-python-hyprland-state
-python-msal
-
-cursor-bin
-t3code-bin
-
+# Network
 netbird-bin
 
+# Package search TUI
+pacseek
+
+# Apps
 lmstudio-bin
 handy-bin
 topgrade-bin
 brave-origin-nightly-bin
+visual-studio-code-bin
+code-server
+linux-soundboard
+photocraft-bin
+solidcraft-bin

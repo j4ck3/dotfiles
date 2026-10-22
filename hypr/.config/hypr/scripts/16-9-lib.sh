@@ -15,34 +15,40 @@ sixteen_nine_geometry() {
 	local mon_x mon_y mon_w mon_h left right top bottom
 	mon_x=$(jq -r '.x' <<<"$mon_json")
 	mon_y=$(jq -r '.y' <<<"$mon_json")
-	mon_w=$(jq -r '.width' <<<"$mon_json")
-	mon_h=$(jq -r '.height' <<<"$mon_json")
+	# Monitor modes use physical pixels; window dispatches use logical pixels.
+	# Rotations with an odd transform exchange the logical width and height.
+	read -r mon_w mon_h < <(jq -r '
+		(.scale // 1) as $scale |
+		if ((.transform // 0) % 2 == 1) then
+			[.height / $scale, .width / $scale]
+		else
+			[.width / $scale, .height / $scale]
+		end | map(floor) | @tsv' <<<"$mon_json")
+	# Reserved edges are left, top, right, bottom. The current bar reserves
+	# 56 logical pixels on the left, not at the top.
 	left=$(jq -r '.reserved[0]' <<<"$mon_json")
-	right=$(jq -r '.reserved[2]' <<<"$mon_json")
 	top=$(jq -r '.reserved[1]' <<<"$mon_json")
+	right=$(jq -r '.reserved[2]' <<<"$mon_json")
 	bottom=$(jq -r '.reserved[3]' <<<"$mon_json")
 
-	local gaps_str gaps_l gaps_t gaps_r gaps_b
-	gaps_str=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -r '.css // empty')
-	gaps_l=0
-	gaps_t=0
-	gaps_r=0
-	gaps_b=0
-	[[ -n "$gaps_str" ]] && read -r gaps_l gaps_t gaps_r gaps_b <<<"$gaps_str"
-
+	# Fill the usable desktop with equal 5-logical-pixel margins.
+	# Margins start inside any reserved bar area. Do not force 16:9:
+	# that adds side margins on a 16:9 display when a bar reserves height.
+	local margin=5
 	local work_left work_top work_w work_h
-	work_left=$((mon_x + left + gaps_l))
-	work_top=$((mon_y + top + gaps_t))
-	work_w=$((mon_w - left - right - gaps_l - gaps_r))
-	work_h=$((mon_h - top - bottom - gaps_t - gaps_b))
+	work_left=$((mon_x + left + margin))
+	work_top=$((mon_y + top + margin))
+	work_w=$((mon_w - left - right - 2 * margin))
+	work_h=$((mon_h - top - bottom - 2 * margin))
 
+	((work_w > 0 && work_h > 0)) || return 1
+	SIXTEEN_NINE_W=$work_w
 	SIXTEEN_NINE_H=$work_h
-	SIXTEEN_NINE_W=$((work_h * 16 / 9))
-	SIXTEEN_NINE_LEFT=$((work_left + (work_w - SIXTEEN_NINE_W) / 2))
+	SIXTEEN_NINE_LEFT=$work_left
 	SIXTEEN_NINE_TOP=$work_top
 	# Hyprland windowrule move/size use monitor-local coordinates.
-	SIXTEEN_NINE_MOVE_X=$((left + gaps_l + (work_w - SIXTEEN_NINE_W) / 2))
-	SIXTEEN_NINE_MOVE_Y=$((top + gaps_t))
+	SIXTEEN_NINE_MOVE_X=$((SIXTEEN_NINE_LEFT - mon_x))
+	SIXTEEN_NINE_MOVE_Y=$((SIXTEEN_NINE_TOP - mon_y))
 }
 
 sixteen_nine_ensure_terminal_open_rule() {

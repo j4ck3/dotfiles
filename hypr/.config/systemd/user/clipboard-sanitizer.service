@@ -1,0 +1,12 @@
+[Unit]
+Description=Sanitize Wayland clipboard as plain text without URLs
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wl-paste --type text --watch %h/.local/bin/clipboard-sanitize
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

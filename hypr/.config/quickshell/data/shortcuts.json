@@ -46,6 +46,15 @@
         ]
       },
       {
+        "title": "Display & night light",
+        "items": [
+          { "keys": "F1", "desc": "Brightness up (+5%)" },
+          { "keys": "F2", "desc": "Brightness down (−5%)" },
+          { "keys": "F3", "desc": "Blue-light filter down (cooler)" },
+          { "keys": "F4", "desc": "Blue-light filter up (warmer)" }
+        ]
+      },
+      {
         "title": "Screenshots & screen",
         "items": [
           { "keys": "Super Mouse1", "desc": "Screenshot region → clipboard" },

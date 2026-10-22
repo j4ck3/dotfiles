@@ -201,23 +201,36 @@ top_ram_out = [{"name": name, "ram": fmt_size(mib)} for mib, name in top_ram[:8]
 
 storage_used = storage_total = "--"
 storage_pct = 0
+def fmt_bytes_decimal(mib):
+    # Decimal units, matching what Unraid shows for pool size/used.
+    b = float(mib) * 1048576
+    if b >= 1e12:
+        return f"{b / 1e12:.2f} TB"
+    if b >= 1e9:
+        return f"{b / 1e9:.0f} GB"
+    return f"{b / 1e6:.0f} MB"
+
+# btrfs.data_* only covers allocated data chunks, which hides unallocated
+# device space. btrfs.disk_* reports the whole device, so use it instead.
 pools = []
 for key, chart in metrics.items():
-    if not key.startswith("btrfs.data_"):
+    if not key.startswith("btrfs.disk_"):
         continue
-    dims = chart.get("dimensions") or {}
-    used = float((dims.get("used") or {}).get("value") or 0)
-    free = float((dims.get("free") or {}).get("value") or 0)
-    total = used + free
+    dims = {
+        name: float((dim or {}).get("value") or 0)
+        for name, dim in (chart.get("dimensions") or {}).items()
+    }
+    total = sum(dims.values())
+    used = dims.get("data_used", 0) + dims.get("meta_used", 0) + dims.get("sys_used", 0)
     if total <= 0:
         continue
-    pools.append((total, used, free))
+    pools.append((total, used))
 pools.sort(key=lambda row: -row[0])
 if pools:
-    _, used, free = pools[0]
-    storage_used = fmt_size(used)
-    storage_total = fmt_size(used + free)
-    storage_pct = int(round(used * 100 / (used + free)))
+    total, used = pools[0]
+    storage_used = fmt_bytes_decimal(used)
+    storage_total = fmt_bytes_decimal(total)
+    storage_pct = int(round(used * 100 / total))
 
 os_name = info.get("os_name") or ""
 os_version = info.get("os_version") or ""

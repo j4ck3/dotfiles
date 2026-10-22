@@ -81,8 +81,8 @@ Item {
     }
 
     function syncPopupAnchors(): void {
-        if (volHit.width > 0)
-            Globals.volumePopupRightMargin = root.popupMarginUnder(volHit, 262)
+        if (utilitiesHit.width > 0)
+            Globals.volumePopupRightMargin = root.popupMarginUnder(utilitiesHit, 300)
         if (displayHit.width > 0)
             Globals.displayPopupRightMargin = root.popupMarginUnder(displayHit, 300)
         if (utilitiesHit.width > 0)
@@ -749,7 +749,7 @@ Item {
                     }
                 }
 
-                // Utilities — Cursor, NetBird, mouse, OTP Watch
+                // Settings — NetBird, audio, OTP Watch
                 Item {
                     id: utilitiesHit
                     Layout.fillHeight: true
@@ -791,48 +791,8 @@ Item {
                     }
                 }
 
-                // Full-bar-height hit target for volume widget
-                Item {
-                    id: volHit
+                MouseBattery {
                     Layout.fillHeight: true
-                    Layout.preferredWidth: volStat.implicitWidth + 6
-                    implicitWidth: Layout.preferredWidth
-
-                    MacStat {
-                        id: volStat
-                        anchors.centerIn: parent
-                        label: "VOL"
-                        value: root.sinkMuted ? "MUT" : (root.sinkVol + "%")
-                        muted: root.sinkMuted
-                        tooltip: "Output at " + root.sinkVol + "%"
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        cursorShape: Qt.PointingHandCursor
-                        onEntered: {
-                            root.syncPopupAnchors()
-                            Globals.setVolumeHover(true)
-                        }
-                        onExited: Globals.setVolumeHover(false)
-                        onClicked: mouse => {
-                            if (mouse.button === Qt.RightButton)
-                                Quickshell.execDetached(["pavucontrol"])
-                            else {
-                                root.syncPopupAnchors()
-                                Globals.setVolumeHover(true)
-                            }
-                        }
-                        onWheel: event => {
-                            if (!root.sink || !root.sink.audio)
-                                return
-                            const step = 0.05
-                            let v = root.sink.audio.volume + (event.angleDelta.y > 0 ? step : -step)
-                            root.sink.audio.volume = Math.max(0, Math.min(1.5, v))
-                        }
-                    }
                 }
 
                 JsonScript {
@@ -869,7 +829,7 @@ Item {
                                 if (parts.length >= 3) {
                                     const pct = parseInt(parts[0])
                                     ramStat.value = pct + "%"
-                                    ramStat.alert = pct >= 70
+                                    ramStat.alert = pct > 90
                                     ramStat.tooltip = parts[1] + "G / " + parts[2] + "G used"
                                 }
                             }
@@ -899,7 +859,7 @@ Item {
                                 if (parts.length >= 3) {
                                     const pct = parseInt(parts[0])
                                     diskStat.value = pct + "%"
-                                    diskStat.alert = pct >= 70
+                                    diskStat.alert = pct > 90
                                     const used = (parseFloat(parts[1]) / 1073741824).toFixed(1)
                                     const total = (parseFloat(parts[2]) / 1073741824).toFixed(1)
                                     diskStat.tooltip = used + "G / " + total + "G used on /"
@@ -961,7 +921,7 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
+                        onClicked: Quickshell.execDetached([Globals.sessionActionScript, "poweroff"])
                     }
                 }
             }
@@ -993,14 +953,13 @@ Item {
                                     return
                                 try {
                                     const d = JSON.parse(t)
-                                    towerBar.value = d.ok ? (d.status || "online") : "--"
+                                    towerBar.value = d.ok && typeof d.ram_pct === "number" ? (d.ram_pct + "%") : "--"
                                     towerBar.tooltip = d.tooltip || "tower status"
-                                    towerBar.alert = !d.ok || d.class === "high"
-                                        || (d.alarms_crit || 0) > 0
+                                    towerBar.alert = !!d.ok && typeof d.ram_pct === "number" && d.ram_pct > 90
                                 } catch (e) {
                                     towerBar.value = "--"
                                     towerBar.tooltip = "tower parse error"
-                                    towerBar.alert = true
+                                    towerBar.alert = false
                                 }
                             }
                         }

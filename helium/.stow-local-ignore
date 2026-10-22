@@ -1,0 +1,4 @@
+# Snapshot data and docs; not stow targets.
+^Bookmarks$
+^README\.md$
+^restore-bookmarks\.sh$

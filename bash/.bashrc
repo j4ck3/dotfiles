@@ -171,3 +171,6 @@ export PATH="$PATH:/home/jacke/.lmstudio/bin"
 # End of LM Studio CLI section
 
 . "$HOME/.cargo/env"
+
+# strix
+export PATH=/home/jacke/.strix/bin:$PATH

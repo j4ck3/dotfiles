@@ -3,3 +3,4 @@ singleton Globals 1.0 Globals.qml
 singleton Notifs 1.0 Notifs.qml
 Bar 1.0 Bar.qml
 VerticalBar 1.0 VerticalBar.qml
+SessionAnimation 1.0 SessionAnimation.qml

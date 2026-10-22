@@ -1,2 +1,7 @@
 cursor/.cursor/mcp.json
 .cursor/skills/
+__pycache__/
+*.pyc
+*.backup-*
+*.bak-*
+helium/Bookmarks

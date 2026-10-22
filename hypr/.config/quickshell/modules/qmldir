@@ -3,3 +3,5 @@ JsonScript 1.0 JsonScript.qml
 Pill 1.0 Pill.qml
 GlassCapsule 1.0 GlassCapsule.qml
 MacStat 1.0 MacStat.qml
+
+MouseBattery 1.0 MouseBattery.qml

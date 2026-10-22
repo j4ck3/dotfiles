@@ -93,7 +93,7 @@ PanelWindow {
         Rectangle {
             id: artBox
             Layout.fillWidth: true
-            Layout.preferredHeight: 280
+            Layout.preferredHeight: 220
             radius: 18
             color: Theme.surfaceContainer
 

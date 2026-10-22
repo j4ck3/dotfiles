@@ -38,18 +38,7 @@
     {
       "host": "t3code",
       "args": [],
-      "projects": [
-        {
-          "paths": [
-            "/home/t3/work/3dcommerce"
-          ]
-        },
-        {
-          "paths": [
-            "/home/t3/work/projetx"
-          ]
-        }
-      ]
+      "projects": []
     }
   ],
   "context_servers": {

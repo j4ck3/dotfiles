@@ -713,14 +713,7 @@ PanelWindow {
                 RowLayout {
                     Layout.fillWidth: true
 
-                    Text {
-                        text: "Notifications"
-                        color: Theme.ink
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
-                        Layout.fillWidth: true
-                    }
+                    Item { Layout.fillWidth: true }
 
                     Text {
                         text: "Clear"

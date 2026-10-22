@@ -107,21 +107,20 @@ if [ -z "$temp_input" ]; then
   text=$(printf '<span size="x-small">CPU</span>\n%s%%%s' "$usage" "$throttle_suffix")
   tooltip=$(printf 'CPU usage: %s%%' "$usage")
   class=""
-  if [ "$usage" -ge 70 ]; then
+  if [ "$usage" -gt 90 ]; then
     class="high"
   fi
 else
   temp=$(read_cpu_temp "$temp_input")
-  text=$(printf '<span size="x-small">CPU</span>\n%s%% · %s°C%s' "$usage" "$temp" "$throttle_suffix")
+  text=$(printf '<span size="x-small">CPU</span>\n%s%%%s' "$usage" "$throttle_suffix")
   tooltip=$(printf 'CPU\nUsage: %s%%\nPackage: %s°C' "$usage" "$temp")
   class=""
-  if [ "$usage" -ge 70 ] || [ "$temp" -ge 80 ]; then
+  if [ "$usage" -gt 90 ] || [ "$temp" -gt 90 ]; then
     class="high"
   fi
 fi
 
 if [ "$THROTTLE_ACTIVE" -eq 1 ]; then
-  class="high"
   tooltip=$(printf '%s\nThermal throttle: active now' "$tooltip")
 elif [ "$THROTTLE_COUNT" -gt 0 ]; then
   if [ "$THROTTLE_TIME_MS" -ge 1000 ]; then

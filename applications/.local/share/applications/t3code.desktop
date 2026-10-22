@@ -1,16 +1,4 @@
 [Desktop Entry]
 Type=Application
-Version=1.0
 Name=T3 Code
-Comment=Code editor
-Exec=t3code %U
-Environment=PATH=/home/jacke/.local/bin:/usr/local/bin:/usr/bin:/bin
-Path=/home/jacke/work
-TryExec=t3code
-Terminal=false
-StartupNotify=true
-StartupWMClass=t3code
-Icon=t3code
-Categories=Development;IDE;TextEditor;
-MimeType=text/plain;inode/directory;
-Keywords=editor;ide;code;
+Hidden=true

@@ -28,7 +28,6 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-    property bool shutDownArmed: false
     property bool fanOk: false
     property bool fanOverride: false
     property int fanDuty: 0
@@ -182,11 +181,9 @@ PanelWindow {
 
     onVisibleChanged: {
         if (visible) {
-            shutDownArmed = false
             root.refreshStatus()
             card.playIn()
         } else {
-            shutDownArmed = false
             card.resetOut()
         }
     }
@@ -194,6 +191,91 @@ PanelWindow {
     MouseArea {
         anchors.fill: parent
         onClicked: Globals.powerOpen = false
+    }
+
+    component SlideAction: Rectangle {
+        id: action
+        property string icon
+        property string label
+        property bool danger: false
+        signal confirmed()
+        Layout.fillWidth: true
+        implicitHeight: 46
+        radius: height / 2
+        color: "#22ffffff"
+        readonly property real travel: Math.max(1, width - thumb.width - 8)
+
+        Text {
+            anchors.centerIn: parent
+            anchors.horizontalCenterOffset: 18
+            text: action.label
+            font.family: Theme.fontFamily
+            font.pixelSize: 13
+            color: "#ddffffff"
+            opacity: 1 - thumb.x / action.travel
+        }
+
+        Rectangle {
+            id: thumb
+            x: 4
+            y: 4
+            width: 38
+            height: 38
+            radius: 19
+            color: action.danger ? "#ff453a" : "#e6ffffff"
+            Text {
+                anchors.centerIn: parent
+                text: action.icon
+                font.family: Theme.fontFamily
+                font.pixelSize: 20
+                color: action.danger ? "white" : "#303038"
+            }
+            MouseArea {
+                id: swipe
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                drag.target: thumb
+                drag.axis: Drag.XAxis
+                drag.minimumX: 4
+                drag.maximumX: 4 + action.travel
+                property bool holding: false
+                onPressed: {
+                    reset.stop()
+                    holding = true
+                    root.beginSliderDrag()
+                }
+                function finish(commit) {
+                    if (!holding)
+                        return
+                    holding = false
+                    const complete = commit && thumb.x >= 4 + action.travel * 0.95
+                    reset.restart()
+                    root.endSliderDrag()
+                    if (complete)
+                        action.confirmed()
+                }
+                onReleased: finish(true)
+                onCanceled: finish(false)
+            }
+        }
+        NumberAnimation {
+            id: reset
+            target: thumb
+            property: "x"
+            to: 4
+            duration: 180
+            easing.type: Easing.OutCubic
+        }
+        Connections {
+            target: root
+            function onVisibleChanged() {
+                if (!root.visible) {
+                    swipe.finish(false)
+                    reset.stop()
+                    thumb.x = 4
+                }
+            }
+        }
     }
 
     PopupCard {
@@ -239,38 +321,53 @@ PanelWindow {
                 font.family: Theme.fontFamily
             }
 
-            RowLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: 8
+                implicitHeight: 42
+                radius: 12
+                color: "#22000000"
+                enabled: root.fanOk
+                opacity: enabled ? 1 : 0.45
 
-                M3IconButton {
-                    Layout.fillWidth: true
-                    wide: true
-                    icon: "󰈐"
-                    label: "Auto"
-                    active: root.fanOk && !root.fanOverride
-                    opacity: root.fanOk ? 1 : 0.45
-                    onClicked: root.restoreFanAuto()
-                }
-
-                M3IconButton {
-                    Layout.fillWidth: true
-                    wide: true
-                    icon: "󰒙"
-                    label: "Quiet"
-                    active: root.fanOk && root.fanOverride && root.fanDuty <= 25
-                    opacity: root.fanOk ? 1 : 0.45
-                    onClicked: root.setFanQuiet()
-                }
-
-                M3IconButton {
-                    Layout.fillWidth: true
-                    wide: true
-                    icon: "󰓅"
-                    label: "Max"
-                    active: root.fanOk && root.fanOverride && root.fanDuty >= 95
-                    opacity: root.fanOk ? 1 : 0.45
-                    onClicked: root.setFanMax()
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 3
+                    Repeater {
+                        model: ["Auto", "Quiet", "Max"]
+                        Rectangle {
+                            id: segment
+                            required property int index
+                            required property string modelData
+                            readonly property bool selected: root.fanOk && (
+                                index === 0 ? !root.fanOverride :
+                                root.fanOverride && (index === 1 ? root.fanDuty <= 25 : root.fanDuty >= 95))
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            radius: 9
+                            color: selected ? "#e6ffffff" : presetMouse.containsMouse ? "#18ffffff" : "transparent"
+                            Behavior on color { ColorAnimation { duration: 120 } }
+                            Text {
+                                anchors.centerIn: parent
+                                text: segment.modelData
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                color: segment.selected ? "#303038" : "#ddffffff"
+                            }
+                            MouseArea {
+                                id: presetMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (segment.index === 0) root.restoreFanAuto()
+                                    else if (segment.index === 1) root.setFanQuiet()
+                                    else root.setFanMax()
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -278,74 +375,62 @@ PanelWindow {
         M3Section {
             title: "VIRTUAL MACHINES"
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰖳"
                 label: "Windows 11"
                 // Direct exec — xdg-terminal-exec + setsid race kills start when PTY closes.
-                onClicked: root.run(["/usr/local/bin/windows11-start", "--yes"])
+                onConfirmed: root.run(["/usr/local/bin/windows11-start", "--yes"])
             }
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰖳"
                 label: "Windows 11 Stealth"
-                onClicked: root.run(["/usr/local/bin/windows11-stealth-start", "--yes"])
+                onConfirmed: root.run(["/usr/local/bin/windows11-stealth-start", "--yes"])
             }
         }
 
         M3Section {
             title: "SESSION"
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰌾"
                 label: "Lock Screen"
-                onClicked: {
+                onConfirmed: {
                     Globals.powerOpen = false
                     Globals.lockSession()
                 }
             }
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰤄"
                 label: "Suspend"
-                onClicked: root.run(["systemctl", "suspend"])
+                onConfirmed: root.run([Globals.sessionActionScript, "suspend"])
             }
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰜉"
                 label: "Reboot"
-                onClicked: root.run(["systemctl", "reboot"])
+                onConfirmed: root.run([Globals.sessionActionScript, "reboot"])
             }
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰐥"
-                label: root.shutDownArmed ? "Confirm Shut Down?" : "Shut Down"
+                label: "Shut Down"
                 danger: true
-                onClicked: {
-                    if (root.shutDownArmed)
-                        root.run(["systemctl", "poweroff"])
-                    else
-                        root.shutDownArmed = true
-                }
+                onConfirmed: root.run([Globals.sessionActionScript, "poweroff"])
             }
 
-            M3IconButton {
+            SlideAction {
                 Layout.fillWidth: true
-                wide: true
                 icon: "󰍃"
                 label: "Log Out"
-                onClicked: root.run(["hyprctl", "dispatch", "exit"])
+                onConfirmed: root.run([Globals.sessionActionScript, "logout"])
             }
         }
     }

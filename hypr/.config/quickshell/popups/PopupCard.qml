@@ -41,12 +41,12 @@ Item {
         anchors.leftMargin: root.fromLeft ? root.rightMargin : 0
         anchors.rightMargin: root.fromLeft ? 0 : root.rightMargin
         width: root.cardWidth
-        implicitHeight: inner.implicitHeight + (root.compact ? 22 : 32)
+        implicitHeight: inner.implicitHeight + (root.compact ? 24 : 28)
         height: implicitHeight
-        radius: root.compact ? 14 : 18
-        color: "#111111"
+        radius: 22
+        color: Theme.popupSurface
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.14)
+        border.color: Theme.popupBorder
 
         // Driven by playIn() — slide in + fade
         property real slideY: 0
@@ -91,8 +91,8 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: root.compact ? 12 : 16
-            spacing: root.compact ? 10 : 14
+            anchors.margins: root.compact ? 12 : 14
+            spacing: 12
 
             ColumnLayout {
                 id: bodyCol

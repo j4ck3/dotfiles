@@ -6,3 +6,5 @@ com.spotify.Client
 com.discordapp.Discord
 org.telegram.desktop
 com.bitwarden.desktop
+com.github.wwmm.easyeffects
+org.prismlauncher.PrismLauncher

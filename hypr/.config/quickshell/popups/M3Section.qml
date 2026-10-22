@@ -14,21 +14,13 @@ ColumnLayout {
     Layout.fillWidth: true
     spacing: compact ? 4 : 6
 
-    Text {
-        visible: root.title.length > 0
-        text: root.title
-        color: Qt.rgba(1, 1, 1, 0.45)
-        font.family: Theme.fontFamily
-        font.pixelSize: 10
-        font.weight: Font.DemiBold
-        font.letterSpacing: 1.0
-    }
-
     Rectangle {
         id: box
         Layout.fillWidth: true
-        radius: root.compact ? 12 : 14
-        color: Qt.rgba(1, 1, 1, 0.08)
+        radius: 16
+        color: Theme.popupTile
+        border.width: 1
+        border.color: Qt.rgba(1, 1, 1, 0.06)
         implicitHeight: body.implicitHeight + (root.compact ? 14 : 20)
         height: implicitHeight
         clip: true

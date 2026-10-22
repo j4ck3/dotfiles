@@ -41,13 +41,14 @@ hl.on("hyprland.start", function()
   hl.exec_cmd(scripts .. "/game-snap-listener-watchdog")
 end)
 
--- Normal app windows enter the 16:9 floating group before their first frame.
+-- Normal app windows open floating in a group before their first frame.
 -- Initially-floating windows are dialogs/popups and keep their requested geometry.
--- Vertical bar (Theme.barWidth=56): full height minus gaps_out; pillarbox in remaining width.
+-- Fill the usable area (monitor minus the vertical bar) with equal margins on
+-- every side. Must match `margin` in scripts/16-9-lib.sh. Do not force 16:9:
+-- on a 16:9 monitor the bar makes the usable area narrower than 16:9, so a
+-- forced ratio overflows and the margins become uneven.
 local bar_width = 56 -- quickshell Theme.barWidth
-local gaps_out = 4 -- looknfeel general.gaps_out
-local gap_tb = gaps_out * 2
-local bar_inset = bar_width + gaps_out * 2
+local margin = 5 -- keep in sync with scripts/16-9-lib.sh
 hl.window_rule({
   name = "default-16-9",
   match = {
@@ -56,18 +57,12 @@ hl.window_rule({
   },
   float = true,
   size = {
-    string.format("(monitor_h - %d) * 16 / 9", gap_tb),
-    string.format("monitor_h - %d", gap_tb),
+    string.format("monitor_w - %d", bar_width + margin * 2),
+    string.format("monitor_h - %d", margin * 2),
   },
   move = {
-    string.format(
-      "%d + %d + (monitor_w - %d - (monitor_h - %d) * 16 / 9) / 2",
-      bar_width,
-      gaps_out,
-      bar_inset,
-      gap_tb
-    ),
-    tostring(gaps_out),
+    tostring(bar_width + margin),
+    tostring(margin),
   },
   group = "set",
   no_anim = true,

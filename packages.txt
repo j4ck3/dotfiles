@@ -1,54 +1,77 @@
+# Official repo packages (pacman), including the CachyOS repos.
+# Base system, kernel, firmware and bootloader packages come from the CachyOS installer and are not listed.
+#
 # Install command:
 #  grep -v '^#' packages.txt | grep -v '^$' | xargs -r sudo pacman -S --needed --noconfirm --
 #
-# cd ~/dotfiles
-# stow -v -R -t "$HOME" bash nvim hypr zed theme wireplumber
+# Then stow (see README.md):
+#  cd ~/dotfiles && stow -v -R -t "$HOME" <packages>
 
+# Package management
 paru
 flatpak
-
+pacman-contrib
+shelly
 stow
 
+# Repo-packaged apps that were AUR before (cachyos / extra)
+xdg-terminal-exec
+helium-browser-bin
+cursor-bin
+
+# Hyprland desktop
 hyprland
 hypridle
 hyprlock
 hyprpicker
 hyprsunset
+xdg-desktop-portal-hyprland
 waybar
 quickshell
 uwsm
 cliphist
 ghostty
+ly
 
+# Screenshots
 grim
 slurp
 wl-clipboard
 satty
 
+# Audio
 pipewire
 pipewire-pulse
+pipewire-alsa
 wireplumber
 pavucontrol
+alsa-utils
+cava
 
+# Network and Bluetooth
 networkmanager
 network-manager-applet
 bluez
 bluez-utils
 blueman
+tailscale
+ufw
 
+# Session, auth and theming
 brightnessctl
 polkit
 polkit-gnome
+polkit-kde-agent
 hyprpolkitagent
 gnome-keyring
 libsecret
-
 xdg-desktop-portal-gtk
 gnome-themes-extra
 
-jq
-ripgrep
+# Docker and virtualization
 docker
+docker-compose
+lazydocker
 virt-manager
 qemu-full
 libvirt
@@ -56,65 +79,108 @@ edk2-ovmf
 swtpm
 dnsmasq
 openbsd-netcat
+virt-firmware
+hivex
 
+# Media, dictation, TTS and OCR
 playerctl
-
 ffmpeg
+ffmpegthumbnailer
 yt-dlp
 yad
 wtype
 ydotool
 python-webrtcvad
 python-vosk
-
 tesseract
 tesseract-data-eng
 tesseract-data-swe
-
 mpv
-
+audacity
 libnotify
 
+# Files
+dolphin
+ark
 nautilus
+tumbler
+gvfs
+gvfs-mtp
+gvfs-smb
 gparted
+btrfs-assistant
 localsend
+7zip
+unrar
+unzip
+zip
 
+# Terminal tools
 tmux
-
 neovim
-zed
-git
-gcc
-
+vim
+micro
+xed
 fzf
 fd
-
-lazydocker
-lazygit
+jq
+ripgrep
 btop
 ncdu
 fastfetch
-lact
-rocm-smi-lib
-docker-compose
-
-starship
-just
-bun
-llmfit
-
+pv
+plocate
+wget
 gum
+man-db
 
-ttf-cascadia-mono-nerd
-
+# Development
+zed
+git
+lazygit
+glab
+forgejo-cli
+gcc
+cmake
+nasm
+patchelf
+cloc
+meld
 python
 python-httpx
+bun
+just
+starship
+opencode
+llmfit
 
+# Hardware, power and GPU
+lact
+rocm-smi-lib
+coolercontrol
+cpupower
+intel-undervolt
+powertop
+smartmontools
+libinput-tools
+
+# Gaming
+steam
+gamemode
+lib32-gamemode
+gamescope
+mangohud
+lib32-mangohud
+goverlay
+
+# Fonts
+ttf-cascadia-mono-nerd
+
+# System
 openssh
 rsync
 snapper
 snap-pac
 
+# CAD
 freecad
-
-steam

@@ -34,7 +34,7 @@ Item {
 
     function labelFor(id: int): string {
         const key = String(id)
-        return root.icons[key] !== undefined ? root.icons[key] : (id <= 9 ? String(id) : "·")
+        return root.icons[key] !== undefined ? root.icons[key].toUpperCase() : (id <= 9 ? String(id) : "·")
     }
 
     function occupied(id: int): bool {

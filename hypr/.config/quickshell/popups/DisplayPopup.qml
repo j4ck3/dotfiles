@@ -45,6 +45,10 @@ PanelWindow {
     property int lightPendingBrightness: -1
     property bool lightColorPending: false
     property var pendingHaArgs: []
+    property bool keyOptimistic: false
+    property bool awaitingKeyStatus: false
+    property int pendingBrightnessDelta: 0
+    property int pendingWarmthDelta: 0
 
     readonly property int warmthUi: {
         if (root.identity || root.temp >= 6500)
@@ -192,6 +196,121 @@ PanelWindow {
         return Math.max(2500, Math.min(6500, t))
     }
 
+    // Keyboard steering (Hyprland F1-F4 binds → qs ipc call display …).
+    // Update slider/text immediately, then commit after the popup has rendered.
+    // Ignore stale status polls until the backend has had time to settle.
+    function applyOptimisticKeyStep(kind: string, delta: int): void {
+        root.keyOptimistic = true
+        optimisticRelease.stop()
+        keyPopupClose.stop()
+
+        if (kind === "brightness") {
+            root.gamma = Math.max(10, Math.min(100, root.gamma + delta))
+            brightnessKeyDelay.restart()
+            return
+        }
+
+        const w = Math.max(0, Math.min(100, root.warmthUi + delta))
+        if (w <= 0) {
+            root.identity = true
+            root.temp = 6500
+        } else {
+            root.identity = false
+            root.temp = root.warmthToTemp(w)
+        }
+        warmthKeyDelay.restart()
+    }
+
+    function applyPendingKeySteps(): void {
+        root.awaitingKeyStatus = false
+        if (root.pendingBrightnessDelta !== 0) {
+            const delta = root.pendingBrightnessDelta
+            root.pendingBrightnessDelta = 0
+            root.applyOptimisticKeyStep("brightness", delta)
+        }
+        if (root.pendingWarmthDelta !== 0) {
+            const delta = root.pendingWarmthDelta
+            root.pendingWarmthDelta = 0
+            root.applyOptimisticKeyStep("warmth", delta)
+        }
+    }
+
+    function queueKeyStep(kind: string, delta: int): void {
+        const wasVisible = root.visible
+        Globals.setDisplayPinned(true)
+
+        if (!wasVisible || root.awaitingKeyStatus) {
+            if (kind === "brightness")
+                root.pendingBrightnessDelta += delta
+            else
+                root.pendingWarmthDelta += delta
+            if (!root.awaitingKeyStatus) {
+                root.awaitingKeyStatus = true
+                root.refreshStatus()
+            }
+            return
+        }
+
+        root.applyOptimisticKeyStep(kind, delta)
+    }
+
+    function finishKeyCommit(): void {
+        statusRefreshTimer.restart()
+        optimisticRelease.restart()
+        keyPopupClose.restart()
+    }
+
+    Timer {
+        id: brightnessKeyDelay
+        // Popup entrance animation is 160ms; wait for a fully opaque frame.
+        interval: 240
+        onTriggered: {
+            Quickshell.execDetached([
+                Globals.scriptsDir + "/display-control.sh",
+                "gamma",
+                String(root.gamma)
+            ])
+            root.finishKeyCommit()
+        }
+    }
+
+    Timer {
+        id: warmthKeyDelay
+        interval: 240
+        onTriggered: {
+            const args = root.identity
+                ? ["identity"]
+                : ["temp", String(root.temp)]
+            Quickshell.execDetached([Globals.scriptsDir + "/display-control.sh"].concat(args))
+            root.finishKeyCommit()
+        }
+    }
+
+    Timer {
+        id: optimisticRelease
+        interval: 320
+        onTriggered: {
+            root.keyOptimistic = false
+            root.refreshStatus()
+        }
+    }
+
+    Timer {
+        id: keyPopupClose
+        interval: 700
+        onTriggered: Globals.setDisplayPinned(false)
+    }
+
+    IpcHandler {
+        target: "display"
+
+        function brightnessUp(): void { root.queueKeyStep("brightness", 5) }
+        function brightnessDown(): void { root.queueKeyStep("brightness", -5) }
+        // filterUp = warmer screen (more blue light filtered), filterDown = cooler.
+        function filterUp(): void { root.queueKeyStep("warmth", 10) }
+        function filterDown(): void { root.queueKeyStep("warmth", -10) }
+    }
+
     Process {
         id: statusProc
         command: [Globals.scriptsDir + "/display-status.sh"]
@@ -199,12 +318,14 @@ PanelWindow {
             onStreamFinished: {
                 try {
                     const data = JSON.parse(text.trim())
-                    if (!gammaSlider.pressed)
+                    if (!gammaSlider.pressed && !root.keyOptimistic)
                         root.gamma = data.gamma ?? 100
-                    if (!warmthSlider.pressed) {
+                    if (!warmthSlider.pressed && !root.keyOptimistic) {
                         root.temp = data.temp ?? 6500
                         root.identity = !!data.identity
                     }
+                    if (root.awaitingKeyStatus)
+                        root.applyPendingKeySteps()
                 } catch (e) {}
             }
         }
@@ -295,50 +416,35 @@ PanelWindow {
             Globals.setDisplayCardHover(inside)
         }
 
-        M3Section {
-            title: "BRIGHTNESS"
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                M3IconButton {
-                    icon: "󰃠"
-                    active: root.gamma > 10
-                    onClicked: root.runControl(["gamma", "100"])
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-
-                    Text {
-                        text: "Brightness"
-                        color: "#ffffff"
-                        font.pixelSize: 13
-                        font.family: Theme.fontFamily
-                        Layout.fillWidth: true
-                    }
-
-                    Text {
-                        text: Math.round(gammaSlider.pressed ? gammaSlider.value : root.gamma) + "%"
-                        color: Qt.rgba(1, 1, 1, 0.55)
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-                }
-            }
-
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
             M3Slider {
                 id: gammaSlider
                 Layout.fillWidth: true
-                Layout.leftMargin: 46
+                Layout.preferredHeight: 144
+                orientation: Qt.Vertical
+                flatFillEdge: true
+                Layout.leftMargin: 0
                 from: 10
                 to: 100
                 fillColor: "#ffffff"
                 trackColor: Qt.rgba(1, 1, 1, 0.18)
-                trackHeight: 4
-                showHandle: true
+                trackHeight: 56
+                handleSize: 24
+                hitPad: 4
+                showHandle: false
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 20
+                    z: 3
+                    text: "󰃠"
+                    color: gammaSlider.position > 0.25 ? "#303038" : "#ffffff"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 24
+                }
 
                 Binding {
                     target: gammaSlider
@@ -360,63 +466,34 @@ PanelWindow {
                         root.endSliderDrag()
                 }
             }
-        }
-
-        M3Section {
-            title: "LIGHTS"
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                M3IconButton {
-                    icon: "󰐥"
-                    active: root.lightOn
-                    onClicked: root.toggleLight()
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-
-                    Text {
-                        text: root.lightName
-                        color: "#ffffff"
-                        font.pixelSize: 13
-                        font.family: Theme.fontFamily
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-
-                    Text {
-                        text: {
-                            if (!root.lightOk)
-                                return "Offline"
-                            const v = lightSlider.pressed
-                                ? Math.round(lightSlider.value)
-                                : root.lightBrightness
-                            if (!root.lightOn || v <= 0)
-                                return "Off"
-                            return v + "%"
-                        }
-                        color: Qt.rgba(1, 1, 1, 0.55)
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-                }
-            }
 
             M3Slider {
                 id: lightSlider
                 Layout.fillWidth: true
-                Layout.leftMargin: 46
+                Layout.preferredHeight: 144
+                orientation: Qt.Vertical
+                flatFillEdge: true
+                Layout.leftMargin: 0
                 from: 0
                 to: 100
                 fillColor: root.lightOn ? "#7dd3c0" : Qt.rgba(1, 1, 1, 0.45)
                 trackColor: Qt.rgba(1, 1, 1, 0.18)
-                trackHeight: 4
-                showHandle: true
+                trackHeight: 56
+                handleSize: 24
+                hitPad: 4
+                showHandle: false
                 opacity: root.lightOk ? 1 : 0.45
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 20
+                    z: 3
+                    text: "󰛨"
+                    color: lightSlider.position > 0.25 ? "#303038" : "#ffffff"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 24
+                }
 
                 Binding {
                     target: lightSlider
@@ -438,6 +515,63 @@ PanelWindow {
                         root.endSliderDrag()
                 }
             }
+
+            M3Slider {
+                id: warmthSlider
+                Layout.fillWidth: true
+                Layout.preferredHeight: 144
+                orientation: Qt.Vertical
+                flatFillEdge: true
+                Layout.leftMargin: 0
+                from: 0
+                to: 100
+                fillColor: root.identity ? Qt.rgba(1, 1, 1, 0.45) : "#ffb86c"
+                trackColor: Qt.rgba(1, 1, 1, 0.18)
+                trackHeight: 56
+                handleSize: 24
+                hitPad: 4
+                showHandle: false
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 20
+                    z: 3
+                    text: "󰖔"
+                    color: warmthSlider.position > 0.25 ? "#303038" : "#ffffff"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 24
+                }
+
+                Binding {
+                    target: warmthSlider
+                    property: "value"
+                    value: root.warmthUi
+                    when: !warmthSlider.pressed
+                    restoreMode: Binding.RestoreNone
+                }
+
+                onMoved: {
+                    const w = Math.round(value)
+                    const t = root.warmthToTemp(w)
+                    if (t >= 6500) {
+                        root.identity = true
+                        root.temp = 6500
+                        root.runControl(["identity"])
+                    } else {
+                        root.identity = false
+                        root.temp = t
+                        root.runControl(["temp", String(t)])
+                    }
+                }
+                onPressedChanged: {
+                    if (pressed)
+                        root.beginSliderDrag()
+                    else
+                        root.endSliderDrag()
+                }
+            }
+        }
 
             HueWheel {
                 id: hueWheel
@@ -478,88 +612,5 @@ PanelWindow {
                         root.endSliderDrag()
                 }
             }
-        }
-
-
-        M3Section {
-            title: "NIGHT LIGHT"
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                M3IconButton {
-                    icon: root.identity ? "󰖨" : "󰖔"
-                    active: !root.identity
-                    onClicked: root.runControl(["toggle-night"])
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-
-                    Text {
-                        text: root.identity ? "Night light off" : "Night light"
-                        color: "#ffffff"
-                        font.pixelSize: 13
-                        font.family: Theme.fontFamily
-                        Layout.fillWidth: true
-                    }
-
-                    Text {
-                        text: {
-                            if (warmthSlider.pressed) {
-                                const t = root.warmthToTemp(Math.round(warmthSlider.value))
-                                return t >= 6500 ? "Off" : (t + "K")
-                            }
-                            return root.identity ? "Off" : (root.temp + "K")
-                        }
-                        color: Qt.rgba(1, 1, 1, 0.55)
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-                }
-            }
-
-            M3Slider {
-                id: warmthSlider
-                Layout.fillWidth: true
-                Layout.leftMargin: 46
-                from: 0
-                to: 100
-                fillColor: root.identity ? Qt.rgba(1, 1, 1, 0.45) : "#ffb86c"
-                trackColor: Qt.rgba(1, 1, 1, 0.18)
-                trackHeight: 4
-                showHandle: true
-
-                Binding {
-                    target: warmthSlider
-                    property: "value"
-                    value: root.warmthUi
-                    when: !warmthSlider.pressed
-                    restoreMode: Binding.RestoreNone
-                }
-
-                onMoved: {
-                    const w = Math.round(value)
-                    const t = root.warmthToTemp(w)
-                    if (t >= 6500) {
-                        root.identity = true
-                        root.temp = 6500
-                        root.runControl(["identity"])
-                    } else {
-                        root.identity = false
-                        root.temp = t
-                        root.runControl(["temp", String(t)])
-                    }
-                }
-                onPressedChanged: {
-                    if (pressed)
-                        root.beginSliderDrag()
-                    else
-                        root.endSliderDrag()
-                }
-            }
-        }
     }
 }

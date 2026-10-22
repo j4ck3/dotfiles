@@ -61,6 +61,14 @@ jq -n \
       | {
           id: (.index | tostring),
           name: stream_name,
+          icon: (
+            (stream_name | ascii_downcase) as $app
+            | if $app == "spotify" then "spotify"
+              elif $app == "cs2" then "steam_icon_730"
+              elif $app == "quickshell" then "org.quickshell"
+              else (.properties["application.icon_name"] // .properties["application.process.binary"] // .properties["node.name"] // $app)
+              end
+          ),
           title: (.properties["media.name"] // ""),
           percent: pct,
           muted: .mute

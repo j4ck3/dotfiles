@@ -5,6 +5,7 @@ UtilitiesPopup 1.0 UtilitiesPopup.qml
 DisplayPopup 1.0 DisplayPopup.qml
 ShortcutsPopup 1.0 ShortcutsPopup.qml
 LauncherPopup 1.0 LauncherPopup.qml
+SessionPopup 1.0 SessionPopup.qml
 ClipboardPopup 1.0 ClipboardPopup.qml
 DashboardPopup 1.0 DashboardPopup.qml
 TowerPopup 1.0 TowerPopup.qml
@@ -16,3 +17,7 @@ M3Slider 1.0 M3Slider.qml
 M3IconButton 1.0 M3IconButton.qml
 M3Section 1.0 M3Section.qml
 HueWheel 1.0 HueWheel.qml
+
+VolumeControls 1.0 VolumeControls.qml
+
+AppDetails 1.0 AppDetails.qml

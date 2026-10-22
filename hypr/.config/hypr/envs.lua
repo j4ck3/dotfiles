@@ -47,3 +47,8 @@ hl.env("GTK_THEME", "Adwaita")
 hl.env("GTK2_RC_FILES", home .. "/.gtkrc-2.0")
 hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
 hl.env("QT_STYLE_OVERRIDE", "Fusion")
+
+-- Keyboard: always Swedish, Caps Lock = Escape. Inherited by Xwayland and
+-- nested compositors (gamescope for CS2), which otherwise fall back to "us".
+hl.env("XKB_DEFAULT_LAYOUT", "se")
+hl.env("XKB_DEFAULT_OPTIONS", "caps:escape")

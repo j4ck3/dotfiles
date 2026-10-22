@@ -1,0 +1,6 @@
+[Unit]
+Description=Copy Helium bookmarks into dotfiles
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -m 600 %h/.config/net.imput.helium/Default/Bookmarks %h/dotfiles/helium/Bookmarks

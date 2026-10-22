@@ -1,0 +1,10 @@
+\.git
+\.gitignore
+\.gitmodules
+.+~
+\#.*\#
+^/README.*
+^/LICENSE.*
+__pycache__
+^/etc
+^/install-weekly-update\.sh

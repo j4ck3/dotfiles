@@ -23,6 +23,11 @@ ShellRoot {
             required property var modelData
             screen: modelData
 
+            // Hide the bar only on the monitor displaying a fullscreen workspace.
+            readonly property var hyprMonitor: Hyprland.monitors.values.find(m => m.name === bar.screen.name) ?? null
+            readonly property bool fullscreenActive: hyprMonitor?.activeWorkspace?.hasFullscreen ?? false
+            visible: !fullscreenActive
+
             anchors {
                 top: true
                 left: true
@@ -90,6 +95,10 @@ ShellRoot {
         screen: Globals.focusedScreen()
     }
 
+    SessionPopup {
+        screen: Globals.focusedScreen()
+    }
+
     ClipboardPopup {
         screen: Globals.focusedScreen()
     }
@@ -106,6 +115,8 @@ ShellRoot {
 
     NotificationOSD {}
 
+    SessionAnimation { id: sessionAnimation }
+
     IpcHandler {
         target: "shell"
 
@@ -115,11 +126,14 @@ ShellRoot {
         function toggleUtilities(): void { Globals.toggleUtilities() }
         function toggleShortcuts(): void { Globals.toggleShortcuts() }
         function toggleLauncher(): void { Globals.toggleLauncher() }
+        function toggleSession(): void { Globals.toggleSession() }
         function toggleClipboard(): void { Globals.toggleClipboard() }
         function toggleDashboard(): void { Globals.toggleDashboard() }
         function toggleTower(): void { Globals.toggleTower() }
         function cancelDictation(): void { Globals.cancelDictation() }
         function closeAll(): void { Globals.closeAll() }
         function lock(): void { Globals.lockSession() }
+        function playSessionAnimation(): string { return sessionAnimation.play() }
+        function sessionAnimationStatus(): string { return sessionAnimation.phase }
     }
 }

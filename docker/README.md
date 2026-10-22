@@ -44,3 +44,15 @@ sudo systemctl restart docker
 ```
 
 In Dockhand: `tcp://<netbird-ip>:2375` (from `netbird status` on this PC).
+
+## Rootless daemon (storage driver)
+
+The user unit lives at `.config/systemd/user/docker-rootless.service` and is installed by `stow docker`:
+
+```bash
+cd ~/dotfiles && stow -t ~ docker
+systemctl --user daemon-reload && systemctl --user enable --now docker-rootless
+docker info | grep 'Storage Driver'   # expect overlay2
+```
+
+It runs with `--storage-driver=overlay2`. The old unit used `vfs`, which stores a full copy of every image layer and grew to 215G for about 23G of images.

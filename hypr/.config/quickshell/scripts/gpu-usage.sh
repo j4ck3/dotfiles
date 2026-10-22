@@ -92,15 +92,11 @@ else
 fi
 
 class=""
-if [ "$usage" -ge 70 ] || { [ -n "$temp" ] && [ "$temp" -ge 85 ]; }; then
+if [ "$usage" -gt 90 ] || { [ -n "$temp" ] && [ "$temp" -gt 90 ]; }; then
   class="high"
 fi
 
-if [ -n "$temp" ]; then
-  text=$(printf '<span size="x-small">GPU</span>\n%s%% · %s°C' "$usage" "$temp")
-else
-  text=$(printf '<span size="x-small">GPU</span>\n%s%%' "$usage")
-fi
+text=$(printf '<span size="x-small">GPU</span>\n%s%%' "$usage")
 
 printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' \
   "$(printf '%s' "$text" | escape_json)" \

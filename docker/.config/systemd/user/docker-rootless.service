@@ -1,0 +1,15 @@
+[Unit]
+Description=Rootless Docker Daemon
+After=default.target
+
+[Service]
+Environment=PATH=/home/jacke/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=builtin
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=false
+ExecStartPre=-/usr/bin/rm -rf /run/user/1000/dockerd-rootless /run/user/1000/docker /run/user/1000/docker.sock
+ExecStart=/home/jacke/.local/bin/dockerd-rootless.sh --host=unix:///run/user/1000/docker.sock --storage-driver=overlay2
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

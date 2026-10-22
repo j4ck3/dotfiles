@@ -26,6 +26,14 @@ Singleton {
     readonly property color glassActiveInk: "#0a0a0a"
     readonly property color glassGlow: Qt.rgba(1, 1, 1, 0.14)
 
+    // Control Center popup palette, kept separate from the monochrome bar.
+    readonly property color popupSurface: "#e62b2935"
+    readonly property color popupTile: "#22ffffff"
+    readonly property color popupBorder: "#30ffffff"
+    readonly property color popupText: "#ffffff"
+    readonly property color popupMuted: "#b8ffffff"
+    readonly property color popupAccent: "#0a84ff"
+
     readonly property color ink: "#ffffff"
     readonly property color inkMuted: Qt.rgba(1, 1, 1, 0.55)
     readonly property color hairline: Qt.rgba(1, 1, 1, 0.35)
@@ -48,7 +56,7 @@ Singleton {
     readonly property color sectionBg: surfaceContainerHigh
     readonly property color danger: error
 
-    readonly property string fontFamily: "SF Pro Text"
+    readonly property string fontFamily: "Inter"
     readonly property string fontFamilyFallback: "CaskaydiaCove Nerd Font"
     readonly property string iconFont: "Symbols Nerd Font Mono"
     readonly property string iconFontFallback: "Symbols Nerd Font Mono"

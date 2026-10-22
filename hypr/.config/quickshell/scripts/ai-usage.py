@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Codex plan limits and OpenRouter balance for Quickshell.
 
-Codex limits come from local Codex session events. OpenRouter data comes from
-its documented /key and /credits endpoints and is cached to keep dashboard
-opens instant.
+Codex limits come from the server-side usage endpoint behind the Codex CLI
+login (tokens live in CODEX_HOME/auth.json, refreshed automatically). If the
+remote fetch fails we fall back to local Codex session events. OpenRouter
+data comes from its documented /key and /credits endpoints. All fetches are
+cached so dashboard opens stay instant.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +23,9 @@ from typing import Any
 
 
 CODEX_HOME = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+AUTH_FILE = CODEX_HOME / "auth.json"
+CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+CODEX_USAGE_URL = "https://chatgpt.com/backend-api/codex/usage"
 CACHE = Path(
     os.environ.get("AI_USAGE_CACHE")
     or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
@@ -58,6 +65,183 @@ def local_reset(timestamp: Any) -> str:
     if reset.date() == now.date():
         return reset.strftime("%H:%M")
     return reset.strftime("%a %H:%M")
+
+
+def token_expiry(token: str) -> float:
+    """Return the JWT exp of an access/id token, 0 when unreadable."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        return number(claims.get("exp")) or 0.0
+    except (IndexError, ValueError, json.JSONDecodeError, TypeError):
+        return 0.0
+
+
+def read_auth() -> dict[str, Any] | None:
+    try:
+        auth = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    tokens = auth.get("tokens") if isinstance(auth, dict) else None
+    if not isinstance(tokens, dict) or not tokens.get("access_token"):
+        return None
+    return auth
+
+
+def save_auth(auth: dict[str, Any]) -> None:
+    """Persist refreshed tokens without changing auth.json permissions."""
+    temporary = AUTH_FILE.with_suffix(".json.tmp")
+    try:
+        mode = AUTH_FILE.stat().st_mode & 0o777
+    except OSError:
+        mode = 0o600
+    temporary.write_text(json.dumps(auth), encoding="utf-8")
+    os.chmod(temporary, mode or 0o600)
+    temporary.replace(AUTH_FILE)
+
+
+def refresh_access_token(auth: dict[str, Any]) -> tuple[bool, str]:
+    tokens = auth.get("tokens") or {}
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        return False, "no refresh token"
+    data = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": CODEX_CLIENT_ID,
+        }
+    ).encode()
+    request = urllib.request.Request(
+        "https://auth.openai.com/oauth/token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = json.load(response)
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as exc:
+        return False, f"token refresh failed: {exc}"
+    access = body.get("access_token")
+    if not access:
+        return False, "token refresh returned no access_token"
+    tokens["access_token"] = access
+    tokens["id_token"] = body.get("id_token") or tokens.get("id_token")
+    tokens["refresh_token"] = body.get("refresh_token") or refresh_token
+    auth["last_refresh"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    save_auth(auth)
+    return True, ""
+
+
+def codex_live_usage() -> dict[str, Any]:
+    """Fetch plan usage from the ChatGPT backend, falling back to local events.
+
+    Returns the same shape as codex_usage() plus a "source" marker so the
+    widget can tell server truth from rollout estimates.
+    """
+    auth = read_auth()
+    if auth is None:
+        local = codex_usage()
+        local["source"] = "local"
+        return local
+
+    tokens = auth.get("tokens") or {}
+    account_id = tokens.get("account_id") or ""
+    access = tokens.get("access_token") or ""
+
+    def request_with(token: str) -> tuple[Any, int, str]:
+        request = urllib.request.Request(
+            CODEX_USAGE_URL,
+            headers={
+                "Authorization": "Bearer " + token,
+                "Accept": "application/json",
+                "chatgpt-account-id": account_id,
+                "User-Agent": "codex_cli_rs",
+                "Origin": "https://chatgpt.com",
+                "Referer": "https://chatgpt.com/codex/settings/usage",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                return json.load(response), response.status, ""
+        except urllib.error.HTTPError as exc:
+            try:
+                body = json.loads(exc.read())
+                message = str((body.get("error") or {}).get("message") or "")
+            except (json.JSONDecodeError, AttributeError):
+                message = ""
+            return None, exc.code, message or f"HTTP {exc.code}"
+        except (OSError, ValueError) as exc:
+            return None, 0, str(exc)
+
+    refreshed = False
+    if not account_id or token_expiry(access) <= time.time() + 60:
+        refreshed, error = refresh_access_token(auth)
+        if refreshed:
+            access = (auth.get("tokens") or {}).get("access_token") or access
+
+    data, status, error = request_with(access)
+    if data is None and status == 401 and not refreshed:
+        refreshed, error = refresh_access_token(auth)
+        if refreshed:
+            access = (auth.get("tokens") or {}).get("access_token") or access
+            data, status, error = request_with(access)
+
+    payload = data if isinstance(data, dict) else None
+    rate = (payload or {}).get("rate_limit") or {}
+    primary = rate.get("primary_window") or {}
+    secondary = rate.get("secondary_window") or {}
+    if not isinstance(primary, dict) or not isinstance(secondary, dict):
+        local = codex_usage()
+        local["source"] = "local"
+        local.setdefault("fetch_error", error or f"HTTP {status}")
+        return local
+
+    now = time.time()
+
+    def window(source: dict[str, Any]) -> dict[str, Any]:
+        used = number(source.get("used_percent")) or 0.0
+        resets_at = number(source.get("reset_at")) or 0
+        return {
+            "remaining": max(0.0, min(100.0, 100.0 - used)),
+            "resets_at": resets_at,
+            "reset": local_reset(resets_at),
+        }
+
+    five = window(primary)
+    week = window(secondary)
+    credits = payload.get("credits") or {}
+    credit_balance = money(credits.get("balance")) if credits.get("has_credits") else ""
+    reset_credits = payload.get("rate_limit_reset_credits") or {}
+    resets_left = number(reset_credits.get("applicable_available_count"))
+    if resets_left is None:
+        resets_left = number(reset_credits.get("available_count"))
+    reset_bits = []
+    if five["reset"]:
+        reset_bits.append("5h resets " + five["reset"])
+    if week["reset"]:
+        reset_bits.append("week resets " + week["reset"])
+    if resets_left is not None:
+        reset_bits.append(f"{resets_left:.0f} reset{'s' if resets_left != 1 else ''} left")
+    if credit_balance:
+        reset_bits.append(credit_balance + " credits")
+
+    return {
+        "ok": True,
+        "source": "live",
+        "display": f"5h {five['remaining']:.0f}% · week {week['remaining']:.0f}%",
+        "subtitle": " · ".join(reset_bits) or "Codex allowance",
+        "five_hour_remaining": five["remaining"],
+        "weekly_remaining": week["remaining"],
+        "five_hour_reset": five["reset"],
+        "weekly_reset": week["reset"],
+        "resets_left": resets_left if resets_left is not None else -1,
+        "credits": credit_balance,
+        "plan": str(payload.get("plan_type") or ""),
+        "updated_at": now,
+        "stale": False,
+    }
 
 
 def read_last_rate_limits(path: Path) -> tuple[dict[str, Any] | None, float]:
@@ -134,6 +318,7 @@ def codex_usage() -> dict[str, Any]:
     five = window("primary")
     week = window("secondary")
     credits = newest.get("credits") or {}
+    # Reset-credit counts only come from the live endpoint, not session events.
     credit_balance = money(credits.get("balance")) if credits.get("has_credits") else ""
     reset_bits = []
     if five["reset"]:
@@ -151,6 +336,7 @@ def codex_usage() -> dict[str, Any]:
         "weekly_remaining": week["remaining"],
         "five_hour_reset": five["reset"],
         "weekly_reset": week["reset"],
+        "resets_left": -1,
         "credits": credit_balance,
         "plan": str(newest.get("plan_type") or ""),
         "updated_at": newest_at,
@@ -288,27 +474,33 @@ def write_cache(payload: dict[str, Any]) -> None:
     temporary.replace(CACHE)
 
 
-def combined(fetch_openrouter: bool) -> dict[str, Any]:
+def combined(fetch_openrouter: bool, fetch_codex: bool) -> dict[str, Any]:
     cached = read_cache()
-    if fetch_openrouter:
+    router = cached.get("openrouter")
+    if fetch_openrouter or not isinstance(router, dict):
         router = openrouter_usage()
-        cached = {"openrouter": router, "fetched_at": time.time()}
-        write_cache(cached)
     else:
-        router = cached.get("openrouter") or {
-            "ok": False,
-            "configured": bool(
-                os.environ.get("OPENROUTER_API_KEY")
-                or os.environ.get("OPENROUTER_MANAGEMENT_KEY")
-                or any(path.is_file() for path in OPENROUTER_KEY_FILES)
-                or any(path.is_file() for path in OPENROUTER_MANAGEMENT_KEY_FILES)
-            ),
-            "display": "OpenRouter not refreshed",
-            "subtitle": "Press refresh to fetch usage",
-            "remaining_percent": -1,
-        }
+        configured = bool(
+            os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("OPENROUTER_MANAGEMENT_KEY")
+            or any(path.is_file() for path in OPENROUTER_KEY_FILES)
+            or any(path.is_file() for path in OPENROUTER_MANAGEMENT_KEY_FILES)
+        )
+        router.setdefault("configured", configured)
+
+    if fetch_codex:
+        codex = codex_live_usage()
+        if codex.get("ok"):
+            cached["codex"] = codex
+    else:
+        codex = cached.get("codex") or codex_usage()
+
+    cached["openrouter"] = router
+    cached["fetched_at"] = time.time()
+    if fetch_openrouter or fetch_codex or "codex" not in cached:
+        write_cache(cached)
     return {
-        "codex": codex_usage(),
+        "codex": codex,
         "openrouter": router,
         "fetched_at": cached.get("fetched_at") or 0,
     }
@@ -319,7 +511,7 @@ def main() -> int:
     if command not in ("status", "fetch"):
         print("usage: ai-usage.py [status|fetch]", file=sys.stderr)
         return 2
-    print(json.dumps(combined(command == "fetch"), separators=(",", ":")))
+    print(json.dumps(combined(command == "fetch", command == "fetch"), separators=(",", ":")))
     return 0
 
 

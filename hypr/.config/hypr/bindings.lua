@@ -70,8 +70,8 @@ bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(terminal .. " -e lazydocker"), desc_re
 bind("SUPER + CTRL + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), desc_release("Lock screen"))
 
 -- System sleep
-bind("SUPER + CTRL + SHIFT + S", hl.dsp.exec_cmd("/usr/bin/systemctl suspend"), desc_release("Sleep/Suspend"))
-bind("CTRL + ALT + SHIFT + S", hl.dsp.exec_cmd("/usr/bin/systemctl suspend"), desc("Sleep/Suspend"))
+bind("SUPER + CTRL + SHIFT + S", hl.dsp.exec_cmd(scripts .. "/session-action suspend"), desc_release("Sleep/Suspend"))
+bind("CTRL + ALT + SHIFT + S", hl.dsp.exec_cmd(scripts .. "/session-action suspend"), desc("Sleep/Suspend"))
 
 -- System monitor
 bind("CTRL + ALT + DELETE", hl.dsp.exec_cmd(terminal .. " -e btop"), desc("System monitor"))
@@ -81,7 +81,7 @@ bind("SUPER + ALT + U", hl.dsp.exec_cmd(scripts .. "/kbd-unstick"), desc_release
 bind("Scroll_Lock", hl.dsp.exec_cmd(scripts .. "/kbd-unstick"), desc("Unstick keyboard"))
 
 -- Games: Super+G focuses/cycles; Super+Shift+G moves games → free game ws (>=16)
-bind("SUPER + G", hl.dsp.exec_cmd(scripts .. "/game-focus"), desc_release("Focus game"))
+bind("SUPER + G", hl.dsp.focus({ workspace = "name:g" }), desc_release("Game workspace g"))
 -- dont_inhibit = bypass app keybind inhibitors (NOT ignore_mods — that eats bare G)
 bind("SUPER + SHIFT + G", hl.dsp.exec_cmd(scripts .. "/game-move-active"), desc_release_inhibit("Move games to game workspace"))
 
@@ -103,8 +103,9 @@ bind("SUPER + SHIFT + plus", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"
 bind("SUPER + SHIFT + slash", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
 bind("SUPER + SHIFT + question", hl.dsp.exec_cmd("qs ipc call shell toggleShortcuts"), desc_release("Keyboard shortcuts (Super+?)"))
 
--- App launcher + clipboard (Quickshell)
+-- App launcher + session menu + clipboard (Quickshell)
 bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call shell toggleLauncher"), desc_release("Launch apps"))
+bind("SUPER + SHIFT + SPACE", hl.dsp.exec_cmd("qs ipc call shell toggleSession"), desc_release("Session menu"))
 bind("SUPER + C", hl.dsp.exec_cmd("qs ipc call shell toggleClipboard"), desc_release("Clipboard history"))
 
 -- Screenshot bindings - using grim + slurp + satty
@@ -236,6 +237,13 @@ bind(
 )
 bind("XF86AudioMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), desc_media("Mute toggle"))
 bind("XF86AudioMicMute", hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), desc_media("Mic mute toggle"))
+
+-- Display steering (Quickshell DisplayPopup sliders via qs ipc target "display")
+-- F1/F2 brightness ±5%, F3/F4 blue-light filter: down = cooler, up = warmer.
+bind("F1", hl.dsp.exec_cmd("qs ipc call display brightnessUp"), desc_media("Brightness up"))
+bind("F2", hl.dsp.exec_cmd("qs ipc call display brightnessDown"), desc_media("Brightness down"))
+bind("F3", hl.dsp.exec_cmd("qs ipc call display filterDown"), desc_media("Blue-light filter down"))
+bind("F4", hl.dsp.exec_cmd("qs ipc call display filterUp"), desc_media("Blue-light filter up"))
 
 -- Open project in tmux with nvim and opencode
 bind("SUPER + SHIFT + O", hl.dsp.exec_cmd(scripts .. "/open-project-tmux"), desc_release("Open project (tmux+nvim+opencode)"))

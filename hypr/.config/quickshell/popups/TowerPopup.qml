@@ -92,7 +92,7 @@ PanelWindow {
         anchors.leftMargin: Theme.barVertical ? Globals.towerPopupRightMargin : 0
         anchors.rightMargin: Theme.barVertical ? 0 : Globals.towerPopupRightMargin
         width: root.cardW
-        implicitHeight: inner.implicitHeight + 24
+        implicitHeight: inner.implicitHeight + 28
         height: implicitHeight
 
         property real slideY: 0
@@ -137,260 +137,302 @@ PanelWindow {
 
         Rectangle {
             anchors.fill: parent
-            radius: 14
-            color: "#111111"
+            radius: 22
+            color: Theme.popupSurface
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.14)
+            border.color: Theme.popupBorder
         }
 
         ColumnLayout {
             id: inner
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
+            anchors.margins: 14
+            spacing: 10
 
-            Text {
+            Rectangle {
                 Layout.fillWidth: true
-                text: "Tower"
-                color: Theme.ink
-                font.family: Theme.fontFamily
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-            }
+                implicitHeight: identityRows.implicitHeight + 20
+                radius: 14
+                color: Theme.popupTile
+                border.width: 1
+                border.color: Theme.popupBorder
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Status"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok ? (root.info.status || "online") : "offline"
-                    color: (root.info.alarms_crit || 0) > 0 ? Theme.error : Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                visible: !!(root.info.host && root.info.host.length)
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Host"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.host || ""
-                    color: Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "CPU"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok
-                        ? (root.info.cpu + "% · " + (root.info.cores || "?") + " cores")
-                        : "--"
-                    color: (root.info.cpu || 0) >= 70 ? Theme.error : Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "RAM"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok
-                        ? (root.info.ram_used_g + " / " + root.info.ram_total_g + " G · " + root.info.ram_pct + "%")
-                        : "--"
-                    color: (root.info.ram_pct || 0) >= 70 ? Theme.error : Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Storage"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok && root.info.storage_total !== "--"
-                        ? (root.info.storage_used + " / " + root.info.storage_total + " · " + root.info.storage_pct + "%")
-                        : "--"
-                    color: (root.info.storage_pct || 0) >= 85 ? Theme.error : Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Load"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok
-                        ? (root.info.load1 + " · " + root.info.load5 + " · " + root.info.load15)
-                        : "--"
-                    color: Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Net ↓"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok ? (root.info.net_rx || "--") : "--"
-                    color: Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Net ↑"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok ? (root.info.net_tx || "--") : "--"
-                    color: Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Uptime"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                }
-                Text {
-                    text: root.info.ok ? (root.info.uptime || "--") : "--"
-                    color: Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
-                }
-            }
-
-            Text {
-                visible: !!(root.info.ok && (root.info.top_ram || []).length > 0)
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                text: "Top RAM"
-                color: Theme.inkMuted
-                font.family: Theme.fontFamily
-                font.pixelSize: 10
-                font.weight: Font.Medium
-            }
-
-            Repeater {
-                model: root.info.ok ? (root.info.top_ram || []) : []
-
-                RowLayout {
-                    Layout.fillWidth: true
+                ColumnLayout {
+                    id: identityRows
+                    anchors.fill: parent
+                    anchors.margins: 10
                     spacing: 8
-                    required property var modelData
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: modelData.name || "?"
-                        color: Theme.inkMuted
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Status"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok ? (root.info.status || "online") : "offline"
+                            color: (root.info.alarms_crit || 0) > 0 ? Theme.error : Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
                     }
-                    Text {
-                        text: modelData.ram || "--"
-                        color: Theme.ink
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 11
-                        font.weight: Font.Medium
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: !!(root.info.host && root.info.host.length)
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Host"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.host || ""
+                            color: Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
                     }
                 }
             }
 
-            RowLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                visible: !!(root.info.ok && ((root.info.alarms_warn || 0) + (root.info.alarms_crit || 0) > 0))
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "Alarms"
-                    color: Theme.inkMuted
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
+                implicitHeight: metricRows.implicitHeight + 20
+                radius: 14
+                color: Theme.popupTile
+                border.width: 1
+                border.color: Theme.popupBorder
+
+                ColumnLayout {
+                    id: metricRows
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "CPU"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok
+                                ? (root.info.cpu + "% · " + (root.info.cores || "?") + " cores")
+                                : "--"
+                            color: (root.info.cpu || 0) > 90 ? Theme.alert : Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "RAM"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok
+                                ? (root.info.ram_used_g + " / " + root.info.ram_total_g + " G · " + root.info.ram_pct + "%")
+                                : "--"
+                            color: (root.info.ram_pct || 0) > 90 ? Theme.alert : Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Storage"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok && root.info.storage_total !== "--"
+                                ? (root.info.storage_used + " / " + root.info.storage_total + " · " + root.info.storage_pct + "%")
+                                : "--"
+                            color: (root.info.storage_pct || 0) > 90 ? Theme.alert : Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Load"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok
+                                ? (root.info.load1 + " · " + root.info.load5 + " · " + root.info.load15)
+                                : "--"
+                            color: Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Net ↓"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok ? (root.info.net_rx || "--") : "--"
+                            color: Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Net ↑"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok ? (root.info.net_tx || "--") : "--"
+                            color: Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Uptime"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: root.info.ok ? (root.info.uptime || "--") : "--"
+                            color: Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
                 }
-                Text {
-                    text: (root.info.alarms_crit || 0) + " crit · " + (root.info.alarms_warn || 0) + " warn"
-                    color: (root.info.alarms_crit || 0) > 0 ? Theme.error : Theme.ink
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.Medium
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: processRows.implicitHeight + 20
+                visible: !!(root.info.ok && (root.info.top_ram || []).length > 0)
+                radius: 14
+                color: Theme.popupTile
+                border.width: 1
+                border.color: Theme.popupBorder
+
+                ColumnLayout {
+                    id: processRows
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+                    Repeater {
+                        model: root.info.ok ? (root.info.top_ram || []) : []
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            required property var modelData
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.name || "?"
+                                color: Theme.popupMuted
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: modelData.ram || "--"
+                                color: Theme.popupText
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                font.weight: Font.Medium
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: alarmRows.implicitHeight + 20
+                visible: !!(root.info.ok && ((root.info.alarms_warn || 0) + (root.info.alarms_crit || 0) > 0))
+                radius: 14
+                color: Theme.popupTile
+                border.width: 1
+                border.color: Theme.popupBorder
+
+                ColumnLayout {
+                    id: alarmRows
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 8
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: !!(root.info.ok && ((root.info.alarms_warn || 0) + (root.info.alarms_crit || 0) > 0))
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Alarms"
+                            color: Theme.popupMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                        }
+                        Text {
+                            text: (root.info.alarms_crit || 0) + " crit · " + (root.info.alarms_warn || 0) + " warn"
+                            color: (root.info.alarms_crit || 0) > 0 ? Theme.error : Theme.popupText
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 11
+                            font.weight: Font.Medium
+                        }
+                    }
                 }
             }
         }
