@@ -1,0 +1,7 @@
+{
+  "provider": {
+    "plan": "pro",
+    "strictMcpConfig": true,
+    "pathToClaudeCodeExecutable": "/home/jacke/.local/bin/claude"
+  }
+}

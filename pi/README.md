@@ -17,6 +17,17 @@ stow -v -R -t "$HOME" agents pi
 
 Restart `pi` or run `/reload`.
 
+## Claude Code provider
+
+[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) runs Claude models in pi through the Claude Code Agent SDK, billed against the Claude subscription that `claude` is logged into. Pi's tools, TUI, and skills stay in charge.
+
+```sh
+claude auth login           # once, if `claude auth status` shows loggedIn: false
+pi install npm:pi-claude-bridge
+```
+
+Then pick a model with `/model`, for example `claude-bridge/claude-opus-5-5` or `claude-bridge/claude-haiku-4-5`. Config lives in `.pi/agent/claude-bridge.json` (stowed). Set `provider.plan` to `"max"` after upgrading the subscription. Debug with `CLAUDE_BRIDGE_DEBUG=1`; logs go to `~/.pi/agent/claude-bridge.log`.
+
 ## What gets linked
 
 | Type | Items |
