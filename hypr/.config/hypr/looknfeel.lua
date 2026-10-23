@@ -90,8 +90,8 @@ hl.config({
   },
 
   cursor = {
-    -- Never auto-hide (idle / keys / touch).
-    hide_on_key_press = false,
+    -- Hide while typing; reappears on pointer move. No idle/touch hiding.
+    hide_on_key_press = true,
     hide_on_touch = false,
     hide_on_tablet = false,
     inactive_timeout = 0,
