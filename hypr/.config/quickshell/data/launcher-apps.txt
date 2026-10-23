@@ -1,0 +1,71 @@
+# Applications shown in the Quickshell launcher.
+#
+# One desktop entry ID per line: the .desktop filename without ".desktop".
+# Only listed applications appear. Lines starting with # are ignored, so
+# comment out a line to hide an application. Changes apply on save.
+# If this file is deleted, the launcher shows every application.
+#
+# Find IDs in /usr/share/applications, ~/.local/share/applications and
+# /var/lib/flatpak/exports/share/applications.
+
+# Browsers and communication
+brave-origin-nightly
+helium
+com.discordapp.Discord
+org.telegram.desktop
+localsend
+
+# Development
+com.mitchellh.ghostty
+dev.zed.Zed
+com.microsoft.VSCode
+nvim
+vim
+lmstudio
+
+# Media
+audacity
+mpv
+juxtopposed-vlc
+com.spotify.Client
+com.linuxsoundboard.app
+com.github.wwmm.easyeffects
+org.pulseaudio.pavucontrol
+
+# Games
+steam
+Counter-Strike 2
+#org.prismlauncher.PrismLauncher
+open-engine-sim
+
+# Creative
+org.freecad.FreeCAD
+ai.storyteller.photocraft
+ai.storyteller.solidcraft
+xfce4-screenshooter
+
+# Files and utilities
+org.kde.dolphin
+org.gnome.Nautilus
+com.bitwarden.desktop
+handy
+#Handy
+openwhispr
+btop
+
+# System
+blueman-manager
+nm-connection-editor
+#org.cachyos.KernelManager
+#org.cachyos.scx-manager
+org.coolercontrol.CoolerControl
+io.github.ilya_zlobintsev.LACT
+io.github.benjamimgois.goverlay
+hyprmod
+virt-manager
+org.moson.pacseek
+com.shellyorg.shelly
+#uuctl
+limine-snapper-restore
+#lightdm-gtk-greeter-settings
+yad-settings

@@ -416,6 +416,46 @@ PanelWindow {
             Globals.setDisplayCardHover(inside)
         }
 
+        HueWheel {
+            id: hueWheel
+            Layout.alignment: Qt.AlignHCenter
+            Layout.bottomMargin: 8
+            Layout.preferredWidth: 168
+            Layout.preferredHeight: 168
+            enabled: root.lightOk
+            opacity: root.lightOk ? 1 : 0.45
+
+            Binding {
+                target: hueWheel
+                property: "hue"
+                value: root.lightHue
+                when: !hueWheel.pressed
+                restoreMode: Binding.RestoreNone
+            }
+            Binding {
+                target: hueWheel
+                property: "saturation"
+                value: root.lightSat
+                when: !hueWheel.pressed
+                restoreMode: Binding.RestoreNone
+            }
+
+            onHsMoved: (h, s) => {
+                root.setLightColorOptimistic(h, s)
+                root.runHaControl([
+                    "hs",
+                    h.toFixed(3),
+                    s.toFixed(3)
+                ])
+            }
+            onPressActive: active => {
+                if (active)
+                    root.beginSliderDrag()
+                else
+                    root.endSliderDrag()
+            }
+        }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: 12
@@ -572,45 +612,5 @@ PanelWindow {
                 }
             }
         }
-
-            HueWheel {
-                id: hueWheel
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 8
-                Layout.preferredWidth: 168
-                Layout.preferredHeight: 168
-                enabled: root.lightOk
-                opacity: root.lightOk ? 1 : 0.45
-
-                Binding {
-                    target: hueWheel
-                    property: "hue"
-                    value: root.lightHue
-                    when: !hueWheel.pressed
-                    restoreMode: Binding.RestoreNone
-                }
-                Binding {
-                    target: hueWheel
-                    property: "saturation"
-                    value: root.lightSat
-                    when: !hueWheel.pressed
-                    restoreMode: Binding.RestoreNone
-                }
-
-                onHsMoved: (h, s) => {
-                    root.setLightColorOptimistic(h, s)
-                    root.runHaControl([
-                        "hs",
-                        h.toFixed(3),
-                        s.toFixed(3)
-                    ])
-                }
-                onPressActive: active => {
-                    if (active)
-                        root.beginSliderDrag()
-                    else
-                        root.endSliderDrag()
-                }
-            }
     }
 }

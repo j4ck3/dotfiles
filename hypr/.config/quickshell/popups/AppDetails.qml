@@ -14,8 +14,19 @@ FocusScope {
     signal refreshRequested()
     signal updateRequested(var command)
 
-    readonly property bool systemUpdate: info.manager === "pacman" || info.manager === "aur"
+    readonly property bool archPackage: info.manager === "pacman" || info.manager === "aur"
     readonly property bool canUpdate: !!(info.update_command && info.update_command.length)
+
+    function focusUpdate(): void {
+        root.forceActiveFocus()
+        if (root.canUpdate)
+            updateButton.forceActiveFocus()
+    }
+
+    onCanUpdateChanged: {
+        if (root.canUpdate && root.activeFocus)
+            updateButton.forceActiveFocus()
+    }
 
     function dateLabel(timestamp: var): string {
         if (!timestamp)
@@ -160,10 +171,10 @@ FocusScope {
 
         Text {
             Layout.fillWidth: true
-            text: root.systemUpdate
-                ? "Arch requires a full system upgrade. Opens a terminal for review and confirmation; other packages may update too."
+            text: root.archPackage
+                ? "Updates only this package and required dependencies. Uses existing repository databases; the newest version may require a separate system upgrade. Partial upgrades on Arch are unsupported. Package confirmations are accepted automatically; authentication may still be required."
                 : root.canUpdate
-                    ? "Opens a terminal to update this app on its installed channel. Review and confirm there."
+                    ? "Updates this app on its installed channel. Package confirmations are accepted automatically; authentication may still be required."
                     : "No supported package manager found. Update this app using its original installer."
             color: Theme.inkMuted
             font.family: Theme.fontFamily
@@ -172,8 +183,17 @@ FocusScope {
         }
 
         ActionButton {
+            id: updateButton
+            focus: true
             Layout.fillWidth: true
-            text: root.systemUpdate ? "Open system updater…" : "Update application…"
+            text: "Update application…"
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    if (!event.isAutoRepeat && !(event.modifiers & Qt.ShiftModifier) && root.canUpdate)
+                        root.updateRequested(root.info.update_command)
+                    event.accepted = true
+                }
+            }
             enabled: root.canUpdate
             onClicked: root.updateRequested(root.info.update_command)
         }

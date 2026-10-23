@@ -35,7 +35,7 @@ PanelWindow {
             return
         detailEntry = list.currentItem.modelData
         pages.currentIndex = 1
-        details.forceActiveFocus()
+        details.focusUpdate()
         refreshVersions(false)
     }
 
@@ -77,35 +77,32 @@ PanelWindow {
         }
     }
 
-    // Hide common junk / toolkit utilities from the launcher.
-    readonly property var blockedIds: [
-        "avahi-discover",
-        "assistant",
-        "designer",
-        "linguist",
-        "qdbusviewer",
-        "bvnc",
-        "bssh",
-        "qt5ct",
-        "qt6ct",
-        "qv4l2",
-        "qvidcap",
-    ]
+    // Allow list: data/launcher-apps.txt, one desktop entry ID per line.
+    // A missing or empty file shows every application.
+    property var allowedIds: null
+
+    FileView {
+        id: allowFile
+        path: Qt.resolvedUrl("../data/launcher-apps.txt")
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            const ids = text().split("\n").map(line => line.trim()).filter(line => line.length && !line.startsWith("#"))
+            root.allowedIds = ids.length ? new Set(ids) : null
+        }
+        onLoadFailed: root.allowedIds = null
+    }
 
     function close(): void {
         Globals.launcherOpen = false
     }
 
     function isBlocked(entry: var): bool {
-        const id = (entry.id || "").toLowerCase()
-        const name = (entry.name || "").toLowerCase()
-        if (root.blockedIds.indexOf(id) !== -1)
-            return true
-        if (id.includes("avahi") || id.includes("pinentry"))
-            return true
-        if (name.startsWith("qt ") || name.startsWith("avahi"))
-            return true
-        return false
+        if (!root.allowedIds)
+            return false
+        const id = (entry.id || "").replace(/\.desktop$/, "")
+        return !root.allowedIds.has(id) && !root.allowedIds.has(entry.id)
     }
 
     function matchesEntry(entry: var, q: string): bool {
@@ -335,12 +332,12 @@ PanelWindow {
             AppDetails {
                 id: details
                 application: root.detailEntry
-                info: root.detailEntry ? (root.appVersions[root.detailEntry.id.replace(/\.desktop$/, "")] || {}) : ({})
+                info: root.detailEntry ? (root.appVersions[root.detailEntry.id] || root.appVersions[root.detailEntry.id.replace(/\.desktop$/, "")] || {}) : ({})
                 refreshing: root.versionsRefreshing
                 onBackRequested: root.showApps()
                 onRefreshRequested: root.refreshVersions(true)
                 onUpdateRequested: command => {
-                    Quickshell.execDetached(["ghostty", "-e"].concat(command))
+                    Quickshell.execDetached(["ghostty", "-e", "/usr/bin/python3", Globals.scriptsDir + "/launcher-update.py", root.detailEntry.id, JSON.stringify(command)])
                     root.close()
                 }
             }

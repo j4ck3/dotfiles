@@ -84,7 +84,7 @@ class VersionTests(unittest.TestCase):
         with patch.object(m, "run", return_value=f"Ref: {beta.ref}\nVersion: 2.3-beta\nCommit: abc\n") as run:
             self.assertEqual(m.flatpak_latest(beta)[beta.source]["latest"], "2.3-beta")
         self.assertEqual(run.call_args.args[0], ["flatpak", "remote-info", "--user", "testing", beta.ref])
-        self.assertEqual(m.update_command(beta), ["flatpak", "update", "--user", beta.ref])
+        self.assertEqual(m.update_command(beta), ["flatpak", "update", "--assumeyes", "--user", beta.ref])
 
     def test_flatpak_commit_is_not_version(self):
         target = m.Target("flatpak", "org.App", installation="system", origin="flathub", arch="x86_64", branch="stable")
@@ -193,8 +193,8 @@ class VersionTests(unittest.TestCase):
     def test_update_argv_is_data_and_never_executed(self):
         with patch.object(m, "run") as run, patch.object(m.shutil, "which", return_value="/usr/bin/paru"):
             self.assertEqual(m.update_command(m.Target("pacman", "editor", repo="extra")),
-                             ["sudo", "pacman", "-Syu"])
-            self.assertEqual(m.update_command(m.Target("aur", "editor-bin")), ["paru", "-Syu"])
+                             ["sudo", "pacman", "-S", "--noconfirm", "--", "extra/editor"])
+            self.assertEqual(m.update_command(m.Target("aur", "editor-bin")), ["paru", "-S", "--noconfirm", "--", "editor-bin"])
             self.assertIsNone(m.update_command(None))
             run.assert_not_called()
 

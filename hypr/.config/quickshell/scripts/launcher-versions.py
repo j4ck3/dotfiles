@@ -283,11 +283,11 @@ def update_command(target):
     if not target:
         return None
     if target.kind == "pacman":
-        return ["sudo", "pacman", "-Syu"]
+        return ["sudo", "pacman", "-S", "--noconfirm", "--", f"{target.repo}/{target.name}"]
     if target.kind == "aur" and shutil.which("paru"):
-        return ["paru", "-Syu"]
+        return ["paru", "-S", "--noconfirm", "--", target.name]
     if target.kind == "flatpak":
-        return ["flatpak", "update", target.scope, target.ref]
+        return ["flatpak", "update", "--assumeyes", target.scope, target.ref]
     return None
 
 
