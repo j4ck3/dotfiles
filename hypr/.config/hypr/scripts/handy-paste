@@ -33,7 +33,10 @@ command -v wl-copy >/dev/null 2>&1 || { log "wl-copy missing"; exit 1; }
 command -v wl-paste >/dev/null 2>&1 || { log "wl-paste missing"; exit 1; }
 
 log "copying to clipboard"
-if ! printf '%s' "$text" | timeout 2 wl-copy; then
+# wl-copy forks a daemon that serves the clipboard until replaced. Detach its
+# stdio: Handy waits for EOF on this script's stdout/stderr, so an inherited pipe
+# blocks Handy's paste step until the next copy and stalls the next dictation.
+if ! printf '%s' "$text" | timeout 2 wl-copy >/dev/null 2>&1; then
   log "wl-copy failed or timed out"
   exit 1
 fi
