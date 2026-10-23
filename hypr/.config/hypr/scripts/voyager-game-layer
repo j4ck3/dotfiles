@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Switch the ZSA Voyager to the Oryx "gamer" layer while CS2 has focus.
+
+Listens to Hyprland's event socket (.socket2.sock) for `activewindow`
+events. When the focused window class matches GAME_CLASS_RE, it sends the
+Oryx raw HID ORYX_SET_LAYER command to turn the gamer layer on. When focus
+moves to anything else, it turns that layer off again.
+
+Protocol (zsa/qmk_modules oryx/oryx.h): every packet is 32 bytes.
+  0x01             ORYX_CMD_PAIRING_INIT (required before SET_LAYER)
+  0x04 0x01 LAYER  ORYX_SET_LAYER on  (layer_move: only that layer active)
+  0x04 0x00 LAYER  ORYX_SET_LAYER off (layer_off)
+
+Layer index comes from the flashed Oryx layout: 5 = "gamer".
+Override with VOYAGER_GAME_LAYER and VOYAGER_GAME_CLASS_RE.
+"""
+
+import glob
+import os
+import re
+import socket
+import sys
+import time
+
+ZSA_HID_ID = "0003:00003297:00001977"  # Voyager
+RAW_HID_PHYS_SUFFIX = "input1"  # raw HID interface (usage page 0xFF60)
+GAME_LAYER = int(os.environ.get("VOYAGER_GAME_LAYER", "5"))
+GAME_CLASS_RE = re.compile(
+    os.environ.get("VOYAGER_GAME_CLASS_RE", r"^(cs2|gamescope(-wl)?)$")
+)
+
+
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
+def find_raw_hid():
+    for path in glob.glob("/sys/class/hidraw/hidraw*"):
+        try:
+            with open(os.path.join(path, "device/uevent")) as f:
+                uevent = f.read()
+        except OSError:
+            continue
+        phys = re.search(r"^HID_PHYS=(.*)$", uevent, re.M)
+        if ZSA_HID_ID in uevent and phys and phys.group(1).endswith(RAW_HID_PHYS_SUFFIX):
+            return "/dev/" + os.path.basename(path)
+    return None
+
+
+def set_layer(on):
+    dev = find_raw_hid()
+    if not dev:
+        log("voyager raw hid not found")
+        return False
+    try:
+        fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as e:
+        log(f"open {dev} failed: {e}")
+        return False
+    try:
+        for cmd in ((0x01,), (0x04, 1 if on else 0, GAME_LAYER)):
+            # Leading 0x00 is the HID report id (none) for hidraw writes.
+            os.write(fd, bytes((0x00, *cmd)) + bytes(32 - len(cmd)))
+            time.sleep(0.02)
+    except OSError as e:
+        log(f"write {dev} failed: {e}")
+        return False
+    finally:
+        os.close(fd)
+    log(f"layer {GAME_LAYER} {'on' if on else 'off'}")
+    return True
+
+
+def socket_path():
+    runtime = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    sig = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if sig:
+        path = f"{runtime}/hypr/{sig}/.socket2.sock"
+        if os.path.exists(path):
+            return path
+    socks = sorted(glob.glob(f"{runtime}/hypr/*/.socket2.sock"), key=os.path.getmtime)
+    return socks[-1] if socks else None
+
+
+def listen():
+    path = socket_path()
+    if not path:
+        raise RuntimeError("hyprland event socket not found")
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(path)
+    log(f"listening on {path}")
+    active = None  # unknown until the first focus event
+    buf = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise RuntimeError("hyprland event socket closed")
+        buf += chunk
+        *lines, buf = buf.split(b"\n")
+        for line in lines:
+            event, _, data = line.decode(errors="replace").partition(">>")
+            if event != "activewindow":
+                continue
+            window_class = data.split(",", 1)[0]
+            want = bool(GAME_CLASS_RE.match(window_class))
+            if want != active and set_layer(want):
+                active = want
+
+
+def main():
+    while True:
+        try:
+            listen()
+        except Exception as e:  # reconnect after Hyprland restarts
+            log(f"error: {e}")
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

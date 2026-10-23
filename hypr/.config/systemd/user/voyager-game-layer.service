@@ -1,0 +1,12 @@
+[Unit]
+Description=Switch ZSA Voyager to the gamer layer while CS2 has focus
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.config/hypr/scripts/voyager-game-layer
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
