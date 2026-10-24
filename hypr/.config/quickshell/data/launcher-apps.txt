@@ -29,6 +29,7 @@ mpv
 juxtopposed-vlc
 com.spotify.Client
 com.linuxsoundboard.app
+dev.pipewire_dj.PipeWireDJ
 com.github.wwmm.easyeffects
 org.pulseaudio.pavucontrol
 
