@@ -29,6 +29,8 @@ hl.on("hyprland.start", function()
 
   -- Spotify resets sink-input volume on new tracks; user service survives hyprctl reload (exec-once does not)
   hl.exec_cmd("systemctl --user start spotify-volume-guard.service")
+  -- Easy Effects (hidden service) + "CS2 Footsteps" EQ preset (IE 200 correction + footstep tune)
+  hl.exec_cmd(scripts .. "/start-easyeffects")
   -- Outlook OTP watcher (PowerMenu arm → Graph poll → bar chip)
   hl.exec_cmd("systemctl --user start qs-otp-watchd.service")
   -- NetBird: `netbird down` persists Idle; --disable-dns keeps mgmt URL off mesh DNS

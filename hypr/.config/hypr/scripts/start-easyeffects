@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Easy Effects (Flatpak) as a hidden background service, then load the default
+# output preset. The preset is loaded explicitly so the EQ is active after login
+# even if Easy Effects lost its last-preset state.
+# Preset file: dotfiles/easyeffects (stow package).
+set -u
+app=com.github.wwmm.easyeffects
+preset="${EASYEFFECTS_PRESET:-CS2 Footsteps}"
+
+if ! flatpak info "$app" >/dev/null 2>&1; then
+	echo "start-easyeffects: flatpak $app not installed" >&2
+	exit 0
+fi
+
+if ! pgrep -x easyeffects >/dev/null; then
+	flatpak run "$app" --service-mode --hide-window >/dev/null 2>&1 &
+	disown
+fi
+
+# Wait for the service to come up, then load the preset via the running instance.
+for _ in $(seq 1 30); do
+	if pgrep -x easyeffects >/dev/null && pactl list short sinks 2>/dev/null | grep -q easyeffects_sink; then
+		flatpak run "$app" -l "$preset" >/dev/null 2>&1
+		exit 0
+	fi
+	sleep 1
+done
+echo "start-easyeffects: service did not start within 30s" >&2
+exit 1

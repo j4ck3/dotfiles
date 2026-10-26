@@ -33,6 +33,9 @@ PanelWindow {
     property int netbirdPeersTotal: 0
     property string netbirdRelays: "0/0"
     property string netbirdError: ""
+    property bool eqRunning: false
+    property bool eqEnabled: false
+    property string eqPreset: ""
     property bool cardHovering: false
 
     function closeAndRun(cmd: var): void {
@@ -43,6 +46,14 @@ PanelWindow {
     function refreshStatus(): void {
         otpStatusProc.running = true
         netbirdStatusProc.running = true
+        eqStatusProc.running = true
+    }
+
+    function toggleEq(): void {
+        // Optimistic flip; the next status poll corrects it if the toggle failed.
+        root.eqEnabled = !root.eqEnabled
+        Quickshell.execDetached([Globals.scriptsDir + "/easyeffects-control.sh", "toggle"])
+        eqRefreshTimer.restart()
     }
 
     function toggleNetbird(): void {
@@ -86,7 +97,20 @@ PanelWindow {
         stdout: StdioCollector { onStreamFinished: { try { const d = JSON.parse(text.trim()); root.netbirdOk = !!d.ok; root.netbirdConnected = !!d.connected; root.netbirdIp = d.ip || ""; root.netbirdHost = d.host || ""; root.netbirdPeersConnected = d.peers_connected ?? 0; root.netbirdPeersTotal = d.peers_total ?? 0; root.netbirdRelays = d.relays || "0/0"; root.netbirdError = d.error || "" } catch (e) {} } }
     }
 
+    Process {
+        id: eqStatusProc
+        command: [Globals.scriptsDir + "/easyeffects-control.sh", "status"]
+        stdout: StdioCollector { onStreamFinished: { try { const d = JSON.parse(text.trim()); root.eqRunning = !!d.running; root.eqEnabled = !!d.enabled; root.eqPreset = d.preset || "" } catch (e) {} } }
+    }
+
+    readonly property string eqSubtitle: {
+        if (!root.eqRunning) return "Easy Effects not running · click to start"
+        return (root.eqEnabled ? "On" : "Bypassed") + (root.eqPreset.length ? " · " + root.eqPreset : "")
+    }
+
     Timer { id: statusRefreshTimer; interval: 120; onTriggered: root.refreshStatus() }
+    // Starting the service from cold takes a few seconds; poll a bit later too.
+    Timer { id: eqRefreshTimer; interval: 1500; onTriggered: eqStatusProc.running = true }
     Timer { interval: 1000; running: root.visible; repeat: true; triggeredOnStart: true; onTriggered: root.refreshStatus() }
     onVisibleChanged: {
         if (visible) {
@@ -178,6 +202,18 @@ PanelWindow {
             Layout.fillWidth: true
             onDragStateChanged: dragging => Globals.setUtilitiesHover(dragging || root.cardHovering)
             onSettingsOpened: Globals.utilitiesOpen = false
+        }
+
+        M3Section {
+            title: "EQUALIZER"
+            RowLayout {
+                Layout.fillWidth: true; spacing: 10
+                M3IconButton { icon: root.eqEnabled ? "󰺢" : "󰺣"; active: root.eqEnabled; onClicked: root.toggleEq() }
+                ColumnLayout { Layout.fillWidth: true; spacing: 2
+                    Text { text: root.eqEnabled ? "EQ on" : "EQ off"; color: "#ffffff"; font.pixelSize: 13; font.family: Theme.fontFamily }
+                    Text { text: root.eqSubtitle; color: Qt.rgba(1,1,1,.55); font.pixelSize: 11; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
+                }
+            }
         }
 
         M3Section {
