@@ -33,6 +33,9 @@ hl.on("hyprland.start", function()
   hl.exec_cmd(scripts .. "/start-easyeffects")
   -- Outlook OTP watcher (PowerMenu arm → Graph poll → bar chip)
   hl.exec_cmd("systemctl --user start qs-otp-watchd.service")
+  -- Voyager gamer layer while CS2 has focus. graphical-session.target is never
+  -- reached in this session, so WantedBy= alone does not start it.
+  hl.exec_cmd("systemctl --user start voyager-game-layer.service")
   -- NetBird: `netbird down` persists Idle; --disable-dns keeps mgmt URL off mesh DNS
   hl.exec_cmd("netbird up --management-url https://netbird.hjacke.com:443 --disable-dns || true")
 
