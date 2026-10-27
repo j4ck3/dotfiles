@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Apply ~/.config/vimium-c/exclusions.json to Vimium C in every running Helium.
+
+Vimium C swallows keys such as f, j and Escape, which breaks remote desktops
+(noVNC, Guacamole, KasmVNC) and web terminals. Each rule in exclusions.json
+with empty passKeys turns Vimium C off on matching URLs.
+
+Helium runs with --remote-debugging-port=9222. The main profile binds it on
+127.0.0.1 and the helium-webapp profile on [::1], so both are updated. The
+script evaluates code inside the Vimium C service worker through the DevTools
+protocol, waking the worker first when it is idle.
+
+Rules the user added by hand in the Vimium C options page are kept. Rules this
+script applied earlier but that are gone from exclusions.json are removed; the
+list of applied patterns lives in ~/.local/state/vimium-c-exclusions.json.
+
+Usage: vimium-c-exclusions [--dry-run] [--quiet]
+"""
+
+import json
+import os
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+from websockets.sync.client import connect
+
+EXT_ID = "hfjbmagddngcpeloejdejnfgbamkjaeg"
+ENDPOINTS = ["127.0.0.1:9222", "[::1]:9222"]
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "vimium-c/exclusions.json"
+STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "vimium-c-exclusions.json"
+TIMEOUT = 3
+
+# Runs inside the Vimium C service worker. settings.ho is Vimium C's internal
+# setter: it updates the live value, persists it, and pushes it to open tabs.
+# The name is minified, so fall back to storage + extension reload if it moves.
+APPLY_JS = r"""
+(async (managed, previous, dryRun) => {
+  const drop = new Set([...previous, ...managed.map(r => r.pattern)]);
+  const m = globalThis.__moduleMap || {};
+  let current = m.store && m.store.z && m.store.z.exclusionRules;
+  if (!Array.isArray(current)) {
+    current = (await chrome.storage.local.get("exclusionRules")).exclusionRules || [];
+  }
+  const kept = current.filter(r => !drop.has(r.pattern));
+  const next = kept.concat(managed.map(r => ({ passKeys: r.passKeys, pattern: r.pattern })));
+  const changed = JSON.stringify(next) !== JSON.stringify(current);
+  let method = "unchanged";
+  if (changed && !dryRun) {
+    if (m.settings && typeof m.settings.ho === "function") {
+      m.settings.ho("exclusionRules", next);
+      method = "live";
+    } else {
+      await chrome.storage.local.set({ exclusionRules: next });
+      setTimeout(() => chrome.runtime.reload(), 100);
+      method = "reload";
+    }
+  } else if (changed) {
+    method = "dry-run";
+  }
+  return { method, kept: kept.length, managed: managed.length };
+})
+"""
+
+
+def http_json(endpoint, path):
+    with urllib.request.urlopen(f"http://{endpoint}{path}", timeout=TIMEOUT) as r:
+        return json.load(r)
+
+
+class Cdp:
+    def __init__(self, ws):
+        self.ws = ws
+        self.next_id = 0
+
+    def call(self, method, params=None, session=None):
+        self.next_id += 1
+        msg = {"id": self.next_id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        self.ws.send(json.dumps(msg))
+        while True:
+            reply = json.loads(self.ws.recv(timeout=10))
+            if reply.get("id") == self.next_id:
+                if "error" in reply:
+                    raise RuntimeError(f"{method}: {reply['error'].get('message')}")
+                return reply["result"]
+
+
+def find_worker(cdp):
+    for t in cdp.call("Target.getTargets")["targetInfos"]:
+        if t["type"] == "service_worker" and t["url"].startswith(f"chrome-extension://{EXT_ID}/"):
+            return t["targetId"]
+    return None
+
+
+def wake_worker(cdp):
+    """Open an extension page in the background so Chromium starts the worker."""
+    tab = cdp.call("Target.createTarget", {
+        "url": f"chrome-extension://{EXT_ID}/pages/blank.html",
+        "background": True,
+    })["targetId"]
+    try:
+        for _ in range(50):
+            worker = find_worker(cdp)
+            if worker:
+                return worker
+            time.sleep(0.1)
+        return None
+    finally:
+        cdp.call("Target.closeTarget", {"targetId": tab})
+
+
+def apply(endpoint, managed, previous, dry_run):
+    browser_ws = http_json(endpoint, "/json/version")["webSocketDebuggerUrl"]
+    with connect(browser_ws, open_timeout=TIMEOUT, max_size=None) as ws:
+        cdp = Cdp(ws)
+        worker = find_worker(cdp) or wake_worker(cdp)
+        if not worker:
+            return "Vimium C not installed or not starting"
+        session = cdp.call("Target.attachToTarget", {"targetId": worker, "flatten": True})["sessionId"]
+        expr = f"({APPLY_JS})({json.dumps(managed)}, {json.dumps(previous)}, {json.dumps(dry_run)})"
+        res = cdp.call("Runtime.evaluate", {
+            "expression": expr, "awaitPromise": True, "returnByValue": True,
+        }, session)
+        if "exceptionDetails" in res:
+            return "error: " + res["exceptionDetails"].get("text", "exception")
+        v = res["result"]["value"]
+        cdp.call("Target.detachFromTarget", {"sessionId": session})
+        return f"{v['method']} ({v['managed']} managed, {v['kept']} other rules kept)"
+
+
+def main():
+    dry_run = "--dry-run" in sys.argv
+    quiet = "--quiet" in sys.argv
+
+    rules = json.loads(CONFIG.read_text())["rules"]
+    managed = [{"pattern": r["pattern"], "passKeys": r.get("passKeys", "")} for r in rules]
+    try:
+        previous = json.loads(STATE.read_text())["patterns"]
+    except (OSError, ValueError, KeyError):
+        previous = []
+
+    reached = 0
+    failed = False
+    for endpoint in ENDPOINTS:
+        try:
+            result = apply(endpoint, managed, previous, dry_run)
+        except OSError:
+            continue  # no Helium listening on this host
+        except Exception as e:  # noqa: BLE001 - report and keep going
+            result = f"error: {e}"
+        reached += 1
+        failed |= result.startswith(("error", "Vimium C not"))
+        if not quiet or failed:
+            print(f"{endpoint}: {result}")
+
+    if reached == 0:
+        print("No Helium with --remote-debugging-port=9222 running.", file=sys.stderr)
+        return 1
+    if not dry_run and not failed:
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        STATE.write_text(json.dumps({"patterns": [r["pattern"] for r in managed]}, indent=2) + "\n")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

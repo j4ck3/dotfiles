@@ -1,0 +1,40 @@
+{
+  "_comment": "Vimium C exclusion rules for pages that need raw keyboard input (remote desktops, web terminals). Empty passKeys turns Vimium C off on the page. Apply with vimium-c-exclusions; patterns starting with ^ are regexes matched against the full URL.",
+  "rules": [
+    {
+      "what": "noVNC client page (Unraid VM console, browser-agent, self-hosted noVNC)",
+      "pattern": "^https?://[^/]+/(?:[^?#]*/)?vnc(?:_lite|_auto)?\\.html",
+      "passKeys": ""
+    },
+    {
+      "what": "Proxmox VE noVNC / xterm.js console",
+      "pattern": "^https?://[^/]+/[^#]*[?&](?:novnc|xtermjs)=1",
+      "passKeys": ""
+    },
+    {
+      "what": "Apache Guacamole",
+      "pattern": "^https?://[^/]+/(?:[^?#]*/)?guacamole/",
+      "passKeys": ""
+    },
+    {
+      "what": "Unraid web terminal and log viewer (ttyd)",
+      "pattern": "^https?://[^/]+/(?:webterminal|logterminal)/",
+      "passKeys": ""
+    },
+    {
+      "what": "WeTTY web terminal",
+      "pattern": "^https?://[^/]+/(?:[^?#]*/)?wetty(?:[/?#]|$)",
+      "passKeys": ""
+    },
+    {
+      "what": "Default ports: jlesage GUI apps 5800, noVNC 6080, KasmVNC 6901, ttyd 7681",
+      "pattern": "^https?://[^/]+:(?:5800|6080|6901|7681)(?:[/?#]|$)",
+      "passKeys": ""
+    },
+    {
+      "what": "Chrome Remote Desktop session",
+      "pattern": "^https://remotedesktop\\.google\\.com/access/session/",
+      "passKeys": ""
+    }
+  ]
+}

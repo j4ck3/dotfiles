@@ -85,6 +85,11 @@ fi
 echo
 echo "Done. Reload Hyprland when in a session:"
 echo "  hyprctl reload"
+if [[ -f "$HOME/.config/vimium-c/exclusions.json" ]]; then
+  echo
+  echo "Vimium C: with Helium running, turn it off on remote desktops/web terminals:"
+  echo "  vimium-c-exclusions"
+fi
 if [[ -f "$HOME/.config/vimium-c/vimium-c.json" ]]; then
   echo
   echo "Vimium C: import ~/.config/vimium-c/vimium-c.json in extension options"
