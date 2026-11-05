@@ -57,7 +57,8 @@ local margin = 5 -- keep in sync with scripts/16-9-lib.sh
 hl.window_rule({
   name = "default-16-9",
   match = {
-    class = ".*",
+    -- Chromium extension popouts (Bitwarden etc.) get their own rule below.
+    class = "negative:^chrome-[a-p]{32}-.*$",
     float = false,
   },
   float = true,
@@ -70,6 +71,21 @@ hl.window_rule({
     tostring(margin),
   },
   group = "set",
+  no_anim = true,
+})
+
+-- Chromium/Helium extension popout windows (app_id chrome-<extension id>-<profile>),
+-- e.g. the Bitwarden login popout. They open as regular toplevels, so default-16-9
+-- stretched them to the full usable area. Chromium kept painting the popup at its
+-- own ~380px size, which left a blank window with a stale strip of content.
+-- Float them at the size Chromium requests instead, and keep them out of the
+-- focused Helium group: a grouped window takes the group's size.
+hl.window_rule({
+  name = "chromium-extension-popout",
+  match = { class = "^chrome-[a-p]{32}-.*$" },
+  float = true,
+  group = "barred",
+  center = true,
   no_anim = true,
 })
 
