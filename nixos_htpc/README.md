@@ -3,7 +3,7 @@
 NixOS configuration for the HTPC VM on the Unraid server `tower`. It replaces
 the CachyOS HTPC and keeps the same desktop: Hyprland with the Lua config from
 `hypr_htpc`, the Quickshell bar, Helium opening YouTube on workspace 1,
-lnxlink for Home Assistant, NetBird, and Sunshine.
+lnxlink for Home Assistant, NetBird, and wayvnc.
 
 The flake only covers the system. The user `tv` keeps the same home directory
 as before, so `~/.config/hypr`, `~/.config/quickshell`, the systemd user
@@ -19,7 +19,7 @@ units and the Helium profile still come from the stow packages in this repo.
 | `secrets.nix.example` | Password hashes. Copy it to `secrets.nix`; git ignores that file |
 | `libvirt/NixOS-HTPC.xml` | Unraid domain: GTX 1060 + HDMI audio + two Renesas USB cards passed through, vCPUs pinned to host CPUs 8-19 |
 | `scripts/migrate-home.sh` | Copies `/home/tv`, Bluetooth pairings and (with `--with-identity`) NetBird state and SSH host keys from the CachyOS VM into the NixOS disk image |
-| `scripts/home-fixup.sh` | Run once as `tv` after a copy: rebuilds the lnxlink uv venv on a uv-managed Python, links `t3code`, swaps the topgrade CachyOS profile for a NixOS one |
+| `scripts/home-fixup.sh` | Run once as `tv` after a copy: rebuilds the lnxlink uv venv on a uv-managed Python and swaps the topgrade CachyOS profile for a NixOS one |
 | `scripts/cutover.sh` | Final sync, shuts down CachyOS and starts NixOS-HTPC. `cutover.sh back` reverses it |
 | `scripts/gexec.sh` | Runs a shell command in a libvirt guest through the QEMU guest agent |
 
@@ -38,7 +38,7 @@ sudo nixos-rebuild switch --flake /etc/nixos#nixos-tv
 
 `system.autoUpgrade` runs the same rebuild every Sunday at 05:30 with a fresh
 lock file (newer nixpkgs and Helium). topgrade still runs at 06:00 for
-Flatpak, npm and uv.
+npm, uv and cargo.
 
 ## Build a fresh disk image
 
@@ -61,7 +61,9 @@ filesystem before copying the home directory into it.
   `helium-browser` is a wrapper that reads `~/.config/helium-browser-flags.conf`
   the way the AUR package did. Spotify has a similar wrapper for
   `spotify-flags.conf`.
-- OpenCode is left out because its nixpkgs build fails with a
-  node_modules hash mismatch.
+- Kept to what the TV uses: Ghostty is the only terminal, mpv the only
+  video player, nautilus the file manager. Cursor, T3 Code, OpenCode,
+  Docker, Sunshine, Flatpak/Stremio, VLC, Dolphin and the build
+  toolchain were dropped on 2026-11-05.
 - The NOPASSWD sudo rule covers `nixos-rebuild` and `nix-collect-garbage`
   instead of pacman and yay.

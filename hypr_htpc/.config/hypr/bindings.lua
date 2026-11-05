@@ -8,7 +8,6 @@ hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("qs ipc call shell toggleLauncher"))
 -- Terminal
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(var_terminal))
 hl.bind("SUPER + BackSpace", hl.dsp.exec_cmd("nautilus --new-window"))
-hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd(var_terminal .. " -e lazydocker"))
 
 -- System
 hl.bind("SUPER + CTRL + SHIFT + S", hl.dsp.exec_cmd("/usr/bin/systemctl suspend"))

@@ -56,7 +56,6 @@ let
     "/usr/bin/node" = "${pkgs.nodejs}/bin/node";
     "/usr/bin/npm" = "${pkgs.nodejs}/bin/npm";
     "/usr/bin/wayvnc" = "${pkgs.wayvnc}/bin/wayvnc";
-    "/usr/bin/dolphin" = "${pkgs.kdePackages.dolphin}/bin/dolphin";
     "/bin/bash" = "${pkgs.bashInteractive}/bin/bash";
   };
 in
@@ -144,11 +143,10 @@ in
   services.netbird.enable = true;
   services.openssh.enable = true;
 
-  # Same rules as ufw on CachyOS: ssh, Sunshine/Moonlight, wayvnc.
+  # ssh and wayvnc (Sunshine was dropped, so its Moonlight ports stay closed).
   networking.firewall = {
     enable = true;
-    allowedTCPPorts = [ 22 47984 47989 47990 48010 5900 ];
-    allowedUDPPorts = [ 47998 47999 48000 48002 48010 ];
+    allowedTCPPorts = [ 22 5900 ];
     trustedInterfaces = [ "wt0" ];
   };
 
@@ -171,7 +169,6 @@ in
   services.upower.enable = true;
   services.udisks2.enable = true;
   services.gvfs.enable = true;
-  services.flatpak.enable = true;
   services.locate = { enable = true; package = pkgs.plocate; };
   services.ananicy = {
     enable = true;
@@ -180,36 +177,10 @@ in
   };
   systemd.oomd.enable = true;
 
-  services.sunshine = {
-    enable = true;
-    autoStart = false; # disabled on CachyOS too (conflicts with wayvnc KMS capture)
-    capSysAdmin = true;
-    openFirewall = true;
-  };
-
-  virtualisation.docker = {
-    enable = true;
-    enableOnBoot = false; # installed but not running on CachyOS
-  };
-
   # NuPhy Air60 V2 dongle: drop the HID base interface so keybinds hit the keyboard one.
   services.udev.extraRules = ''
     SUBSYSTEM=="hid", DEVPATH=="*:1.0/*19F5*3247*", ACTION=="add", RUN+="/bin/sh -c 'echo %k > /sys/bus/hid/drivers/hid-generic/unbind'"
   '';
-
-  # Flathub + Stremio, the only Flatpak on the CachyOS box.
-  systemd.services.flatpak-apps = {
-    description = "Install Flatpak apps carried over from CachyOS";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" ];
-    wants = [ "network-online.target" ];
-    path = [ pkgs.flatpak ];
-    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-    script = ''
-      flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-      flatpak install --system --noninteractive --or-update flathub com.stremio.Stremio || true
-    '';
-  };
 
   # ---------------------------------------------------------------- session
   # tty1 autologin, then ~/.bash_profile runs `exec start-hyprland` (no display manager).
@@ -256,7 +227,7 @@ in
     ];
   };
 
-  # Binaries downloaded into $HOME (cursor-agent, pi, uv-managed Python, cargo topgrade).
+  # Binaries downloaded into $HOME (pi, uv-managed Python, cargo topgrade).
   programs.nix-ld = {
     enable = true;
     libraries = with pkgs; [
@@ -290,33 +261,30 @@ in
   }];
 
   programs.bash.completion.enable = true;
-  programs.fish.enable = true;
   programs.git.enable = true;
   programs.neovim.enable = true;
-  programs.tmux.enable = true;
   environment.variables.EDITOR = "micro";
 
   # ---------------------------------------------------------------- packages
   environment.systemPackages = with pkgs; [
     # desktop
-    quickshell hyprsunset hypridle hyprlock hyprpicker swaybg uwsm hyprmod
+    quickshell hyprsunset hyprlock hyprpicker swaybg uwsm hyprmod
     ghostty
-    heliumPkg heliumBrowser spotifyWithFlags code-cursor t3code
-    kdePackages.dolphin nautilus kdePackages.polkit-kde-agent-1
-    pavucontrol playerctl wireplumber pulseaudio brightnessctl libnotify
-    grim slurp satty wl-clipboard wayvnc yad overskride sunsetr
-    mpv vlc ffmpeg ffmpegthumbnailer
+    heliumPkg heliumBrowser spotifyWithFlags
+    nautilus
+    pavucontrol playerctl wireplumber pulseaudio libnotify
+    wl-clipboard wayvnc
+    mpv ffmpeg ffmpegthumbnailer
     gst_all_1.gst-libav gst_all_1.gst-plugins-bad gst_all_1.gst-plugins-ugly gst_all_1.gst-plugins-good
     adwaita-icon-theme gnome-themes-extra gsettings-desktop-schemas
     # cli
-    btop fastfetch duf ncdu glances lazydocker lazygit yazi micro nano vim
+    btop fastfetch ncdu micro nano
     ripgrep fd jq rsync wget curl unzip unrar p7zip socat pv tree file lsof
-    git stow topgrade meld tmux
-    nodejs bun uv python3 cmake gcc gnumake
-    tesseract
+    git topgrade
+    nodejs uv python3
     # system
-    pciutils usbutils lshw hwinfo dmidecode smartmontools hdparm ethtool
-    efibootmgr btrfs-progs e2fsprogs exfatprogs dosfstools ntfs3g
+    pciutils usbutils lshw hwinfo dmidecode ethtool
+    efibootmgr e2fsprogs exfatprogs dosfstools
     mesa-demos libva-utils vulkan-tools nvtopPackages.nvidia
     bind inetutils netbird
   ];

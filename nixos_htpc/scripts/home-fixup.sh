@@ -16,10 +16,7 @@ if [ -d "$HOME/.local/share/uv/tools/hyprmod" ]; then
 fi
 rm -f "$HOME/.local/bin/hyprmod"
 
-# t3code desktop app: /opt/t3code-bin (AUR) -> nixpkgs t3code-desktop.
-ln -sfn /run/current-system/sw/bin/t3code-desktop "$HOME/.local/bin/t3code"
-
-# topgrade: NixOS updates come from system.autoUpgrade; keep topgrade for flatpak/npm/uv/etc.
+# topgrade: NixOS updates come from system.autoUpgrade; keep topgrade for npm/uv/cargo.
 mkdir -p "$HOME/.config/topgrade.d"
 rm -f "$HOME/.config/topgrade.d/cachyos.toml"
 cat > "$HOME/.config/topgrade.d/nixos.toml" <<'TOML'
