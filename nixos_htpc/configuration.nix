@@ -300,7 +300,7 @@ in
   environment.systemPackages = with pkgs; [
     # desktop
     quickshell hyprsunset hypridle hyprlock hyprpicker swaybg uwsm hyprmod
-    ghostty kitty alacritty
+    ghostty
     heliumPkg heliumBrowser spotifyWithFlags code-cursor t3code
     kdePackages.dolphin nautilus kdePackages.polkit-kde-agent-1
     pavucontrol playerctl wireplumber pulseaudio brightnessctl libnotify
