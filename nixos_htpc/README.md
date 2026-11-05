@@ -40,6 +40,24 @@ sudo nixos-rebuild switch --flake /etc/nixos#nixos-tv
 lock file (newer nixpkgs and Helium). topgrade still runs at 06:00 for
 npm, uv and cargo.
 
+## pi and Claude
+
+`pi` (pi-coding-agent) and Claude Code come from nixpkgs and update with the
+system. Claude models run through the
+[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) extension,
+which drives the unmodified `claude` binary, so they bill against the Claude
+subscription that `claude` is signed in to:
+
+```sh
+claude auth login                 # once, through Anthropic's sign-in page
+pi install npm:pi-claude-bridge   # already installed on the HTPC
+```
+
+`~/.pi/agent/claude-bridge.json` points `pathToClaudeCodeExecutable` at
+`/run/current-system/sw/bin/claude`. In pi, pick a `claude-bridge/...` model
+with `/model`. The `anthropic/...` models are pi's own provider; don't sign in
+to them with a subscription through pi's `/login`.
+
 ## Build a fresh disk image
 
 Run this on any x86_64 machine with Nix and KVM. On tower it runs inside the

@@ -282,6 +282,7 @@ in
     ripgrep fd jq rsync wget curl unzip unrar p7zip socat pv tree file lsof
     git topgrade
     nodejs uv python3
+    pi-coding-agent claude-code # claude-code: used by the pi-claude-bridge extension
     # system
     pciutils usbutils lshw hwinfo dmidecode ethtool
     efibootmgr e2fsprogs exfatprogs dosfstools
