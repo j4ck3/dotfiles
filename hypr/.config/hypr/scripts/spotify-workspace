@@ -3,6 +3,16 @@
 
 WORKSPACE="${1:-15}"
 
+# Focusing a window warps the pointer to its center. Remember where the
+# pointer was so it can be put back after each focus change.
+CURSOR_POS="$(hyprctl cursorpos 2>/dev/null)"
+
+restore_cursor() {
+    [ -n "$CURSOR_POS" ] || return 0
+    local x="${CURSOR_POS%%,*}" y="${CURSOR_POS##*, }"
+    hyprctl dispatch "hl.dsp.cursor.move({ x = $x, y = $y })" >/dev/null
+}
+
 get_client() {
     hyprctl clients -j | jq -r '[.[] | select(.class == "Spotify" or .class == "spotify" or .class == "com.spotify.Client" or ((.title // "") | test("Spotify"; "i")))][0].address // empty'
 }
@@ -13,6 +23,7 @@ move_and_focus() {
     hyprctl dispatch "hl.dsp.window.move({ workspace = $WORKSPACE, follow = false, window = \"address:$client\" })"
     hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
     hyprctl dispatch "hl.dsp.focus({ window = \"address:$client\" })"
+    restore_cursor
 }
 
 CLIENT="$(get_client)"
@@ -23,6 +34,7 @@ if [ -n "$CLIENT" ]; then
 fi
 
 hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })"
+restore_cursor
 uwsm-app -- flatpak run com.spotify.Client &
 
 for _ in $(seq 1 40); do
