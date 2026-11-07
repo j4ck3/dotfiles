@@ -17,7 +17,8 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("systemctl --user start quickshell.service")
   hl.exec_cmd("wl-paste --type text --watch cliphist store")
   hl.exec_cmd("wl-paste --type image --watch cliphist store")
-  hl.exec_cmd("helium-browser")
+  -- Boot Helium window opens on the DeepSeek Harness Web GUI (Super+K pulls it to ws 2).
+  hl.exec_cmd("helium-browser https://code.netbird.hjacke.com/")
   -- Software brightness + blue-light (hyprctl hyprsunset gamma|temperature)
   hl.exec_cmd("uwsm-app -- hyprsunset")
   -- S1-mini (Superwhisper): local STT normalizer for Handy post-process

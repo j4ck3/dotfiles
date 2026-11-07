@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# SUPER+K: focus workspace 2 with the DeepSeek Harness Web GUI, launching it in
+# Helium when no DSH window exists. Pressing again on workspace 2 cycles windows.
+# Usage: dsh-workspace [workspace]
+#
+# Uses the main Helium profile because it holds the dsh-auth cookie for the
+# DSH host; the helium-webapp profile would hit the 401 login page.
+
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE="${1:-2}"
+DSH_URL="${DSH_URL:-https://code.netbird.hjacke.com/}"
+# Every DSH page title ends with "DeepSeek Harness".
+TITLE_RE="DeepSeek Harness"
+
+helium_clients() {
+	hyprctl clients -j 2>/dev/null | jq -c '[.[] | select((.class | ascii_downcase) == "helium")]'
+}
+
+# Prefer a DSH window already on the target workspace, then one elsewhere.
+find_dsh() {
+	helium_clients | jq -r --argjson ws "$WORKSPACE" --arg re "$TITLE_RE" '
+		[.[] | select((.title // "") | test($re))]
+		| (map(select(.workspace.id == $ws)) + map(select(.workspace.id != $ws)))
+		| .[0] | if . then "\(.address)\t\(.workspace.id)" else empty end
+	'
+}
+
+move_and_focus() {
+	local addr="$1" ws="$2"
+	if [[ "$ws" != "$WORKSPACE" ]]; then
+		hyprctl dispatch "hl.dsp.window.move({ workspace = $WORKSPACE, follow = false, window = \"address:$addr\" })" >/dev/null
+	fi
+	hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })" >/dev/null
+	hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+}
+
+ACTIVE_WORKSPACE=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .activeWorkspace.id')
+FOUND="$(find_dsh)"
+
+if [[ -n "$FOUND" ]]; then
+	ADDR="${FOUND%%$'\t'*}"
+	WS="${FOUND##*$'\t'}"
+	if [[ "$ACTIVE_WORKSPACE" == "$WORKSPACE" && "$WS" == "$WORKSPACE" ]]; then
+		exec "$SCRIPT_DIR/smart-cycle"
+	fi
+	move_and_focus "$ADDR" "$WS"
+	exit 0
+fi
+
+# Not running: switch now so the key feels instant, then launch.
+hyprctl dispatch "hl.dsp.focus({ workspace = $WORKSPACE, on_current_monitor = true })" >/dev/null
+
+# Helium routes new windows through the running process, which may map them on
+# another workspace. Remember existing windows so the new one can be found and
+# moved even before its title turns into "... DeepSeek Harness".
+BEFORE="$(helium_clients | jq -r '.[].address')"
+
+/home/jacke/.local/bin/helium-browser --new-window "$DSH_URL" >/dev/null 2>&1 &
+disown || true
+
+for _ in $(seq 1 80); do
+	sleep 0.25
+	NEW=$(helium_clients | jq -r --arg before "$BEFORE" '
+		($before | split("\n")) as $old
+		| [.[] | select(.address as $a | $old | index($a) | not)] | last
+		| if . then "\(.address)\t\(.workspace.id)" else empty end
+	')
+	if [[ -n "$NEW" ]]; then
+		move_and_focus "${NEW%%$'\t'*}" "${NEW##*$'\t'}"
+		exit 0
+	fi
+done
+
+exit 0

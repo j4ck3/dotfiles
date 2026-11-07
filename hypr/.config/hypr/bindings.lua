@@ -58,7 +58,7 @@ bind("SUPER + BackSpace", hl.dsp.exec_cmd("uwsm-app -- /home/jacke/.local/bin/do
 bind("SUPER + SHIFT + ALT + B", hl.dsp.exec_cmd(browser .. " --private"), desc_release("Browser (private)"))
 bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("uwsm-app -- flatpak run com.spotify.Client"), desc_release("Music"))
 bind("SUPER + M", hl.dsp.exec_cmd(scripts .. "/spotify-workspace 15"), desc_release("Spotify (workspace 15)"))
-bind("SUPER + K", hl.dsp.exec_cmd(scripts .. "/workspace-or-cycle 2"), desc_release("Switch/cycle workspace 2"))
+bind("SUPER + K", hl.dsp.exec_cmd(scripts .. "/dsh-workspace 2"), desc_release("DeepSeek Harness (workspace 2)"))
 bind("SUPER + SHIFT + N", hl.dsp.exec_cmd("uwsm-app -- cursor"), desc_release("Editor"))
 bind(
   "SUPER + N",
