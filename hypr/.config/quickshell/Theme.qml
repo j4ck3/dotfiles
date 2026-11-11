@@ -64,6 +64,15 @@ Singleton {
     readonly property int fontSize: 12
     // Flip true → left vertical bar (VerticalBar). False → top Bar.
     readonly property bool barVertical: true
+    // Auto-hide: bar sits off-screen and reserves no space. Pointer on the
+    // screen edge the bar docks to slides it in; leaving the bar hides it
+    // again once no bar popup is open.
+    readonly property bool barAutoHide: true
+    // Thickness of the edge trigger strip while hidden (full bar length).
+    readonly property int barHotEdgeSize: 2
+    readonly property int barHideDelay: 350
+    // Slide-in duration (slide-out uses animNormal).
+    readonly property int barRevealDuration: 90
     readonly property int barHeight: 36
     readonly property int barWidth: 56
     readonly property int barMargin: 0

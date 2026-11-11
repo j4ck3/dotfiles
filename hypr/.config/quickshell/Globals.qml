@@ -21,6 +21,10 @@ Singleton {
     property bool towerOpen: false
     // Handy center overlay — independent of closeAll() so launcher won't kill REC UI
     property bool dictationOpen: false
+    // Any popup docked to the bar is open: keeps an auto-hidden bar revealed
+    // while the pointer is on the popup card instead of the bar.
+    readonly property bool barPopupOpen: volumeOpen || displayOpen || mediaOpen
+        || powerOpen || utilitiesOpen || towerOpen
     property string dictationPhase: "" // "rec" | "tx" | ""
     property var waveLevels: Array(48).fill(0.06)
     property real waveGain: 0.15
