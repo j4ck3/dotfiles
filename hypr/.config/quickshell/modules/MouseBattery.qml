@@ -3,23 +3,39 @@ import Quickshell
 import Quickshell.Io
 import ".."
 
+// Bar MOUSE stat. Hover opens MousePopup (battery details + polling rate);
+// the popup replaces the plain MacStat tooltip.
 MacStat {
     id: root
     label: "MOUSE"
     centerText: true
     value: "--"
-    tooltip: "Mouse battery unavailable"
+    tooltip: ""
 
     function applyStatus(data: var): void {
         value = data.ok ? (data.display || (data.pct >= 0 ? data.pct + "%" : "--")) : "--"
-        if (!data.ok) {
-            tooltip = data.error && data.error !== "offline" ? data.error : "Mouse: no dongle"
+        Globals.mouseBattery = data
+    }
+
+    // Record where the popup should dock before it opens.
+    function syncAnchor(): void {
+        const win = root.QsWindow
+        if (!win?.contentItem)
             return
-        }
-        const bits = ["Mouse: " + value]
-        if (data.mv > 0) bits.push((data.mv / 1000).toFixed(2) + "V")
-        if (data.charging) bits.push("charging")
-        tooltip = bits.join(" · ")
+        const center = root.mapToItem(win.contentItem, root.width / 2, root.height / 2)
+        Globals.mousePopupAnchorY = Math.round(center.y)
+        const cardW = 280
+        Globals.mousePopupRightMargin = Globals.clampPopupMargin(
+            Math.round(win.contentItem.width - center.x - cardW / 2),
+            cardW,
+            win.contentItem.width
+        )
+    }
+
+    onHoveredChanged: {
+        if (hovered)
+            root.syncAnchor()
+        Globals.setMouseHover(hovered)
     }
 
     Process {

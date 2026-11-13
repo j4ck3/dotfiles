@@ -19,12 +19,13 @@ Singleton {
     property bool clipboardOpen: false
     property bool dashboardOpen: false
     property bool towerOpen: false
+    property bool mouseOpen: false
     // Handy center overlay — independent of closeAll() so launcher won't kill REC UI
     property bool dictationOpen: false
     // Any popup docked to the bar is open: keeps an auto-hidden bar revealed
     // while the pointer is on the popup card instead of the bar.
     readonly property bool barPopupOpen: volumeOpen || displayOpen || mediaOpen
-        || powerOpen || utilitiesOpen || towerOpen
+        || powerOpen || utilitiesOpen || towerOpen || mouseOpen
     property string dictationPhase: "" // "rec" | "tx" | ""
     property var waveLevels: Array(48).fill(0.06)
     property real waveGain: 0.15
@@ -48,6 +49,7 @@ Singleton {
     property bool utilitiesHover: false
     property bool mediaHover: false
     property bool towerHover: false
+    property bool mouseHover: false
 
     // Bar → popup: distance from screen right to center card under trigger.
     property int mediaPopupRightMargin: 280
@@ -58,6 +60,12 @@ Singleton {
     property int powerPopupRightMargin: 16
     property int utilitiesPopupRightMargin: 210
     property int towerPopupRightMargin: 210
+    // Mouse popup: vertical bar docks beside the trigger (card centered on
+    // mousePopupAnchorY); top bar centers the card under it (right margin).
+    property int mousePopupAnchorY: 0
+    property int mousePopupRightMargin: 210
+    // Last ulx-battery.py payload, published by the bar's MouseBattery module.
+    property var mouseBattery: ({ ok: false })
     property int notifRightMargin: 14
 
     function clampPopupMargin(margin: int, cardW: int, screenW: int): int {
@@ -128,6 +136,15 @@ Singleton {
         }
     }
 
+    Timer {
+        id: mouseCloseTimer
+        interval: Theme.barVertical ? 220 : 80
+        onTriggered: {
+            if (!root.mouseHover)
+                root.mouseOpen = false
+        }
+    }
+
     function closeOthers(except: string): void {
         if (except !== "volume")
             volumeOpen = false
@@ -146,6 +163,8 @@ Singleton {
             dashboardOpen = false
         if (except !== "tower")
             towerOpen = false
+        if (except !== "mouse")
+            mouseOpen = false
         if (except !== "volume") {
             volumeHover = false
             volumeCloseTimer.stop()
@@ -171,6 +190,10 @@ Singleton {
         if (except !== "tower") {
             towerHover = false
             towerCloseTimer.stop()
+        }
+        if (except !== "mouse") {
+            mouseHover = false
+            mouseCloseTimer.stop()
         }
     }
 
@@ -286,6 +309,20 @@ Singleton {
         }
     }
 
+    function setMouseHover(inside: bool): void {
+        mouseHover = inside
+        if (inside) {
+            mouseCloseTimer.stop()
+            if (!mouseOpen) {
+                playHoverSound()
+                closeOthers("mouse")
+                mouseOpen = true
+            }
+        } else {
+            mouseCloseTimer.restart()
+        }
+    }
+
     // Resolved against this file's directory (config root)
     readonly property string scriptsDir: {
         const u = Qt.resolvedUrl("./scripts").toString()
@@ -318,6 +355,7 @@ Singleton {
         clipboardOpen = false
         dashboardOpen = false
         towerOpen = false
+        mouseOpen = false
         volumeHover = false
         displayBarHover = false
         displayCardHover = false
@@ -326,12 +364,14 @@ Singleton {
         utilitiesHover = false
         mediaHover = false
         towerHover = false
+        mouseHover = false
         volumeCloseTimer.stop()
         displayCloseTimer.stop()
         powerCloseTimer.stop()
         utilitiesCloseTimer.stop()
         mediaCloseTimer.stop()
         towerCloseTimer.stop()
+        mouseCloseTimer.stop()
     }
 
     function toggleVolume(): void {

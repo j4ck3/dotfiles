@@ -20,6 +20,7 @@ Item {
     property bool animateIn: false
     property bool compact: false
     default property alias body: bodyCol.data
+    readonly property alias cardHeight: card.height
 
     signal closed
     signal cardHover(bool inside)

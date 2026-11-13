@@ -37,11 +37,6 @@ PanelWindow {
     property bool eqEnabled: false
     property string eqPreset: ""
     property bool cardHovering: false
-    property bool pollOk: false
-    property int pollHz: 0
-    property int pollMax: 4000
-    property int pollPending: 0
-    property string pollError: ""
 
     function closeAndRun(cmd: var): void {
         Quickshell.execDetached(cmd)
@@ -59,21 +54,6 @@ PanelWindow {
         root.eqEnabled = !root.eqEnabled
         Quickshell.execDetached([Globals.scriptsDir + "/easyeffects-control.sh", "toggle"])
         eqRefreshTimer.restart()
-    }
-
-    function applyPolling(d: var): void {
-        root.pollOk = !!d.ok
-        root.pollHz = d.hz ?? 0
-        root.pollMax = d.max ?? 4000
-        root.pollError = d.error || ""
-        root.pollPending = 0
-    }
-
-    function setPolling(hz: int): void {
-        if (pollSetProc.running || hz === root.pollHz) return
-        root.pollPending = hz
-        pollSetProc.command = [Globals.scriptsDir + "/ulx-polling.py", "set", String(hz)]
-        pollSetProc.running = true
     }
 
     function toggleNetbird(): void {
@@ -123,23 +103,6 @@ PanelWindow {
         stdout: StdioCollector { onStreamFinished: { try { const d = JSON.parse(text.trim()); root.eqRunning = !!d.running; root.eqEnabled = !!d.enabled; root.eqPreset = d.preset || "" } catch (e) {} } }
     }
 
-    Process {
-        id: pollStatusProc
-        command: [Globals.scriptsDir + "/ulx-polling.py"]
-        stdout: StdioCollector { onStreamFinished: { try { root.applyPolling(JSON.parse(text.trim())) } catch (e) { root.applyPolling({ ok: false, error: "Polling unavailable" }) } } }
-    }
-
-    Process {
-        id: pollSetProc
-        stdout: StdioCollector { onStreamFinished: { try { root.applyPolling(JSON.parse(text.trim())) } catch (e) { root.applyPolling({ ok: false, error: "Set failed" }) } } }
-    }
-
-    readonly property string pollSubtitle: {
-        if (root.pollPending > 0) return "Setting " + root.pollPending + " Hz…"
-        if (!root.pollOk) return root.pollError === "offline" ? "No dongle" : (root.pollError || "Unavailable")
-        return root.pollError.length ? root.pollError : "UltralightX"
-    }
-
     readonly property string eqSubtitle: {
         if (!root.eqRunning) return "Easy Effects not running · click to start"
         return (root.eqEnabled ? "On" : "Bypassed") + (root.eqPreset.length ? " · " + root.eqPreset : "")
@@ -152,7 +115,6 @@ PanelWindow {
     onVisibleChanged: {
         if (visible) {
             root.refreshStatus()
-            if (!pollStatusProc.running && !pollSetProc.running) pollStatusProc.running = true
             card.playIn()
         } else card.resetOut()
     }
@@ -250,57 +212,6 @@ PanelWindow {
                 ColumnLayout { Layout.fillWidth: true; spacing: 2
                     Text { text: root.eqEnabled ? "EQ on" : "EQ off"; color: "#ffffff"; font.pixelSize: 13; font.family: Theme.fontFamily }
                     Text { text: root.eqSubtitle; color: Qt.rgba(1,1,1,.55); font.pixelSize: 11; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                }
-            }
-        }
-
-        M3Section {
-            title: "MOUSE POLLING"
-            RowLayout {
-                Layout.fillWidth: true; spacing: 10
-                M3IconButton { icon: "󰍽"; active: root.pollOk && root.pollHz > 1000; onClicked: Quickshell.execDetached(["xdg-open", "https://xpanel.finalmouse.com/polling-rate"]) }
-                ColumnLayout { Layout.fillWidth: true; spacing: 2
-                    Text { text: root.pollOk ? root.pollHz + " Hz" : "Polling rate"; color: "#ffffff"; font.pixelSize: 13; font.family: Theme.fontFamily }
-                    Text { text: root.pollSubtitle; color: Qt.rgba(1,1,1,.55); font.pixelSize: 11; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.fillWidth: true }
-                }
-            }
-            RowLayout {
-                Layout.fillWidth: true; spacing: 6
-                Repeater {
-                    model: [500, 1000, 2000, 4000, 8000]
-                    Rectangle {
-                        id: rateBtn
-                        required property int modelData
-                        readonly property bool current: root.pollOk && root.pollHz === modelData
-                        readonly property bool pending: root.pollPending === modelData
-                        readonly property bool usable: root.pollOk && modelData <= root.pollMax
-                        Layout.fillWidth: true
-                        implicitHeight: 28
-                        radius: 9
-                        opacity: usable ? 1 : 0.35
-                        color: current ? Theme.popupAccent
-                            : pending ? Qt.rgba(0.2, 0.6, 1, 0.35)
-                            : rateMouse.containsMouse && usable ? Theme.hoverStrong
-                            : Qt.rgba(1, 1, 1, 0.10)
-                        Behavior on color { ColorAnimation { duration: Theme.animFast } }
-                        scale: rateMouse.pressed && usable ? 0.96 : 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: rateBtn.modelData >= 1000 ? (rateBtn.modelData / 1000) + "K" : String(rateBtn.modelData)
-                            color: Theme.popupText
-                            font.family: Theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.Medium
-                        }
-                        MouseArea {
-                            id: rateMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            enabled: rateBtn.usable
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.setPolling(rateBtn.modelData)
-                        }
-                    }
                 }
             }
         }

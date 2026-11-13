@@ -186,6 +186,10 @@ ShellRoot {
         screen: Globals.focusedScreen()
     }
 
+    MousePopup {
+        screen: Globals.focusedScreen()
+    }
+
     DictationOverlay {}
 
     NotificationOSD {}

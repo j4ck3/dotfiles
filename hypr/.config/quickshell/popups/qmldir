@@ -9,6 +9,7 @@ SessionPopup 1.0 SessionPopup.qml
 ClipboardPopup 1.0 ClipboardPopup.qml
 DashboardPopup 1.0 DashboardPopup.qml
 TowerPopup 1.0 TowerPopup.qml
+MousePopup 1.0 MousePopup.qml
 DictationOverlay 1.0 DictationOverlay.qml
 NotificationOSD 1.0 NotificationOSD.qml
 LauncherCard 1.0 LauncherCard.qml
